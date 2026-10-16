@@ -787,13 +787,13 @@ export function assertAdapterCoversHands(adapter, hands) {
  * HOW a hand is invoked. Verified facts only:
  *   - the dispatch shape (one ```json:call:<fn> block, strict-JSON body, a human clicks Run, the return
  *     value goes back into the conversation, a malformed body is dropped without a word) is what the
- *     godsworld-dev lab MEASURED against the shell (its page comments cite CodeSiteWidget.handleExecuteAction
- *     and the ChatWidget Run gate; design/maxi-frqtl-sdk-programming-notes.md §3, 2026-09-02);
+ *     lab MEASURED against the shell (its page comments cite CodeSiteWidget.handleExecuteAction and the
+ *     ChatWidget Run gate);
  *   - the app side (site/DeSciXAppSDK.js) names the exact global the shell looks up, `window.DeSciX_Actions`,
  *     and the command door `DeSciX.call` the page asks the question through — that file carries no json:call
  *     parser, so the fence mechanics are the shell's, measured, not read;
  *   - the eyes: the page hands every clip to the question command's `media[]` itself (maxi-ask.js); a clip
- *     on that field was described with media_tokens 300 (record: godsworld-dev docs/records/2026-10-15-egpt-godsworld-records-moved.md).
+ *     on that field was described with media_tokens 300.
  */
 export const HANDS_PREAMBLE = [
     'HOW YOU ACT. A hand is words in one exact shape, not a tool that can be missing. To use one, END your',
