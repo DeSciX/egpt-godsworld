@@ -1,0 +1,241 @@
+<frqtl-notebook version="1" title="EGPTMatrix SDK Parity Tests">
+
+<cell type="markdown">
+# EGPTMatrix SDK Parity Tests
+
+`EGPTMatrix` is the linear-algebra surface of the EGPT math library. Its central insight is that **every matrix row is a polynomial in coefficient form**, so every linear-algebra operation — dot products, GEMM, value-representation — routes through `EGPTPolynomial` rather than through classical Vandermonde / Toeplitz / Sylvester machinery.
+
+The bijective chain (Lean-formalized in `Translation4.lean` / `Translation5.lean`):
+
+```
+matrix (rows = polynomials)
+  ↕  EGPTPolynomial.multiply + EGPTPolynomial.evaluateAt
+coefficient form ⇆ value representation
+  ↕  bijective encoding (choice-free)
+EntropyNat ≃ ℕ
+```
+
+This notebook ports **all six parity tests** from `sdk/egpt-math-sdk/src/editor/tests/EGPTMatrixTest.js` into individually runnable cells, grouped by concept:
+
+1. **Setup** — shared test harness (`test` / `assert` / `assertMatrixEquals`)
+2. **Construction** — `EGPTMatrix.from` converts integers, rationals, and `EGPTReal` instances
+3. **Dot product** — `dotViaPolynomial` extracts the dot product as coefficient `n−1` of a convolution
+4. **GEMM** — `matMul` (plain product) and `gemm` (with α / β / accumulator)
+5. **Value representation** — coefficient form ⇄ spectral samples round-trips exactly
+6. **Polynomial delegation** — `evaluateRowsAt` delegates per-row to `EGPTPolynomial.evaluateAt`
+7. **Summary** — total pass/fail count
+
+All tests use the `math` builtin exclusively — no URL imports.
+</cell>
+
+<cell type="markdown">
+## Setup — shared test harness
+
+The original file opens with a small `test` / `assert` / `assertMatrixEquals` harness shared across all six tests. We extract it here into a setup cell and expose it as the `suite` binding that every phase cell consumes.
+</cell>
+
+<cell type="js" lane="math" id="matrix-setup" out="suite">
+const { math } = caps;
+const { EGPTReal, EGPTMatrix } = math;
+
+let passed = 0;
+let failed = 0;
+const failures = [];
+
+function test(name, fn) {
+  try {
+    fn();
+    passed += 1;
+    console.log(`PASS: ${name}`);
+  } catch (error) {
+    failed += 1;
+    failures.push({ name, message: error.message });
+    console.log(`FAIL: ${name} (${error.message})`);
+  }
+}
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message || 'assertion failed');
+}
+
+function assertMatrixEquals(actual, expected, message) {
+  assert(EGPTMatrix.equals(actual, expected), message || 'matrices are not equal');
+}
+
+return { suite: { test, assert, assertMatrixEquals, getPassed: () => passed, getFailed: () => failed, getFailures: () => failures } };
+</cell>
+
+<cell type="markdown">
+## Phase 1 — Construction: `EGPTMatrix.from`
+
+`EGPTMatrix.from` accepts a rectangular array whose entries can be:
+
+- **`number`** (JS integer) → `EGPTReal.fromBigInt(BigInt(n))`
+- **`bigint`** → `EGPTReal.fromBigInt(v)`
+- **`[num, den]`** tuple → `EGPTReal.fromRational(num, den)`
+- **`EGPTReal`** instance → passes through unchanged
+
+This test builds a 2×2 matrix mixing all four input forms and verifies each entry resolves to the expected `EGPTReal`.
+</cell>
+
+<cell type="js" lane="math" id="matrix-construction" in="suite">
+const { math } = caps;
+const { EGPTReal, EGPTMatrix } = math;
+const { test, assert } = inputs.suite;
+
+test('EGPTMatrix.from converts integers and rationals', () => {
+  const M = EGPTMatrix.from([
+    [1, [1n, 2n]],
+    [3n, EGPTReal.fromRational(5n, 7n)]
+  ]);
+  assert(M[0][0].equals(EGPTReal.fromBigInt(1n)),                'M[0][0] should equal 1');
+  assert(M[0][1].equals(EGPTReal.fromRational(1n, 2n)),          'M[0][1] should equal 1/2');
+  assert(M[1][0].equals(EGPTReal.fromBigInt(3n)),                'M[1][0] should equal 3');
+  assert(M[1][1].equals(EGPTReal.fromRational(5n, 7n)),          'M[1][1] should equal 5/7');
+});
+</cell>
+
+<cell type="markdown">
+## Phase 2 — Dot product via polynomial multiplication
+
+The key identity: for vectors `a = [a₀, …, aₙ₋₁]` and `b = [b₀, …, bₙ₋₁]`, the dot product `Σᵢ aᵢ·bᵢ` equals the **(n−1)-th coefficient** of the convolution `P_a(x) · P_b_reversed(x)`.
+
+```
+P_a(x) = a₀ + a₁x + … + aₙ₋₁xⁿ⁻¹
+P_b_rev(x) = bₙ₋₁ + bₙ₋₂x + … + b₀xⁿ⁻¹
+```
+
+At index `n−1`: `Σ_{i+j=n−1} aᵢ · b_rev_j = Σᵢ aᵢ · b_{n−1−(n−1−i)} = Σᵢ aᵢ · bᵢ` ✓
+
+For `a = [1,2,3]` and `b = [4,5,6]`: `1·4 + 2·5 + 3·6 = 32`.
+</cell>
+
+<cell type="js" lane="math" id="matrix-dot-product" in="suite">
+const { math } = caps;
+const { EGPTReal, EGPTMatrix } = math;
+const { test, assert } = inputs.suite;
+
+test('EGPTMatrix.dotViaPolynomial equals direct dot product', () => {
+  const a = [1n, 2n, 3n].map(EGPTReal.fromBigInt);
+  const b = [4n, 5n, 6n].map(EGPTReal.fromBigInt);
+  // 1·4 + 2·5 + 3·6 = 4 + 10 + 18 = 32
+  assert(EGPTMatrix.dotViaPolynomial(a, b).equals(EGPTReal.fromBigInt(32n)),
+    'dot([1,2,3],[4,5,6]) should equal 32');
+});
+</cell>
+
+<cell type="markdown">
+## Phase 3 — Matrix multiplication: `matMul` and `gemm`
+
+### `matMul` — plain product A · B
+
+`matMul(A, B)` is a convenience alias for `gemm(A, B)` with default α=1 and β=0. Each output entry is one `dotViaPolynomial` call.
+
+```
+A = [[1,2],[3,4]]    B = [[5,6],[7,8]]
+A·B = [[1·5+2·7, 1·6+2·8],[3·5+4·7, 3·6+4·8]]
+    = [[19, 22],[43, 50]]
+```
+
+### `gemm` — general GEMM with α / β / accumulator C
+
+`gemm(A, B, α, β, C)` computes `α·(A·B) + β·C`. With α=2 and β=1 and `C = ones(2×2)`:
+
+```
+2·[[19,22],[43,50]] + 1·[[1,1],[1,1]] = [[39,45],[87,101]]
+```
+</cell>
+
+<cell type="js" lane="math" id="matrix-gemm" in="suite">
+const { math } = caps;
+const { EGPTReal, EGPTMatrix } = math;
+const { test, assertMatrixEquals } = inputs.suite;
+
+test('EGPTMatrix.matMul computes 2x2 product', () => {
+  const A = EGPTMatrix.from([[1, 2], [3, 4]]);
+  const B = EGPTMatrix.from([[5, 6], [7, 8]]);
+  const expected = EGPTMatrix.from([[19, 22], [43, 50]]);
+  assertMatrixEquals(EGPTMatrix.matMul(A, B), expected, 'matMul([[1,2],[3,4]], [[5,6],[7,8]]) should be [[19,22],[43,50]]');
+});
+
+test('EGPTMatrix.gemm supports alpha beta accumulator', () => {
+  const A = EGPTMatrix.from([[1, 2], [3, 4]]);
+  const B = EGPTMatrix.from([[5, 6], [7, 8]]);
+  const C = EGPTMatrix.from([[1, 1], [1, 1]]);
+  const expected = EGPTMatrix.from([[39, 45], [87, 101]]);
+  const result = EGPTMatrix.gemm(A, B, EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(1n), C);
+  assertMatrixEquals(result, expected, 'gemm(A,B,2,1,C) should be 2·(A·B) + C');
+});
+</cell>
+
+<cell type="markdown">
+## Phase 4 — Value representation round-trip
+
+Every matrix row is a polynomial `P(x) = a₀ + a₁x + … + aₙ₋₁xⁿ⁻¹`. The **value representation** evaluates it at integer powers of 2: `[P(2⁰), P(2¹), …, P(2ⁿ⁻¹)]`.
+
+Because the evaluation points are distinct, the Vandermonde system is invertible — `fromValueReps(toValueReps(M)) = M` exactly (no floating-point error, because `EGPTReal` is exact rational arithmetic throughout).
+
+This round-trip is the operational form of `Translation4` / `Translation5` (coefficient form ⇄ spectral form as a bijection over `EntropyNat`).
+</cell>
+
+<cell type="js" lane="math" id="matrix-value-rep" in="suite">
+const { math } = caps;
+const { EGPTMatrix } = math;
+const { test, assertMatrixEquals } = inputs.suite;
+
+test('EGPTMatrix value representation round trips rows', () => {
+  const M = EGPTMatrix.from([[1, 2, 3], [4, 0, 5]]);
+  assertMatrixEquals(
+    EGPTMatrix.fromValueReps(EGPTMatrix.toValueReps(M)),
+    M,
+    'fromValueReps(toValueReps(M)) should equal M (exact round-trip)'
+  );
+});
+</cell>
+
+<cell type="markdown">
+## Phase 5 — Row evaluation delegates to `EGPTPolynomial.evaluateAt`
+
+`EGPTMatrix.evaluateRowsAt(M, x)` evaluates each row as a polynomial at `x`, producing a column vector. It is explicitly specified to delegate to `EGPTPolynomial.evaluateAt` per row — this test verifies that the results agree element-wise, confirming that the matrix layer does not duplicate polynomial logic.
+
+For `M = [[1,2],[3,4]]` and `x = 3`:
+- row 0: `1 + 2·3 = 7`
+- row 1: `3 + 4·3 = 15`
+</cell>
+
+<cell type="js" lane="math" id="matrix-evaluate-rows" in="suite">
+const { math } = caps;
+const { EGPTReal, EGPTMatrix, EGPTPolynomial } = math;
+const { test, assert } = inputs.suite;
+
+test('EGPTMatrix.evaluateRowsAt delegates to EGPTPolynomial.evaluateAt', () => {
+  const M = EGPTMatrix.from([[1, 2], [3, 4]]);
+  const x = EGPTReal.fromBigInt(3n);
+  const values = EGPTMatrix.evaluateRowsAt(M, x);
+  assert(values[0].equals(EGPTPolynomial.evaluateAt(M[0], x)),
+    'row 0 evaluated at 3 should equal EGPTPolynomial.evaluateAt(M[0], 3)');
+  assert(values[1].equals(EGPTPolynomial.evaluateAt(M[1], x)),
+    'row 1 evaluated at 3 should equal EGPTPolynomial.evaluateAt(M[1], 3)');
+});
+</cell>
+
+<cell type="markdown">
+## Summary
+
+Run this cell after all phase cells to see the total pass/fail count. If any test failed, the cell throws with the failure list so the error surfaces in the console pane.
+</cell>
+
+<cell type="js" lane="math" id="matrix-summary" in="suite">
+const { getPassed, getFailed, getFailures } = inputs.suite;
+const p = getPassed();
+const f = getFailed();
+const total = p + f;
+console.log(`EGPTMatrixTest TOTAL: ${p}/${total} passed`);
+if (f > 0) {
+  const list = getFailures().map(({ name, message }) => `  - ${name}: ${message}`).join('\n');
+  throw new Error(`EGPTMatrixTest failed: ${f}\n${list}`);
+}
+console.log('All EGPTMatrix SDK parity tests passed.');
+</cell>
+
+</frqtl-notebook>

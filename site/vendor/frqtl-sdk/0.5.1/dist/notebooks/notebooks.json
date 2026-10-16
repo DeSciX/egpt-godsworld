@@ -1,0 +1,229 @@
+{
+  "version": 1,
+  "description": "Curated FRQTL native-notebook index \u2014 the BROWSER's list/group index. It does NOT own the shipped set: scripts/notebook-runnability.mjs owns which curated notebooks the static site can actually RUN (the intersection of the names each notebook's cells use and the names the built math dist exposes), and scripts/assemble-static-deploy.mjs consumes that decision for the site bundle. A row here is a precondition for a notebook being reachable, not a guarantee it ships. id is the file stem (no .html); ?notebook=<id> round-trips through the presets.js sanitizer charset [a-zA-Z0-9._-]. firstContact is the id FAT opens on when no ?notebook= is named; lib/shim/notebook/catalog.js firstContactNotebook is its one reader and fails loud when it is absent or not a roster id.",
+  "firstContact": "iso-entropy-log",
+  "notebooks": [
+    {
+      "id": "getting-started-hello-frqtl",
+      "file": "getting-started-hello-frqtl.html",
+      "title": "Hello, FRQTL",
+      "group": "Start Here"
+    },
+    {
+      "id": "view-vendored-d3",
+      "file": "view-vendored-d3.html",
+      "title": "View Cell — Vendored d3-array",
+      "group": "Notebook Features"
+    },
+    {
+      "id": "gallery-wave-interference",
+      "file": "gallery-wave-interference.html",
+      "title": "Wave Interference",
+      "group": "Gallery"
+    },
+    {
+      "id": "gallery-double-slit",
+      "file": "gallery-double-slit.html",
+      "title": "Double Slit",
+      "group": "Gallery"
+    },
+    {
+      "id": "gallery-recipe-emitter-wall",
+      "file": "gallery-recipe-emitter-wall.html",
+      "title": "Recipe — Emitter + Mirror Wall",
+      "group": "Gallery"
+    },
+    {
+      "id": "gallery-atomic-model",
+      "file": "gallery-atomic-model.html",
+      "title": "Atomic Model",
+      "group": "Gallery"
+    },
+    {
+      "id": "gallery-blackbody",
+      "file": "gallery-blackbody.html",
+      "title": "Blackbody",
+      "group": "Gallery"
+    },
+    {
+      "id": "gallery-big-bang",
+      "file": "gallery-big-bang.html",
+      "title": "Big Bang",
+      "group": "Gallery"
+    },
+    {
+      "id": "gallery-particle-walk-3d",
+      "file": "gallery-particle-walk-3d.html",
+      "title": "Particle Walk 3D",
+      "group": "Gallery"
+    },
+    {
+      "id": "gallery-collision-matrix-3d",
+      "file": "gallery-collision-matrix-3d.html",
+      "title": "Collision Matrix 3D",
+      "group": "Gallery"
+    },
+    {
+      "id": "iso-entropy-log",
+      "file": "iso-entropy-log.html",
+      "title": "E \u2014 Entropy-Log Bijection",
+      "group": "Isomorphisms"
+    },
+    {
+      "id": "iso-fft-polynomial",
+      "file": "iso-fft-polynomial.html",
+      "title": "F \u2014 FFT-Polynomial Isomorphism",
+      "group": "Isomorphisms"
+    },
+    {
+      "id": "iso-matrix-four-views",
+      "file": "iso-matrix-four-views.html",
+      "title": "M \u2014 Matrix Four Views",
+      "group": "Isomorphisms"
+    },
+    {
+      "id": "iso-number-theory-four-views",
+      "file": "iso-number-theory-four-views.html",
+      "title": "N \u2014 Number Theory Four Views",
+      "group": "Isomorphisms"
+    },
+    {
+      "id": "iso-canonical-chain",
+      "file": "iso-canonical-chain.html",
+      "title": "U \u2014 Canonical Chain Unified",
+      "group": "Isomorphisms"
+    },
+    {
+      "id": "iso-pi-log-fraction-loop",
+      "file": "iso-pi-log-fraction-loop.html",
+      "title": "\u03c0 \u2014 Log-Fraction Unit Loop",
+      "group": "Isomorphisms"
+    },
+    {
+      "id": "arithmetic-basics",
+      "file": "arithmetic-basics.html",
+      "title": "Arithmetic Basics",
+      "group": "Core Math"
+    },
+    {
+      "id": "factorization-basics",
+      "file": "factorization-basics.html",
+      "title": "Factorization Basics",
+      "group": "Core Math"
+    },
+    {
+      "id": "rational-core",
+      "file": "rational-core.html",
+      "title": "Rational Core",
+      "group": "Core Math"
+    },
+    {
+      "id": "scaled-vectors",
+      "file": "scaled-vectors.html",
+      "title": "Scaled Vectors",
+      "group": "Algebra & Vectors"
+    },
+    {
+      "id": "complex-twiddle",
+      "file": "complex-twiddle.html",
+      "title": "Complex & Twiddle",
+      "group": "Algebra & Vectors"
+    },
+    {
+      "id": "stats",
+      "file": "stats.html",
+      "title": "Statistics",
+      "group": "Statistics"
+    },
+    {
+      "id": "transcendentals",
+      "file": "transcendentals.html",
+      "title": "Transcendentals",
+      "group": "Advanced Math"
+    },
+    {
+      "id": "polynomials",
+      "file": "polynomials.html",
+      "title": "Polynomials",
+      "group": "Advanced Math"
+    },
+    {
+      "id": "fft",
+      "file": "fft.html",
+      "title": "FFT",
+      "group": "Advanced Math"
+    },
+    {
+      "id": "matrix",
+      "file": "matrix.html",
+      "title": "Matrix GEMM",
+      "group": "Advanced Math"
+    },
+    {
+      "id": "prime-composite",
+      "file": "prime-composite.html",
+      "title": "Prime Composite",
+      "group": "Advanced Math"
+    },
+    {
+      "id": "reference-egpt-fft-test",
+      "file": "reference-egpt-fft-test.html",
+      "title": "Reference: FFT Test",
+      "group": "Reference Examples"
+    },
+    {
+      "id": "reference-order-finder-test",
+      "file": "reference-order-finder-test.html",
+      "title": "Reference: Order Finder",
+      "group": "Reference Examples"
+    },
+    {
+      "id": "reference-prime-atom-polynomial-test",
+      "file": "reference-prime-atom-polynomial-test.html",
+      "title": "Reference: Prime-Atom Polynomial",
+      "group": "Reference Examples"
+    },
+    {
+      "id": "reference-solve-polynomial-system-test",
+      "file": "reference-solve-polynomial-system-test.html",
+      "title": "Reference: Solve Polynomial System",
+      "group": "Reference Examples"
+    },
+    {
+      "id": "egpt-test-suite",
+      "file": "egpt-test-suite.html",
+      "title": "EGPT Test Suite",
+      "group": "Original Test Suites"
+    },
+    {
+      "id": "egpt-polynomial-test",
+      "file": "egpt-polynomial-test.html",
+      "title": "Polynomial Test Suite",
+      "group": "Original Test Suites"
+    },
+    {
+      "id": "egpt-fft-test",
+      "file": "egpt-fft-test.html",
+      "title": "FFT Test Suite",
+      "group": "Original Test Suites"
+    },
+    {
+      "id": "egpt-matrix-test",
+      "file": "egpt-matrix-test.html",
+      "title": "Matrix Test Suite",
+      "group": "Original Test Suites"
+    },
+    {
+      "id": "egpt-prime-composite-test",
+      "file": "egpt-prime-composite-test.html",
+      "title": "Prime Composite Test Suite",
+      "group": "Original Test Suites"
+    },
+    {
+      "id": "egpt-topology-test",
+      "file": "egpt-topology-test.html",
+      "title": "Topology Test Suite",
+      "group": "Original Test Suites"
+    }
+  ]
+}

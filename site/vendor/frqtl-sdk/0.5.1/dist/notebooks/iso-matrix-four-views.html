@@ -1,0 +1,131 @@
+<frqtl-notebook version="1" title="M — Matrix Four Views (one matrix, four projections of its row-product polynomial)">
+
+<cell type="markdown">
+# M — Matrix Four Views
+
+The matrix ↔ row-product-polynomial-roots bijection in Lean (EGPT-Evidence): [MatrixPolynomialRoots.lean](https://github.com/DeSciX/EGPT/blob/main/08_LEAN/EGPT/InformationTheory/Isomorphisms/Matrix/MatrixPolynomialRoots.lean).
+
+A single matrix M projects through four surfaces of the EGPT bijective chain — all projections of one object, the row-product polynomial `P_M(x) = ∏_i row_i(x)`:
+
+- **M1** matrix coefficient form ≡ M itself (rows ARE polynomials)
+- **M2** product polynomial ≡ `∏_i row_i(x)` (`EGPTPolynomial.multiply` reducer)
+- **M3** integer u-space root multiset ≡ `toNatRoots(P_M)` (rational-root theorem + lcm clearing)
+- **M4** prime-atom multiset / composite Nat ≡ `toNat(P_M)` (LFTA closure)
+
+Provenance: `Translation5/6/7.lean`. For atom-root fixtures the closure `toNat(P_M) ≡ EGPTPrimeComposite.fromEGPTReal(N)` holds at records AND value.
+
+*(Ported from `theorems/M_MatrixFourViews.js`. `EGPTReal/EGPTPolynomial/EGPTPrimeComposite/EGPTMatrix` come from `caps.math` — no imports. The `runFourViews` runner + render helpers are inlined.)*
+</cell>
+
+<cell type="markdown">
+## Setup — the four-view runner
+
+The runner mirrors the source `runFourViews`: compute P_M, its rational roots, integer u-roots, and the LFTA prime-atom composite; assert internal consistency (composite value = ∏ u-roots) and, for atom-root fixtures, the closure to N. Produced as a binding the fixture cells call.
+</cell>
+
+<cell type="js" lane="math" id="m-setup" out="mrun">
+const { math, display } = caps;
+const { EGPTReal, EGPTPolynomial, EGPTPrimeComposite, EGPTMatrix } = math;
+const ZERO = EGPTReal.fromBigInt(0n);
+const ONE  = EGPTReal.fromBigInt(1n);
+const intN = (n) => EGPTReal.fromBigInt(BigInt(n));
+const frac = (n, d) => EGPTReal.fromRational(BigInt(n), BigInt(d));
+// Canonical-string render: the static EGPTReal.toCanonicalStr(v) owns the form
+// (the linear projection, "num" or "num/den"). No copy of the formatter lives here.
+function renderValue(v) {
+  if (v == null) return String(v);
+  if (typeof v._getPPFRationalParts === 'function') return EGPTReal.toCanonicalStr(v);
+  return String(v);
+}
+function showRecords(records) {
+  if (records.length === 0) return '(empty multiset, value = 1)';
+  const numCount = new Map(), denCount = new Map();
+  for (const r of records) {
+    const m = r.location === 'numerator' ? numCount : denCount;
+    m.set(r.prime, (m.get(r.prime) || 0n) + 1n);
+  }
+  const parts = [];
+  for (const p of [...numCount.keys()].sort((a,b)=>(a<b?-1:a>b?1:0))) { const k = numCount.get(p); parts.push(k === 1n ? `(${p})` : `(${p}^${k})`); }
+  for (const p of [...denCount.keys()].sort((a,b)=>(a<b?-1:a>b?1:0))) { const k = denCount.get(p); parts.push(k === 1n ? `(${p})⁻¹` : `(${p}^${k})⁻¹`); }
+  return parts.join(' · ');
+}
+function check(label, cond) { display((cond ? '  ✓ ' : '  ✗ ') + label); if (!cond) throw new Error('M FAILED: ' + label); }
+
+function runFourViews(label, M, expectedClosingN) {
+  display('── ' + label);
+  const { rows, cols } = EGPTMatrix.shape(M);
+  display(`  M1  shape ${rows} × ${cols}`);
+  const P_M = M.reduce((acc, row) => EGPTPolynomial.multiply(acc, row), [ONE]);
+  display(`  M2  P_M(x) = [ ${P_M.map(renderValue).join(', ')} ]   deg = ${EGPTPolynomial.degree(P_M)}`);
+  const rRoots = EGPTPolynomial.rationalRoots(P_M);
+  display(`  M3  rationalRoots = [${rRoots.map(renderValue).join(', ')}]`);
+  for (const r of rRoots) check(`P_M(${renderValue(r)}) = 0`, EGPTPolynomial.evaluateAt(P_M, r).equals(ZERO));
+  const uRoots = EGPTPolynomial.toNatRoots(P_M);
+  display(`      toNatRoots = [${uRoots.map(u => u.breakSymbolicToApproximateBigInt().toString()).join(', ')}]`);
+  check('every u-root is integer-valued', uRoots.every(u => u._getPPFRationalParts().denominator === 1n));
+  const composite = EGPTPolynomial.toNat(P_M);
+  const compositeN = composite.breakSymbolicToApproximateBigInt();
+  display(`  M4  toNat(P_M) = ${compositeN}   records = ${showRecords(composite.records)}`);
+  let uProduct = 1n; for (const u of uRoots) uProduct *= u.breakSymbolicToApproximateBigInt();
+  check(`composite value = ∏ u-roots = ${uProduct}`, compositeN === uProduct);
+  if (expectedClosingN !== null) {
+    const expected = EGPTPrimeComposite.fromEGPTReal(intN(expectedClosingN));
+    check(`closure: toNat(P_M) === ${expectedClosingN}n`, compositeN === BigInt(expectedClosingN));
+    const aKey = EGPTPrimeComposite.recordsMultisetKey(composite.records);
+    const eKey = EGPTPrimeComposite.recordsMultisetKey(expected.records);
+    check('closure: records multiset matches fromEGPTReal(N)', aKey === eKey);
+  }
+  return { composite, compositeN };
+}
+return { mrun: { runFourViews, intN, frac, EGPTMatrix } };
+</cell>
+
+<cell type="markdown">
+## Fixtures A–D — single matrices
+
+Fixture A: `[[(x−2)(x−3)]] = [[6,-5,1]]` (closes to N=6). Fixture B: `[[(x−2)²(x−3)]]` (N=12). Fixture C: two-row `[[(x−2)(x−3)],[(x−3)(x−5)]]` (N=90). Fixture D: fractional roots `[[1/3,-7/6,1]]` → u-roots [3,4], N=12 (the lcm-clearing demo).
+</cell>
+
+<cell type="js" lane="math" id="m-abcd" in="mrun">
+const { display } = caps;
+const { runFourViews, intN, frac, EGPTMatrix } = inputs.mrun;
+runFourViews('Fixture A — [[6,-5,1]] = [[(x−2)(x−3)]] (N=6)', EGPTMatrix.from([[6, -5, 1]]), 6n);
+runFourViews('Fixture B — [[-12,16,-7,1]] = [[(x−2)²(x−3)]] (N=12)', EGPTMatrix.from([[-12, 16, -7, 1]]), 12n);
+runFourViews('Fixture C — two-row, roots {2,3,3,5} (N=90)', EGPTMatrix.from([[6, -5, 1], [15, -8, 1]]), 90n);
+runFourViews('Fixture D — fractional [[1/3,-7/6,1]] → u-roots [3,4] (N=12)', EGPTMatrix.from([[ frac(1, 3), frac(-7, 6), intN(1) ]]), 12n);
+display('Fixtures A–D complete.');
+</cell>
+
+<cell type="markdown">
+## Fixture E — GEMM observation
+
+C = gemm(A, B) with A=[[6,-5,1]] (1×3), B=[[2],[3],[4]] (3×1) → C=[[1]] (1×1). The four-views chain runs end-to-end on each of A, B, C. GEMM is matrix multiplication, not polynomial multiplication — we observe the chain runs on all three, not a pointwise-records identity (the ℕ×ℕ→ℕ correspondence is mediated by Translation5/7).
+</cell>
+
+<cell type="js" lane="math" id="m-gemm" in="mrun">
+const { math, display } = caps;
+const { runFourViews, intN, EGPTMatrix } = inputs.mrun;
+const { EGPTReal, EGPTPrimeComposite } = math;
+const ONE = EGPTReal.fromBigInt(1n);
+function check(label, cond) { display((cond ? '  ✓ ' : '  ✗ ') + label); if (!cond) throw new Error('M-E FAILED: ' + label); }
+const A = EGPTMatrix.from([[6, -5, 1]]);
+const B = EGPTMatrix.from([[2], [3], [4]]);
+const C = EGPTMatrix.gemm(A, B);
+const sC = EGPTMatrix.shape(C);
+check('gemm shape: C is 1×1', sC.rows === 1 && sC.cols === 1);
+check('gemm value: C[0][0] = 1 (= 6·2 − 5·3 + 1·4)', C[0][0].equals(ONE));
+const resA = runFourViews('E.A — A = [[6,-5,1]] (N=6)', A, 6n);
+const resB = runFourViews('E.B — B = [[2],[3],[4]] (column matrix)', B, null);
+const resC = runFourViews('E.C — C = gemm(A,B) = [[1]]', C, null);
+check('E chain ran end-to-end on A,B,C',
+  resA.composite instanceof EGPTPrimeComposite &&
+  resB.composite instanceof EGPTPrimeComposite &&
+  resC.composite instanceof EGPTPrimeComposite);
+</cell>
+
+<cell type="js" lane="math" id="m-qed">
+const { display } = caps;
+display('QED — four matrix views, one bijective object (the row-product polynomial), zero runtime heuristics.');
+</cell>
+
+</frqtl-notebook>

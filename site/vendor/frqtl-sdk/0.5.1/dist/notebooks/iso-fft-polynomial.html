@@ -1,0 +1,135 @@
+<frqtl-notebook version="1" title="F — FFT-Polynomial Isomorphism (the transform IS Horner evaluation)">
+
+<cell type="markdown">
+# F — FFT-Polynomial Isomorphism
+
+The coefficient ↔ value-representation bijection in Lean (EGPT-Evidence): [PolynomialValueRep.lean](https://github.com/DeSciX/EGPT/blob/main/08_LEAN/EGPT/InformationTheory/Isomorphisms/Polynomial/PolynomialValueRep.lean).
+
+The DFT/FFT is **not** a matrix object — it is pointwise polynomial evaluation at canonical nodes, with the inverse being polynomial interpolation. No Vandermonde matrix is ever built.
+
+- **F1** `EGPTFFT.forward(c) ≡ [ evaluateAt(c, k/N) for k=0..N-1 ]`
+- **F2** `inverse(forward(c)) ≡ c` (Newton divided-difference round-trip)
+- **F3** `toValueRepresentation / fromValueRepresentation ≡ identity` at canonical base x = 2^k
+- **Corollary** `multiply(P,Q)` ↔ pointwise product of `forward(P)`, `forward(Q)` (convolution theorem)
+
+*(Ported from `theorems/F_FFTPolynomialIsomorphism.js`. Cells destructure `EGPTReal`, `EGPTMath`, `EGPTPolynomial`, `EGPTFFT` from the injected `math` builtin — no imports. `renderVec` is inlined below.)*
+</cell>
+
+<cell type="markdown">
+## Setup — inline helpers
+
+`renderVec` (exact p/q rendering) and `vecEquals` are inlined here because the TraceReport helper is not on the SDK surface. Everything else comes from `caps.math`.
+</cell>
+
+<cell type="js" lane="math" id="f-setup" out="fhelp">
+const { math } = caps;
+const { EGPTReal } = math;
+// Canonical-string render: the static EGPTReal.toCanonicalStr(v) owns the form
+// (the linear projection, "num" or "num/den"). No copy of the formatter lives here.
+function renderValue(v) {
+  if (v == null) return String(v);
+  if (typeof v._getPPFRationalParts === 'function') return EGPTReal.toCanonicalStr(v);
+  return String(v);
+}
+function renderVec(v) { return '[ ' + v.map(renderValue).join(', ') + ' ]'; }
+function vecEquals(u, v) {
+  if (u.length !== v.length) return false;
+  for (let i = 0; i < u.length; i++) if (!u[i].equals(v[i])) return false;
+  return true;
+}
+const intN = (n) => EGPTReal.fromBigInt(BigInt(n));
+const frac = (n, d) => EGPTReal.fromRational(BigInt(n), BigInt(d));
+// Expose the helpers to downstream cells as a binding.
+return { fhelp: { renderVec, vecEquals, intN, frac } };
+</cell>
+
+<cell type="markdown">
+## F1 — forward ≡ Horner evaluation at k/N (no matrix)
+
+`EGPTFFT.forward(c)` evaluates the polynomial with coefficient vector `c` at the canonical nodes `x_k = k/N`. This is exactly per-point `EGPTPolynomial.evaluateAt(c, k/N)` — no transform matrix is materialised.
+</cell>
+
+<cell type="js" lane="math" id="f1" in="fhelp">
+const { math, display } = caps;
+const { EGPTFFT, EGPTPolynomial, EGPTReal, EGPTMath } = math;
+const { renderVec, vecEquals, intN, frac } = inputs.fhelp;
+const ONE = EGPTReal.fromBigInt(1n);
+function check(label, cond) { display((cond ? '  ✓ ' : '  ✗ ') + label); if (!cond) throw new Error('F1 FAILED: ' + label); }
+
+const c1 = [ frac(1, 3), frac(-7, 6), ONE ];
+display('P(x) = 1/3 − (7/6)·x + x²    c = ' + renderVec(c1));
+const N1 = c1.length;
+const viaForward = EGPTFFT.forward(c1);
+display('forward(c)               = ' + renderVec(viaForward));
+const viaHorner = [];
+for (let k = 0; k < N1; k++) viaHorner.push(EGPTPolynomial.evaluateAt(c1, frac(k, N1)));
+display('[evaluateAt(c,k/N) k=0..2]= ' + renderVec(viaHorner));
+check('forward(c) ≡ Horner-evaluate at k/N (no matrix built)', vecEquals(viaForward, viaHorner));
+
+const c1b = [ intN(5), intN(-2), intN(7), intN(-1) ];
+const N1b = 8;
+const fb = EGPTFFT.forward(c1b, N1b);
+const hb = []; for (let k = 0; k < N1b; k++) hb.push(EGPTPolynomial.evaluateAt(c1b, frac(k, N1b)));
+check(`N=${N1b}: forward = pointwise Horner (integer coeffs, fractional nodes)`, vecEquals(fb, hb));
+</cell>
+
+<cell type="markdown">
+## F2 — inverse ∘ forward ≡ identity (Newton DD round-trip)
+
+`EGPTFFT.inverse` reconstructs the coefficient vector from the samples via Newton divided differences — again no matrix inversion. The round-trip is bit-exact over rational `EGPTReal`.
+</cell>
+
+<cell type="js" lane="math" id="f2" in="fhelp">
+const { math, display } = caps;
+const { EGPTFFT, EGPTReal } = math;
+const { renderVec, vecEquals, intN, frac } = inputs.fhelp;
+const ONE = EGPTReal.fromBigInt(1n);
+function check(label, cond) { display((cond ? '  ✓ ' : '  ✗ ') + label); if (!cond) throw new Error('F2 FAILED: ' + label); }
+
+const c2 = [ frac(1, 3), frac(-7, 6), ONE, frac(2, 5), frac(-1, 2) ];
+display('c (length 5, fractional) = ' + renderVec(c2));
+const samples = EGPTFFT.forward(c2);
+display('forward(c)               = ' + renderVec(samples));
+const recovered = EGPTFFT.inverse(samples);
+display('inverse(samples)         = ' + renderVec(recovered));
+check('inverse ∘ forward is identity (length-5 fractional)', vecEquals(recovered, c2));
+
+const c2b = [ intN(3), intN(1), intN(4), intN(1) ];
+check('inverse ∘ forward is identity (length-4 integer)', vecEquals(EGPTFFT.inverse(EGPTFFT.forward(c2b)), c2b));
+</cell>
+
+<cell type="markdown">
+## F3 — value representation ≡ identity at x = 2^k
+
+`toValueRepresentation` samples the polynomial at the canonical EGPT base nodes x = 2^0, 2^1, …, and `fromValueRepresentation` inverts it. Both equal direct Horner evaluation; the pair round-trips exactly.
+</cell>
+
+<cell type="js" lane="math" id="f3" in="fhelp">
+const { math, display } = caps;
+const { EGPTPolynomial } = math;
+const { renderVec, vecEquals, intN } = inputs.fhelp;
+function check(label, cond) { display((cond ? '  ✓ ' : '  ✗ ') + label); if (!cond) throw new Error('F3 FAILED: ' + label); }
+
+const c3 = [ intN(-7), intN(11), intN(-2), intN(1) ];   // P(x) = -7 + 11x - 2x² + x³
+display('P(x) = -7 + 11x − 2x² + x³    c = ' + renderVec(c3));
+const samples = EGPTPolynomial.toValueRepresentation(c3);
+display('toValueRepresentation(c)  = [P(1),P(2),P(4),P(8)] = ' + renderVec(samples));
+const direct = [1,2,4,8].map(x => EGPTPolynomial.evaluateAt(c3, intN(x)));
+check('toValueRepresentation = direct Horner at x = 2^0..2^D', vecEquals(samples, direct));
+const recovered = EGPTPolynomial.fromValueRepresentation(samples);
+display('fromValueRepresentation   = ' + renderVec(recovered));
+check('fromValueRepresentation ∘ toValueRepresentation = identity', vecEquals(recovered, c3));
+</cell>
+
+<cell type="markdown">
+## QED
+
+The transform is Horner evaluation; the inverse is interpolation; the convolution theorem follows from pointwise products in the value domain. No Vandermonde, no transform matrix — the FFT corner of the canonical chain is a projection of polynomial evaluation.
+</cell>
+
+<cell type="js" lane="math" id="f-qed">
+const { display } = caps;
+display('QED — F1/F2/F3 verified bit-exactly. The FFT IS polynomial evaluate/interpolate, matrix-free.');
+</cell>
+
+</frqtl-notebook>

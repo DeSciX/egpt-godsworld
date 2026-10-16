@@ -1,0 +1,17 @@
+{
+  "version": "3.0",
+  "workspaceRoot": "/Users/essam/Code/egpt-godsworld",
+  "type": "workspace",
+  "env": {
+    "environment": "PROD",
+    "apiUrl": "https://descix.net",
+    "app": {
+      "appId": "egpt-godsworld",
+      "kbId": "General",
+      "communityId": "egpt",
+      "site": {
+        "static": "site"
+      }
+    }
+  }
+}

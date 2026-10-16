@@ -1,0 +1,16 @@
+{
+  "_purpose": "The ONE pin of the frqtl SDK this site vendors. site/vendor/frqtl-sdk/<version>/dist is the published npm tarball's dist/ copied unchanged. The package's own dist/dist-manifest.json lists every other dist file with its sha256; this pin records the TARBALL it came from and the manifest's own sha256 (taken from the packed tarball, never from the copy), so the copy cannot vouch for itself. scripts/test/sdk-copy.test.mjs serves the site and hashes every served file against the manifest (COMPOSE_AND_CAPTURE.md, 'Checking your copy'). Re-vendor = npm pack the pinned version into an empty scratch dir, copy dist/, re-record the tarball and manifest hashes here.",
+  "name": "@descix/frqtl-sdk",
+  "version": "0.5.1",
+  "npm": {
+    "tarball": "https://registry.npmjs.org/@descix/frqtl-sdk/-/frqtl-sdk-0.5.1.tgz",
+    "shasum": "c39fe2895b658f7e7278479a06da5940005152ef",
+    "integrity": "sha512-xex36xTI4fUmPJ0BnvrwEOqFg/rYFpNxxDMCNvzyAxD9nTAxj88M+YsZGXku07as4KMOAL2vLAwIFZHje849Tg=="
+  },
+  "tarballSha256": "3bd2f5b0f53b1bc6cd4a59fc09bcfff1c22b25deeecbf9ec120387beeedc6aff",
+  "tarballBytes": 8830648,
+  "copied": "dist",
+  "distManifest": "dist-manifest.json",
+  "distManifestSha256": "bf23b29bb9c63ec401e50ecb6635ab861ddf3861620e7eb0f7190421abff2b55",
+  "packedOn": "2026-10-14"
+}

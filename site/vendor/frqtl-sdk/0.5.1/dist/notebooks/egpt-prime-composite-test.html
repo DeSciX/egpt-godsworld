@@ -1,0 +1,553 @@
+<frqtl-notebook version="1" title="EGPTPrimeComposite — T5 Engineering Test Suite (Option B)">
+
+<cell type="markdown">
+# EGPTPrimeComposite — T5 Engineering Test Suite (Option B)
+
+`EGPTPrimeComposite` extends `EGPTReal` to carry the full prime provenance of a rational
+through multiplication and division — **without ever reducing**. It stores every prime factor
+of every multiplication step as an explicit `{ prime, location }` record so that callers can
+recover the full signed-prime structure even after operations that would normally cancel.
+
+This suite verifies five acceptance properties (T5 Engineering #1, Option B):
+
+| Phase | Property |
+|---|---|
+| 1 — Construction | `fromPrimeRecords` round-trip preserves the multiset of records exactly. |
+| 2 — Factoring | `fromEGPTReal` round-trip for positive/negative integers and reciprocals. |
+| 3 — AP4 acceptance | `(Y − 3) × (Y − 1/3)` constant term keeps both `{3 in numerator}` and `{3 in denominator}` records — the AP4 anti-pattern is not re-introduced. |
+| 4 — Commutativity | Multiply is commutative at the multiset level; divide flips locations correctly. |
+| 5 — Evaluation parity | `evaluateAt` on the no-reduce polynomial agrees with the reduced path. |
+| 6 — Dispatch | `EGPTPolynomial.multiply` auto-detects all-composite inputs and routes to `multiplyNoReduce`. |
+| 8 — Congruence vs equality | `EGPTMath.equals` is value equality; `EGPTMath.congruent` is structural identity — distinguishes `3×(1/3)` from `1` even though their values agree. |
+
+All computation uses the `math` builtin — no URL imports.
+</cell>
+
+<cell type="markdown">
+## Setup — test harness and shared helpers
+
+A minimal inline harness accumulates pass/fail counts for all phase cells to consume.
+`TestFramework` from the original source is not on the SDK surface, so it is inlined here.
+</cell>
+
+<cell type="js" lane="math" id="setup" out="suite">
+const { math } = caps;
+const {
+  EGPTReal,
+  EGPTMath,
+  EGPTPolynomial,
+  EGPTPrimeComposite
+} = math;
+
+// Shared constructors.
+const intN = (n) => EGPTReal.fromBigInt(BigInt(n));
+const frac = (n, d) => EGPTReal.fromRational(BigInt(n), BigInt(d));
+
+// Inline test harness (mirrors TestFramework from EGPTTestSuite.js).
+// Accumulates across phase cells; the final summary cell reads getResults().
+let passed = 0, failed = 0;
+const failures = [];
+const categoryMap = {};  // category -> { passed, total }
+
+function test(description, category, fn) {
+  if (!categoryMap[category]) categoryMap[category] = { passed: 0, total: 0 };
+  categoryMap[category].total++;
+  try {
+    const result = fn();
+    if (result === false) throw new Error('returned false');
+    passed++;
+    categoryMap[category].passed++;
+    console.log('  ok  — ' + description);
+  } catch (err) {
+    failed++;
+    failures.push({ description, category, error: err.message });
+    console.log('  FAIL — ' + description + '  (' + err.message + ')');
+  }
+}
+
+function getResults() {
+  return { passed, failed, failures, categoryMap };
+}
+
+return { suite: { test, getResults, EGPTReal, EGPTMath, EGPTPolynomial, EGPTPrimeComposite, intN, frac } };
+</cell>
+
+<cell type="markdown">
+## Phase 1 — `fromPrimeRecords` round-trip (Construction)
+
+`EGPTPrimeComposite.fromPrimeRecords(records)` takes an explicit list of
+`{ sign, prime, location }` records and constructs a composite whose value is the product of
+all the primes (positive in the numerator, negative in the denominator). The key guarantee is
+that `getSignedPrimes()` returns the same multiset of records back — no normalization, no
+reduction.
+
+The canonical multiset key (`recordsMultisetKey`) is a static helper on `EGPTPrimeComposite`
+itself; it sorts and serializes the records into a canonical string so that set equality can be
+checked with `===`.
+</cell>
+
+<cell type="js" lane="math" id="phase-1" in="suite" out="p1">
+const { test, getResults, EGPTReal, EGPTPrimeComposite } = inputs.suite;
+
+// Alias for terseness — matches the source's local alias.
+const recordsMultisetKey = EGPTPrimeComposite.recordsMultisetKey;
+
+console.log('=== Phase 1 — fromPrimeRecords round-trip ===');
+
+test('fromPrimeRecords: empty records -> sign 1, value 1', 'Construction', () => {
+  const c = EGPTPrimeComposite.fromPrimeRecords([]);
+  return c.getSignedPrimes().length === 0 &&
+         c.getSign() === 1 &&
+         c.equals(EGPTReal.fromBigInt(1n));
+});
+
+test('fromPrimeRecords: [{1,3,num}] -> 3', 'Construction', () => {
+  const c = EGPTPrimeComposite.fromPrimeRecords([
+    { sign: 1, prime: 3n, location: 'numerator' }
+  ]);
+  return c.equals(EGPTReal.fromBigInt(3n)) &&
+         c.getSignedPrimes().length === 1 &&
+         c.getSignedPrimes()[0].prime === 3n &&
+         c.getSignedPrimes()[0].location === 'numerator';
+});
+
+test('fromPrimeRecords round-trip preserves multiset', 'Construction', () => {
+  const records = [
+    { sign: 1, prime: 2n, location: 'numerator' },
+    { sign: 1, prime: 5n, location: 'denominator' },
+    { sign: 1, prime: 7n, location: 'numerator' }
+  ];
+  const c = EGPTPrimeComposite.fromPrimeRecords(records);
+  const recovered = c.getSignedPrimes().map(r => ({
+    sign: r.sign, prime: r.prime, location: r.location
+  }));
+  return recordsMultisetKey(recovered) === recordsMultisetKey(records);
+});
+
+return { p1: getResults() };
+</cell>
+
+<cell type="markdown">
+## Phase 2 — `fromEGPTReal` round-trip (Factoring)
+
+`fromEGPTReal` trial-divides an `EGPTReal`'s un-reduced numerator and denominator into prime
+records. The test cases cover the four sign/location combinations and a multi-prime integer:
+
+- Positive integer `3` → one numerator record `{3}`.
+- Reciprocal `1/3` → one denominator record `{3}`.
+- Negative integer `-3` → sign = −1, one numerator record `{3}`.
+- Negative reciprocal `−1/3` → sign = −1, one denominator record `{3}`.
+- Composite `12 = 2² × 3` → numerator records `{2:2, 3:1}`.
+</cell>
+
+<cell type="js" lane="math" id="phase-2" in="suite" out="p2">
+const { test, getResults, EGPTReal, EGPTPrimeComposite } = inputs.suite;
+
+console.log('=== Phase 2 — fromEGPTReal round-trip ===');
+
+test('fromEGPTReal(3n) -> numerator {3:1}', 'Factoring', () => {
+  const c = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(3n));
+  const num = c.getPrimesInNumerator();
+  const den = c.getPrimesInDenominator();
+  return c.getSign() === 1 &&
+         num.size === 1 && num.get(3n) === 1n &&
+         den.size === 0;
+});
+
+test('fromEGPTReal(1/3) -> denominator {3:1}', 'Factoring', () => {
+  const c = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromRational(1n, 3n));
+  const num = c.getPrimesInNumerator();
+  const den = c.getPrimesInDenominator();
+  return c.getSign() === 1 &&
+         num.size === 0 &&
+         den.size === 1 && den.get(3n) === 1n;
+});
+
+test('fromEGPTReal(-3n) -> sign -1, numerator {3:1}', 'Factoring', () => {
+  const c = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(-3n));
+  const num = c.getPrimesInNumerator();
+  return c.getSign() === -1 &&
+         num.size === 1 && num.get(3n) === 1n &&
+         c.equals(EGPTReal.fromBigInt(-3n));
+});
+
+test('fromEGPTReal(-1/3) -> sign -1, denominator {3:1}', 'Factoring', () => {
+  const c = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromRational(-1n, 3n));
+  const den = c.getPrimesInDenominator();
+  return c.getSign() === -1 &&
+         den.size === 1 && den.get(3n) === 1n &&
+         c.equals(EGPTReal.fromRational(-1n, 3n));
+});
+
+test('fromEGPTReal(12n) -> {2:2, 3:1}', 'Factoring', () => {
+  const c = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(12n));
+  const num = c.getPrimesInNumerator();
+  return num.get(2n) === 2n && num.get(3n) === 1n && num.size === 2;
+});
+
+return { p2: getResults() };
+</cell>
+
+<cell type="markdown">
+## Phase 3 — AP4 acceptance: constant term preserves both `{3:num}` and `{3:den}`
+
+The **AP4 anti-pattern** is the bug where multiplying `(Y − 3) × (Y − 1/3)` reduces the
+constant term `(−3) × (−1/3) = 1` immediately, discarding the information that prime `3`
+appeared in both the numerator (from the factor `−3`) and the denominator (from `−1/3`).
+
+`EGPTPolynomial.multiplyNoReduce` multiplies two `EGPTPrimeComposite[]` coefficient arrays
+without ever reducing the coefficients — the constant term of the product must carry both
+`{prime: 3, location: numerator}` AND `{prime: 3, location: denominator}` as distinct records,
+even though the value is `1`. The sibling test for primes `5` confirms the pattern generalizes.
+</cell>
+
+<cell type="js" lane="math" id="phase-3" in="suite" out="p3">
+const { test, getResults, EGPTReal, EGPTPolynomial, EGPTPrimeComposite } = inputs.suite;
+
+console.log('=== Phase 3 — AP4 acceptance ===');
+
+test('AP4: (Y - 3) * (Y - 1/3) constant term keeps {3 in num, 3 in den}', 'AP4 Acceptance', () => {
+  const negThree    = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(-3n));
+  const negOneThird = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromRational(-1n, 3n));
+  const onePos      = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(1n));
+
+  const polyA = [negThree, onePos];      // (Y - 3)
+  const polyB = [negOneThird, onePos];   // (Y - 1/3)
+
+  const product = EGPTPolynomial.multiplyNoReduce(polyA, polyB);
+
+  const constTerm = product[0];
+  if (!(constTerm instanceof EGPTPrimeComposite)) {
+    throw new Error('Constant term is not EGPTPrimeComposite.');
+  }
+  const records = constTerm.getSignedPrimes();
+  const has3InNum = records.some(r => r.prime === 3n && r.location === 'numerator');
+  const has3InDen = records.some(r => r.prime === 3n && r.location === 'denominator');
+  if (!has3InNum) throw new Error('Missing record {prime: 3, location: numerator}.');
+  if (!has3InDen) throw new Error('Missing record {prime: 3, location: denominator}.');
+  if (!constTerm.equals(EGPTReal.fromBigInt(1n))) {
+    throw new Error('Constant term value should equal 1.');
+  }
+  return true;
+});
+
+test('AP4 sibling: (Y - 5) * (Y - 1/5) constant term keeps {5 in num, 5 in den}', 'AP4 Acceptance', () => {
+  const onePos = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(1n));
+  const polyA = [
+    EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(-5n)),
+    onePos
+  ];
+  const polyB = [
+    EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromRational(-1n, 5n)),
+    onePos
+  ];
+  const product = EGPTPolynomial.multiplyNoReduce(polyA, polyB);
+  const records = product[0].getSignedPrimes();
+  const has5InNum = records.some(r => r.prime === 5n && r.location === 'numerator');
+  const has5InDen = records.some(r => r.prime === 5n && r.location === 'denominator');
+  return has5InNum && has5InDen && product[0].equals(EGPTReal.fromBigInt(1n));
+});
+
+return { p3: getResults() };
+</cell>
+
+<cell type="markdown">
+## Phase 4 — Commutativity and division location-flip
+
+Multiplication must be commutative at the **multiset** level: `ab` and `ba` must have the same
+multiset of records and the same sign. The test uses `recordsMultisetKey` to compare the
+sorted canonical string representations.
+
+Division is multiplication by the reciprocal: the divisor's records have their `location` field
+flipped (`numerator ↔ denominator`) before concatenation. So `3 ÷ 3` should produce a composite
+whose records include both `{prime: 3, location: numerator}` (from the dividend) and
+`{prime: 3, location: denominator}` (from the flipped divisor), while the value is exactly `1`.
+</cell>
+
+<cell type="js" lane="math" id="phase-4" in="suite" out="p4">
+const { test, getResults, EGPTReal, EGPTPrimeComposite } = inputs.suite;
+const recordsMultisetKey = EGPTPrimeComposite.recordsMultisetKey;
+
+console.log('=== Phase 4 — Commutativity and division location-flip ===');
+
+test('multiply commutativity (record multiset equality)', 'Commutativity', () => {
+  const a = EGPTPrimeComposite.fromPrimeRecords([
+    { sign: 1, prime: 2n, location: 'numerator' },
+    { sign: 1, prime: 7n, location: 'denominator' }
+  ]);
+  const b = EGPTPrimeComposite.fromPrimeRecords([
+    { sign: 1, prime: 3n, location: 'numerator' },
+    { sign: 1, prime: 11n, location: 'numerator' }
+  ]);
+  const ab = a.multiply(b);
+  const ba = b.multiply(a);
+  return recordsMultisetKey(ab.getSignedPrimes()) === recordsMultisetKey(ba.getSignedPrimes()) &&
+         ab.getSign() === ba.getSign();
+});
+
+test('multiply with sign: (-3) * (-1/3) records contain both {3:num} and {3:den}', 'Commutativity', () => {
+  const a = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(-3n));
+  const b = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromRational(-1n, 3n));
+  const ab = a.multiply(b);
+  const ba = b.multiply(a);
+  return recordsMultisetKey(ab.getSignedPrimes()) === recordsMultisetKey(ba.getSignedPrimes()) &&
+         ab.getSign() === 1 && ba.getSign() === 1;
+});
+
+test('divide flips locations: (3/1) / (3/1) -> {3:num, 3:den}', 'Division', () => {
+  const a = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(3n));
+  const b = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(3n));
+  const q = a.divide(b);
+  const records = q.getSignedPrimes();
+  const has3InNum = records.some(r => r.prime === 3n && r.location === 'numerator');
+  const has3InDen = records.some(r => r.prime === 3n && r.location === 'denominator');
+  return has3InNum && has3InDen && q.equals(EGPTReal.fromBigInt(1n));
+});
+
+return { p4: getResults() };
+</cell>
+
+<cell type="markdown">
+## Phase 5 — `evaluateAt` parity with the reduced path
+
+The AP4 constant-term check (Phase 3) confirms that the no-reduce product *structurally*
+preserves prime records. This phase checks that it is also *numerically* correct: evaluating
+the no-reduce polynomial at any point `x` must agree with evaluating the fully-reduced
+polynomial at the same point.
+
+The test builds `(Y − 3)(Y − 1/3)` two ways:
+
+- **Reduced:** `EGPTPolynomial.multiply` on plain `EGPTReal` coefficients — the standard path
+  that combines terms via `EGPTMath.add`.
+- **No-reduce:** `EGPTPolynomial.multiplyNoReduce` on `EGPTPrimeComposite` coefficients — the
+  provenance-preserving path.
+
+Both polynomials are evaluated at `x = 7`. They must return the same value.
+
+A second test verifies a concrete numeric result: `(Y − 2)(Y − 5)` at `x = 7` should equal
+`(7 − 2)(7 − 5) = 10`.
+</cell>
+
+<cell type="js" lane="math" id="phase-5" in="suite" out="p5">
+const { test, getResults, EGPTReal, EGPTPolynomial, EGPTPrimeComposite } = inputs.suite;
+
+console.log('=== Phase 5 — evaluateAt parity ===');
+
+test('evaluateAt(reduced poly, x) === evaluateAt(no-reduce poly, x) on a monomial expansion', 'Evaluation', () => {
+  const negThree_en    = EGPTReal.fromBigInt(-3n);
+  const negOneThird_en = EGPTReal.fromRational(-1n, 3n);
+  const one_en         = EGPTReal.fromBigInt(1n);
+
+  const reducedPoly = EGPTPolynomial.multiply(
+    [negThree_en, one_en],
+    [negOneThird_en, one_en]
+  );
+
+  const noReducePoly = EGPTPolynomial.multiplyNoReduce(
+    [
+      EGPTPrimeComposite.fromEGPTReal(negThree_en),
+      EGPTPrimeComposite.fromEGPTReal(one_en)
+    ],
+    [
+      EGPTPrimeComposite.fromEGPTReal(negOneThird_en),
+      EGPTPrimeComposite.fromEGPTReal(one_en)
+    ]
+  );
+
+  const x = EGPTReal.fromBigInt(7n);
+  const reducedValue  = EGPTPolynomial.evaluateAt(reducedPoly, x);
+  const noReduceValue = EGPTPolynomial.evaluateAt(noReducePoly, x);
+  return reducedValue.equals(noReduceValue);
+});
+
+test('evaluateAt: (Y - 2)(Y - 5) at x=7 equals (7-2)(7-5) = 10 (no-reduce)', 'Evaluation', () => {
+  const onePos = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(1n));
+  const polyA = [
+    EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(-2n)),
+    onePos
+  ];
+  const polyB = [
+    EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(-5n)),
+    onePos
+  ];
+  const product = EGPTPolynomial.multiplyNoReduce(polyA, polyB);
+  const x = EGPTReal.fromBigInt(7n);
+  const v = EGPTPolynomial.evaluateAt(product, x);
+  return v.equals(EGPTReal.fromBigInt(10n));
+});
+
+return { p5: getResults() };
+</cell>
+
+<cell type="markdown">
+## Phase 6 — Auto-dispatch via `EGPTPolynomial.multiply`
+
+`EGPTPolynomial.multiply` detects whether all coefficients are `EGPTPrimeComposite` instances
+and, if so, routes to `multiplyNoReduce` automatically. This means callers can use the single
+`multiply` entry point — the dispatch is transparent.
+
+A regression guard confirms that plain `EGPTReal` inputs still take the reducing path:
+`[1, 2] × [3, 4] = [3, 10, 8]` (the canonical polynomial multiplication check).
+</cell>
+
+<cell type="js" lane="math" id="phase-6" in="suite" out="p6">
+const { test, getResults, EGPTReal, EGPTPolynomial, EGPTPrimeComposite } = inputs.suite;
+
+console.log('=== Phase 6 — auto-dispatch via EGPTPolynomial.multiply ===');
+
+test('EGPTPolynomial.multiply auto-dispatches to no-reduce when all coeffs are composites', 'Dispatch', () => {
+  const onePos = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(1n));
+  const polyA = [
+    EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(-3n)),
+    onePos
+  ];
+  const polyB = [
+    EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromRational(-1n, 3n)),
+    onePos
+  ];
+  const product = EGPTPolynomial.multiply(polyA, polyB);
+  if (!(product[0] instanceof EGPTPrimeComposite)) {
+    throw new Error('Expected EGPTPrimeComposite constant term via auto-dispatch.');
+  }
+  const records = product[0].getSignedPrimes();
+  const has3InNum = records.some(r => r.prime === 3n && r.location === 'numerator');
+  const has3InDen = records.some(r => r.prime === 3n && r.location === 'denominator');
+  return has3InNum && has3InDen;
+});
+
+test('EGPTPolynomial.multiply on plain EGPTReal coefficients still reduces (regression guard)', 'Dispatch', () => {
+  // [1, 2] * [3, 4] = [3, 10, 8]
+  const poly1 = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(2n)];
+  const poly2 = [EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(4n)];
+  const result = EGPTPolynomial.multiply(poly1, poly2);
+  const expected = [EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(10n), EGPTReal.fromBigInt(8n)];
+  return EGPTPolynomial.equals(result, expected);
+});
+
+return { p6: getResults() };
+</cell>
+
+<cell type="markdown">
+## Phase 8 — Congruence vs value equality
+
+`EGPTMath.equals` asks whether two values are *numerically* equal — `3 × (1/3)` and `1` both
+have value `1`, so `equals` is `true`. `EGPTMath.congruent` asks whether two values have the
+*same canonical lift* — the same multiset of prime records. A composite built from
+`{3:numerator, 3:denominator}` records has a different lift than a plain `EGPTReal(1)` (which
+has no records), so `congruent` is `false` even though `equals` is `true`.
+
+This distinction is first-class in `EGPTMath` (not only on `EGPTPrimeComposite`) as of T5.
+The `congruentTo` instance method on `EGPTPrimeComposite` is the per-instance form of the same
+predicate.
+
+Key rules:
+- `equals` is always value equality (the reduced rational comparison).
+- `congruent(a, b)` where both are plain `EGPTReal` degenerates to `equals` (both have the
+  trivial lift).
+- `congruent` is sign-sensitive: `{+3:num}` and `{-3:num}` are not congruent.
+- `congruent(a, a)` is always `true` (self-congruence).
+</cell>
+
+<cell type="js" lane="math" id="phase-8" in="suite" out="p8">
+const { test, getResults, EGPTReal, EGPTMath, EGPTPrimeComposite } = inputs.suite;
+
+console.log('=== Phase 8 — congruent vs equals ===');
+
+test('equals is true for 3 * (1/3) and 1 (value equality)', 'Congruence', () => {
+  const lhs = EGPTPrimeComposite.fromPrimeRecords([
+    { sign: 1, prime: 3n, location: 'numerator' },
+    { sign: 1, prime: 3n, location: 'denominator' }
+  ]);
+  const rhs = EGPTReal.fromBigInt(1n);
+  return EGPTMath.equals(lhs, rhs);
+});
+
+test('congruent is FALSE for 3 * (1/3) and 1 (different lifts)', 'Congruence', () => {
+  const lhs = EGPTPrimeComposite.fromPrimeRecords([
+    { sign: 1, prime: 3n, location: 'numerator' },
+    { sign: 1, prime: 3n, location: 'denominator' }
+  ]);
+  const rhs = EGPTReal.fromBigInt(1n);
+  return !EGPTMath.congruent(lhs, rhs);
+});
+
+test('congruent is true for two equally-built composites (order-invariant)', 'Congruence', () => {
+  const a = EGPTPrimeComposite.fromPrimeRecords([
+    { sign: 1, prime: 3n, location: 'numerator' },
+    { sign: 1, prime: 3n, location: 'denominator' }
+  ]);
+  const b = EGPTPrimeComposite.fromPrimeRecords([
+    { sign: 1, prime: 3n, location: 'denominator' },
+    { sign: 1, prime: 3n, location: 'numerator' }  // order swapped
+  ]);
+  return EGPTMath.congruent(a, b);
+});
+
+test('congruent is false when sign differs even if records match', 'Congruence', () => {
+  const a = EGPTPrimeComposite.fromPrimeRecords([
+    { sign: 1, prime: 3n, location: 'numerator' }
+  ]);
+  const b = EGPTPrimeComposite.fromPrimeRecords([
+    { sign: -1, prime: 3n, location: 'numerator' }
+  ]);
+  return !EGPTMath.congruent(a, b);
+});
+
+test('congruent collapses to equals on plain EGPTReal pair', 'Congruence', () => {
+  const a = EGPTReal.fromBigInt(3n);
+  const b = EGPTReal.fromBigInt(3n);
+  const c = EGPTReal.fromBigInt(4n);
+  return EGPTMath.congruent(a, b) && !EGPTMath.congruent(a, c);
+});
+
+test('congruentTo instance method matches EGPTMath.congruent', 'Congruence', () => {
+  const composite = EGPTPrimeComposite.fromPrimeRecords([
+    { sign: 1, prime: 3n, location: 'numerator' },
+    { sign: 1, prime: 3n, location: 'denominator' }
+  ]);
+  const plain = EGPTReal.fromBigInt(1n);
+  return composite.congruentTo(composite)   // self-congruent
+      && !composite.congruentTo(plain)      // mixed lifts differ
+      && composite.equals(plain);           // values agree
+});
+
+return { p8: getResults() };
+</cell>
+
+<cell type="markdown">
+## Summary — total pass / fail across all phases
+</cell>
+
+<cell type="js" lane="math" id="summary" in="p8">
+// p8 holds the cumulative getResults() snapshot (all phases accumulate into the shared harness).
+const { passed, failed, failures, categoryMap } = inputs.p8;
+const total = passed + failed;
+
+console.log('');
+console.log('='.repeat(60));
+console.log('TEST SUMMARY');
+console.log('='.repeat(60));
+
+for (const [cat, { passed: cp, total: ct }] of Object.entries(categoryMap)) {
+  console.log(`  ${cat}: ${cp}/${ct} passed`);
+}
+
+console.log('-'.repeat(60));
+console.log(`TOTAL: ${passed}/${total} tests passed`);
+console.log(`SUCCESS RATE: ${((passed / total) * 100).toFixed(1)}%`);
+
+if (failures.length > 0) {
+  console.log('');
+  console.log('FAILED TESTS:');
+  failures.forEach(f => {
+    console.log(`  ${f.category}: ${f.description}`);
+    if (f.error) console.log(`    Error: ${f.error}`);
+  });
+}
+
+console.log('='.repeat(60));
+
+if (failed > 0) throw new Error('[EGPTPrimeCompositeTest] ' + failed + ' test(s) failed');
+</cell>
+
+</frqtl-notebook>

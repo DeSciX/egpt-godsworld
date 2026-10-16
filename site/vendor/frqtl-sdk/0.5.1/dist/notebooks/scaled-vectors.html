@@ -1,0 +1,112 @@
+<frqtl-notebook version="1" title="Scaled Vectors — Exact Rational Arithmetic with EGPTReal">
+
+<cell type="markdown">
+# Scaled Vectors — Exact Rational Arithmetic with EGPTReal
+
+**What is EGPTReal?**
+
+In IEEE-754 floating-point, `Math.sqrt(0.5)` returns a 64-bit approximation. The exact result — `1/√2` — cannot be represented: floating-point rounds, accumulates error across operations, and ultimately loses the identity that `(√½)² = ½` to rounding.
+
+`EGPTReal` works differently. A value lives in *compressed information space*: its prime-power factorization is stored symbolically. Multiplication is vector addition in log-space; square roots halve the exponents. The identity `(√½)² = ½` holds **exactly** — not approximately — because no floating-point boundary is ever crossed inside the computation.
+
+This notebook demonstrates the three arithmetic operations from `sdk/egpt-math-sdk/src/examples/scaled-vectors.js`, one concept at a time, framed so a first-time reader can see what each step does and why it stays exact.
+
+Every cell reaches its math through the single injected `math` builtin — no imports, no URLs.
+</cell>
+
+<cell type="js" lane="math" id="backend">
+// Report the active math backend. The label is DERIVED — never hardcoded.
+const { math, display } = caps;
+const backend = math.activeMathBackend;
+display(`Active math backend (derived from SDK registry): ${backend}`);
+</cell>
+
+<cell type="markdown">
+## 1. Constructing a rational and computing its square root
+
+`EGPTReal.fromRational(numerator, denominator)` lifts a BigInt fraction into compressed information space. The number ½ becomes a symbolic object whose prime factorization carries the exact value `2⁻¹`.
+
+`EGPTMath.sqrt(x)` halves all exponents in that factorization. For `√(½) = √(2⁻¹) = 2⁻¹/²`, the exponent on prime 2 moves from `−1` to `−½`. The result is a new `EGPTReal` representing the exact algebraic value `1/√2` — no decimal approximation involved.
+
+`toMathString()` renders the internal representation as a human-readable expression.
+</cell>
+
+<cell type="js" lane="math" id="sqrt-half" out="sqrtHalf">
+// Lift ½ into EGPTReal and compute its exact square root.
+const { EGPTReal, EGPTMath } = caps.math;
+const { display } = caps;   // display is on caps, not caps.math
+
+// EGPTReal.fromRational(1n, 2n) constructs the exact rational 1/2
+// as a symbolic prime-power vector: {prime: 2, exponent: -1}.
+const half = EGPTReal.fromRational(1n, 2n);
+
+// EGPTMath.sqrt halves every exponent: 2^(-1) → 2^(-1/2).
+// Result is the exact algebraic value √(1/2) = 1/√2.
+const sqrtHalf = EGPTMath.sqrt(half);
+
+display(`half  = ${half.toMathString()}`);
+display(`√half = ${sqrtHalf.toMathString()}`);
+
+return { sqrtHalf };
+</cell>
+
+<cell type="markdown">
+## 2. Squaring back — verifying the identity (√½)² = ½
+
+`EGPTMath.multiply(a, b)` adds the exponent vectors of `a` and `b`. Multiplying `√(½)` by itself adds `2^(−½)` to `2^(−½)`, yielding `2^(−1)` — which is exactly ½. No rounding, no approximation.
+
+This is the key correctness check: an exact symbolic system must close the round-trip `x = sqrt(y)` → `x * x == y`.
+</cell>
+
+<cell type="js" lane="math" id="square-back" in="sqrtHalf" out="squaredBack">
+// Multiply sqrtHalf by itself. In log-space this adds the exponents:
+// (-1/2) + (-1/2) = -1 → the result is 2^(-1) = 1/2.
+// The identity (√½)² = ½ holds exactly — no floating-point rounding.
+const { EGPTMath } = caps.math;
+const { display } = caps;   // display is on caps, not caps.math
+const sqrtHalf = inputs.sqrtHalf;
+
+const squaredBack = EGPTMath.multiply(sqrtHalf, sqrtHalf);
+display(`(√½)² = ${squaredBack.toMathString()}`);
+
+return { squaredBack };
+</cell>
+
+<cell type="markdown">
+## 3. Scaling by an integer — exact scalar multiplication
+
+`EGPTReal.fromBigInt(2n)` constructs the integer 2 as a prime-power vector `{prime: 2, exponent: 1}`. Multiplying `√(½)` by `2` adds that `+1` exponent to the `−½` exponent on prime 2, yielding `2^(+½) = √2`.
+
+The result `√½ × 2 = 2/√2 = √2` is exact. This demonstrates that scaling an irrational by an integer stays in the same symbolic space — no boundary crossing, no precision loss.
+</cell>
+
+<cell type="js" lane="math" id="scaled-by-two" in="sqrtHalf">
+// Scale √½ by the integer 2.
+// In log-space: exponent of 2 moves from -1/2 to -1/2 + 1 = +1/2.
+// Result: 2^(1/2) = √2.
+const { EGPTReal, EGPTMath } = caps.math;
+const { display } = caps;   // display is on caps, not caps.math
+const sqrtHalf = inputs.sqrtHalf;
+
+const two = EGPTReal.fromBigInt(2n);
+const scaledByTwo = EGPTMath.multiply(sqrtHalf, two);
+
+display(`2 × √½ = ${scaledByTwo.toMathString()}`);
+display('(Exact algebraic value: √2)');
+</cell>
+
+<cell type="markdown">
+## Summary
+
+The three values computed here match the `scaled-vectors` example exactly:
+
+| Expression | Exact value | What EGPTMath does |
+|---|---|---|
+| `√(½)` | `2^(−½)` | halves the exponent on prime 2 |
+| `(√½)²` | `2^(−1) = ½` | adds exponents: −½ + −½ = −1 |
+| `2 × √½` | `2^(+½) = √2` | adds exponents: +1 + −½ = +½ |
+
+Every step stays inside the prime-power symbolic representation. Floating-point arithmetic is never involved. The rounding errors that would accumulate in IEEE-754 simply do not exist here.
+</cell>
+
+</frqtl-notebook>

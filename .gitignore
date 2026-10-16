@@ -1,0 +1,9 @@
+# DeSciX: workspace.json (v3, repo facts only) and manifests are tracked; wallet is per-developer and never tracked.
+.descix/*
+!.descix/workspace.json
+!.descix/manifests/
+.descix/wallet.json
+node_modules/
+# MiniMaxi footage, stills and thread ids (local run output)
+minimaxi/out/
+.beast/seat.json

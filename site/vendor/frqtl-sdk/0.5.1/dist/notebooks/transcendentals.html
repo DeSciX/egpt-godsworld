@@ -1,0 +1,195 @@
+<frqtl-notebook version="1" title="Transcendental Functions in EGPT — exp₂, log₂, and the Riemann Zeta Function">
+
+<cell type="markdown">
+# Transcendental Functions in EGPT
+
+Classical mathematics has a tension at its core: transcendental numbers like π, e, and √2 are *irrational* — they cannot be expressed as a ratio of integers — yet every practical computation must eventually approximate them.
+
+EGPT resolves this tension by working in **Shannon information space**. An `EGPTReal` is not a decimal approximation; it is a canonical rational PPF (Prime-Probability Form) representation. Transcendental operations — `exp2`, `log2`, complex exponentiation — are carried out as **exact rational operations on this canonical form**. The approximate decimal you see at the end is a projection out of information space at the output boundary, deliberately late and deliberately labelled.
+
+This notebook demonstrates three transcendental capabilities:
+
+1. **`EGPTranscendental.exp2(x)`** — computes 2^x in exact rational arithmetic (2^3 = 8 exactly).
+2. **`EGPTranscendental.log2(x)`** — computes log₂(x) by recursive halving (log₂(32) = 5 exactly).
+3. **`EGPTComplex.riemannZeta(s, terms)`** — evaluates the Riemann Zeta function ζ(s) as a partial sum of n^(-s) over complex argument s, verifying ζ(2) = π²/6.
+
+Every cell reaches compute through the injected `math` builtin only — no URL imports.
+</cell>
+
+<cell type="js" lane="math" id="backend">
+// Report the live math backend — DERIVED from the SDK, never hardcoded.
+const { math, display } = caps;
+const backend = math.activeMathBackend;
+display(`Live math backend (derived from the SDK): ${backend}`);
+</cell>
+
+<cell type="markdown">
+## 1. Base-2 Exponentiation — exp₂(x) = 2^x
+
+`EGPTranscendental.exp2` computes 2^x where x is an `EGPTReal`. Internally it extracts the rational parts of x via `_getPPFRationalParts()` and delegates to `EGPTMath.pow(2, numerator, denominator)` — a single closed-form operation on the canonical rational representation, not an iterative floating-point approximation.
+
+For integer inputs like x = 3, the result is exact: 2^3 = **8**.
+
+`toMathString()` renders the canonical form; for a pure integer the output is the integer itself.
+</cell>
+
+<cell type="js" lane="math" id="exp2" out="exp2Three">
+const { math, display } = caps;
+const { EGPTReal, EGPTranscendental } = math;
+
+// Construct x = 3 as an EGPTReal from a BigInt literal.
+const three = EGPTReal.fromBigInt(3n);
+
+// Compute 2^3 in EGPT information space — exact rational result.
+const exp2Three = EGPTranscendental.exp2(three);
+
+display(`exp₂(3) = 2^3 = ${exp2Three.toMathString()}`);
+return { exp2Three };
+</cell>
+
+<cell type="markdown">
+## 2. Base-2 Logarithm — log₂(x)
+
+`EGPTranscendental.log2` computes log₂(x) by **recursive halving**: log₂(x) = log₂(x/2) + 1, bottoming out at log₂(1) = 0. Each recursive division is exact rational arithmetic inside EGPT, so for any power of 2 the answer is a perfect integer.
+
+For x = 32 = 2^5, the result is **5** — no floating-point rounding, no approximation.
+
+Notice that `log2` and `exp2` are mutual inverses: log₂(exp₂(3)) = 3 and exp₂(log₂(32)) = 32. Both are confirmed in the cells below.
+</cell>
+
+<cell type="js" lane="math" id="log2" out="log2ThirtyTwo">
+const { math, display } = caps;
+const { EGPTReal, EGPTranscendental } = math;
+
+// Construct x = 32 = 2^5 as an EGPTReal.
+const thirtyTwo = EGPTReal.fromBigInt(32n);
+
+// Compute log₂(32) — expect exact integer 5.
+const log2ThirtyTwo = EGPTranscendental.log2(thirtyTwo);
+
+display(`log₂(32) = ${log2ThirtyTwo.toMathString()}`);
+return { log2ThirtyTwo };
+</cell>
+
+<cell type="markdown">
+## 3. Inverse Consistency — exp₂ ∘ log₂ and log₂ ∘ exp₂
+
+Because both operations are exact in rational EGPT space, their compositions are exact too. This cell verifies the round-trip on integer inputs.
+</cell>
+
+<cell type="js" lane="math" id="inverse-check" in="exp2Three, log2ThirtyTwo">
+const { math, display } = caps;
+const { EGPTReal, EGPTranscendental } = math;
+const { exp2Three, log2ThirtyTwo } = inputs;
+
+// log₂(exp₂(3)) should be exactly 3.
+const roundTrip1 = EGPTranscendental.log2(exp2Three);
+
+// exp₂(log₂(32)) should be exactly 32.
+const roundTrip2 = EGPTranscendental.exp2(log2ThirtyTwo);
+
+display(`log₂(exp₂(3))  = ${roundTrip1.toMathString()}  (expected 3)`);
+display(`exp₂(log₂(32)) = ${roundTrip2.toMathString()}  (expected 32)`);
+</cell>
+
+<cell type="markdown">
+## 4. Complex Numbers and the Riemann Zeta Function
+
+`ComplexEGPTReal` represents a complex number a + bi where both a and b are `EGPTReal` values — meaning the complex number lives entirely in rational EGPT space.
+
+`EGPTComplex.riemannZeta(s, maxTerms)` evaluates:
+
+```
+ζ(s) = Σ_{n=1}^{maxTerms} n^{-s}
+```
+
+using `EGPTComplex.complexPower(n, -s)` for each term. Each `n^(-s)` is computed via the canonical complex-power routine — rational magnitude from `EGPTMath.pow`, phase from the topology-native wave vector, no `Math.sin`/`Math.cos` in the compressed domain.
+
+**The landmark identity:** ζ(2) = π²/6 ≈ 1.6449. With 100 terms the partial sum approximates this to about 1% accuracy (the series converges slowly; full convergence requires the analytic continuation). The test below uses a tolerance of 0.01.
+</cell>
+
+<cell type="js" lane="math" id="riemann-zeta" out="riemannZetaResult">
+const { math, display } = caps;
+const { EGPTReal, ComplexEGPTReal, EGPTComplex } = math;
+
+// s = 2 + 0i (a purely real complex argument at s=2).
+// EGPTComplex.riemannZeta expects a ComplexEGPTReal; this is NOT ComplexEGPTReal —
+// EGPTComplex is the static utility class hosting riemannZeta and complexPower.
+const s = new ComplexEGPTReal(
+  EGPTReal.fromBigInt(2n),
+  EGPTReal.fromBigInt(0n)
+);
+
+// Evaluate ζ(2) with 100 terms of the Dirichlet series.
+const rzf = EGPTComplex.riemannZeta(s, 100);
+
+// Project the real part out of EGPT information space at the output boundary.
+// breakSymbolicToApproximateJSNumber() is intentionally labelled "break" —
+// it exits the rational canonical form into a JS floating-point number (lossy).
+const rzf_val = rzf.real.breakSymbolicToApproximateJSNumber();
+
+// The known closed-form value π²/6 — computed here using the JS approximation
+// of π only at the BOUNDARY for the human-facing comparison.
+const pi_squared_over_6 = (Math.PI ** 2) / 6;
+
+const riemannZetaResult = {
+  rzf_val,
+  pi_squared_over_6,
+  difference: Math.abs(rzf_val - pi_squared_over_6)
+};
+
+display(`ζ(2) ≈ ${rzf_val.toFixed(6)}  (partial sum, 100 terms)`);
+display(`π²/6 ≈ ${pi_squared_over_6.toFixed(6)}  (reference value)`);
+display(`|difference| = ${riemannZetaResult.difference.toFixed(6)}`);
+
+return { riemannZetaResult };
+</cell>
+
+<cell type="markdown">
+## 5. Precision Assertion
+
+The original demo asserts that the 100-term partial sum agrees with π²/6 to within **0.01**. This cell reproduces that assertion as an explicit pass/fail check, using the same tolerance.
+
+Note that `.toFixed(4)` on the projected JS number matches the original demo's output format.
+</cell>
+
+<cell type="js" lane="math" id="precision-check" in="riemannZetaResult">
+const { math, display } = caps;
+const { riemannZetaResult } = inputs;
+const { rzf_val, pi_squared_over_6, difference } = riemannZetaResult;
+
+const TOLERANCE = 0.01;
+const pass = difference < TOLERANCE;
+
+if (!pass) {
+  throw new Error(
+    `Riemann Zeta precision error: ${rzf_val} vs ${pi_squared_over_6} ` +
+    `(difference ${difference} exceeds tolerance ${TOLERANCE})`
+  );
+}
+
+const el = document.createElement('div');
+el.style.cssText =
+  'font:600 0.95rem/1.5 system-ui,sans-serif;padding:10px 14px;border-radius:6px;margin:4px 0;' +
+  'background:#0f2417;border:1px solid #1f5a36;color:#7ee2a8;';
+el.textContent =
+  `PASS  ζ(2) = ${rzf_val.toFixed(4)} ≈ π²/6 = ${pi_squared_over_6.toFixed(4)}` +
+  `  |diff| = ${difference.toFixed(6)} < ${TOLERANCE}`;
+display(el);
+</cell>
+
+<cell type="markdown">
+## Summary
+
+| Operation | Input | Result |
+|---|---|---|
+| `EGPTranscendental.exp2` | 3 (EGPTReal) | 2^3 = **8** (exact) |
+| `EGPTranscendental.log2` | 32 (EGPTReal) | log₂(32) = **5** (exact) |
+| `EGPTComplex.riemannZeta` | s=2, 100 terms | ≈ **1.6350** (within 0.01 of π²/6) |
+
+All three results agree with `sdk/egpt-math-sdk/src/examples/transcendentals.js` — same classes, same logic, the same projected output at the boundary. The notebook simply makes each step visible and independently runnable for a developer encountering EGPT transcendentals for the first time.
+
+**Key architectural point:** `EGPTranscendental` and `EGPTComplex` are *static utility classes* — they cannot be instantiated. `ComplexEGPTReal` is the *value class* that holds a + bi. These are distinct: `EGPTComplex.riemannZeta(s)` works; `s.riemannZeta()` does not.
+</cell>
+
+</frqtl-notebook>

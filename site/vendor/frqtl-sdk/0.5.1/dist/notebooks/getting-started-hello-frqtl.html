@@ -1,0 +1,58 @@
+<frqtl-notebook version="1" title="Hello, FRQTL — your first simulation">
+
+<cell type="markdown">
+# Hello, FRQTL
+
+FRQTL is a discrete physics engine: everything is a **Frame**, and a leaf Frame (a "quantum") obeys one rule — **move 1 pixel per tick**. Complex behavior *emerges*; nothing is hand-coded.
+
+An experiment is two cells:
+
+- a **`module`** cell — editable user code that *assembles* the experiment. It receives `frqtl` (the convenience registry, `caps.frqtl`: `PointSource`, `LargeObject`, `CollisionTypes`, …) and an un-initialized `universe`, and builds objects from them.
+- a **`canvas`** cell — `setup="<module>#<export>"` names that setup; the shim boots the engine, runs your setup, and renders it live. `opts` is a validated driving knob; `stage`/`seed` configure the runner.
+
+That's the whole pattern. (There is no separate builder cell — the canvas declares the setup and the shim synthesizes the wiring.)
+</cell>
+
+<cell type="markdown">
+**1. The setup.** Editable user code — one emitter firing radially from the center:
+</cell>
+
+<cell type="module" name="./setups/hello.js">
+export function setupHello(frqtl, universe, options) {
+    const { PointSource } = frqtl;          // the convenience emitter, via caps.frqtl
+    const r = universe.universe_rect;
+
+    // universe.init(fundamentalDimension, options) — ALWAYS FIRST: it creates the
+    // field, fixes the base scale layer, and every other option takes the engine's own
+    // default. `wavelengthScale` is the universe-wide fringe-spacing scale.
+    universe.init(2, { wavelengthScale: 8 });
+
+    // PointSource(universe, x, y, diameter, speed, charge, auto_fire, quantum_limit, delay, angle_increment, opts)
+    //   one source at center; angle_increment 5° → 72 rays; opts.wavelength → particle mass.
+    //   diameter 32 (= wavelength) and speed 16 (= radius) are Wave Interference's own
+    //   numbers, and so are dimension 2 and wavelengthScale 8 — this IS one of its two
+    //   sources, with the second one left out.
+    const source = new PointSource(universe, Math.floor(r.w / 2), Math.floor(r.h / 2),
+        32, 16, null, true, 50000, 0, 5, { wavelength: 32 });
+
+    return { sources: { source }, largeObjects: [] };
+}
+</cell>
+
+<cell type="markdown">
+**2. Render.** Declare a canvas that names the setup. The shim boots the engine and runs it — click **Run** (or **Run All**) and quanta stream outward to fill the field:
+</cell>
+
+<cell type="canvas" id="c-hello-canvas" setup="./setups/hello.js#setupHello" stage="480x480" seed="42"></cell>
+
+<cell type="markdown">
+## That's it
+
+You created a running physics simulation from two small cells. **Edit the setup** — move the source, change `angle_increment`, or the per-emitter `wavelength` — then re-run the canvas; the behavior changes because you changed the construction, not a label.
+
+This runs live in your browser on the compiled FRQTL (WASM) engine.
+
+**Next:** open **Wave Interference** (`gallery-wave-interference`) — add a second source exactly like this one, offset from centre, and interference fringes appear with no wave equation, the classically "impossible" result.
+</cell>
+
+</frqtl-notebook>

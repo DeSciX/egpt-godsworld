@@ -1,0 +1,52 @@
+<frqtl-notebook version="1" title="Wave Interference — interference without a wave equation">
+
+<cell type="markdown">
+# Wave Interference
+
+**Interference patterns without a wave equation — only quantum particles, with real and local rules, that don't know each other exist. Classically this is supposed to be impossible.**
+
+Using the FRQTL engine, two convenience `PointSource` emitters fire quanta (leaf Frames) radially. Where the two streams overlap, fringes emerge — with no wave function, no superposition term, no interference formula anywhere in the engine.
+
+*New to FRQTL? Start with **Hello, FRQTL** (`getting-started-hello-frqtl`) for the `caps.frqtl` setup-module + declarative-canvas basics this notebook assumes.*
+</cell>
+
+<cell type="markdown">
+Two radial emitters and their (visual-only) source circles — editable user code:
+</cell>
+
+<cell type="module" name="./setups/wave-interference.js">
+/* setupWaveInterference — THIN ADAPTER over the canonical setup factory
+ * (WS gym-controls-as-sugar Bite 0: this cell used to hand-copy the physics —
+ * a divergent fork of lib/frqtl/objects/setup/setupWaveInterference.js that had
+ * already drifted onto a stale `universe.init(...)` positional-argument call the
+ * engine now FAIL-LOUDs on. The canonical factory is imported by BARE SPECIFIER
+ * (a relative path here would 404 — see lib/shim/notebook/frqtl-setups-importmap.js);
+ * this cell only bridges the notebook builder's `(frqtl, universe, options)` call
+ * shape to the factory's `(universe, options)` shape — ZERO physics here.)
+ */
+import { setupWaveInterference as _setupWaveInterference } from '@frqtl/setups/wave-interference';
+
+export function setupWaveInterference(frqtl, universe, options) {
+    return _setupWaveInterference(universe, options);
+}
+</cell>
+
+<cell type="markdown">
+Declare a canvas that runs it. The canvas names the setup module (`setup="<module>#<export>"`); the shim synthesizes and runs the builder boilerplate in the realm. `opts` is the validated driving knob, `stage`/`seed` configure the runner. Click **Run** (or **Run All**):
+</cell>
+
+<cell type="canvas" id="c-wave-canvas" setup="./setups/wave-interference.js#setupWaveInterference" opts="quanta=800" stage="480x480" seed="42"></cell>
+
+<cell type="markdown">
+## What just happened
+
+The two black circles are the point sources. Particles stream outward from each; where the streams overlap, regions of constructive and destructive density build into the banded fringe pattern — the classically "impossible" result, produced with no wave equation. Each particle only ever obeyed *move 1 pixel per tick*; the wave behavior is **emergent**.
+
+**The fringe spacing is a knob.** It is set by the universe `wavelengthScale` (`wavelength = floor((capacity / mass) × WAVELENGTH_CONSTANT)`). Raising it 2 → 32 widens the fringes from a near-uniform dense cloud to sparse, widely-separated radial spokes; lowering it tightens them until they blur together. The captured sweep is in [`docs/internal/records/physics-lab/2026-06-16-wave-interference-wavelengthScale.md`](../../docs/internal/records/physics-lab/2026-06-16-wave-interference-wavelengthScale.md).
+
+Note the two distinct "wavelength" controls: a `PointSource`'s `opts.wavelength` sets each particle's **mass** (`mass = capacity / wavelength`), while the universe `wavelengthScale` is the global scale on **every** particle's wavelength — the fringe-spacing knob above.
+
+**Edit the physics:** try the `quanta` knob on the canvas (`opts="quanta=200"` or `"quanta=1500"`), or open the `./setups/wave-interference.js` tab and pass an option override to the canonical factory — e.g. change the adapter's `_setupWaveInterference(universe, options)` call to `_setupWaveInterference(universe, Object.assign({ fundamentalWaveLength: 48 }, options))` (also try `sourceSeparation`) — then re-Run. The fringes change because you edited the construction. (The physics body itself lives in the canonical `lib/frqtl/objects/setup/setupWaveInterference.js` — this cell is a thin, engine-agnostic adapter over it.) The simulation runs live in your browser on the compiled FRQTL (WASM) engine.
+</cell>
+
+</frqtl-notebook>

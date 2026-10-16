@@ -1,0 +1,138 @@
+<frqtl-notebook version="1" title="π — Log-Fraction Unit-Loop Bijection (the PPF address IS a point on the loop)">
+
+<cell type="markdown">
+# π — Log-Fraction Unit-Loop Bijection
+
+"The address IS the map" at its most visible. Every positive integer N has a PPF decomposition `N = 2^L + offset`; its scaled residue `r(N) = offset/2^L ∈ [0,1)` is an exact rational; and that fraction maps bijectively to a point on the L1 unit loop by four straight-line quadrants — no transcendental angle, no `Math.log2`.
+
+- **π1** PPF `{L, offset}` ≡ `(⌊log₂ N⌋, N − 2^L)` — bit-exact over BigInt
+- **π2** `offset / 2^L` ≡ a canonical fraction in [0,1) — exact rational, invertible
+- **π3** that fraction ≡ an L1 unit-loop position (x,y) with |x|+|y|=1 — exact rational bijection
+
+All claims are asserted over every N ∈ [2,100] with **no tolerance step**.
+
+*(Ported from `theorems/pi_LogFractionUnitLoopBijection.js`. Only `EGPTReal`/`EGPTMath` are needed — both on `caps.math`. The PPF + L1-loop helpers use only those primitives and are inlined.)*
+</cell>
+
+<cell type="markdown">
+## Setup — PPF and L1-loop helpers (inlined)
+
+`ppfOf`, the L1 forward/inverse quadrant maps, and `renderValue` are inlined — they call only `EGPTReal`/`EGPTMath`. Exposed as a binding the π cells consume.
+</cell>
+
+<cell type="js" lane="math" id="pi-setup" out="pihelp">
+const { math } = caps;
+const { EGPTReal, EGPTMath } = math;
+const H_ZERO = EGPTReal.fromBigInt(0n);
+const H_ONE = EGPTReal.fromBigInt(1n);
+const H_NEG_ONE = EGPTReal.fromRational(-1n, 1n);
+const H_QUARTER = EGPTReal.fromRational(1n, 4n);
+const H_HALF = EGPTReal.fromRational(1n, 2n);
+const H_3QUARTER = EGPTReal.fromRational(3n, 4n);
+
+function bitLengthBigInt(n) { let x = n < 0n ? -n : n, b = 0; while (x > 0n) { x >>= 1n; b++; } return b; }
+function bigPow2(k) { return 1n << BigInt(k); }
+function ppfOf(n) {
+  if (n <= 0n) throw new Error('ppfOf requires positive n, got ' + n);
+  if (n === 1n) return { L: 0, offset: 0n };
+  const L = bitLengthBigInt(n) - 1;
+  return { L, offset: n - (1n << BigInt(L)) };
+}
+// Canonical-string render: the static EGPTReal.toCanonicalStr(v) owns the form
+// (the linear projection, "num" or "num/den"). No copy of the formatter lives here.
+function renderValue(v) {
+  if (v == null) return String(v);
+  if (typeof v._getPPFRationalParts === 'function') return EGPTReal.toCanonicalStr(v);
+  return String(v);
+}
+function canonicalFractionToL1Position(H) {
+  if (EGPTMath.equals(H, H_ZERO))     return { x: H_ONE,     y: H_ZERO };
+  if (EGPTMath.equals(H, H_QUARTER))  return { x: H_ZERO,    y: H_ONE };
+  if (EGPTMath.equals(H, H_HALF))     return { x: H_NEG_ONE, y: H_ZERO };
+  if (EGPTMath.equals(H, H_3QUARTER)) return { x: H_ZERO,    y: H_NEG_ONE };
+  if (EGPTMath.compare(H, H_QUARTER) < 0) { const p = EGPTMath.divide(H, H_QUARTER); return { x: EGPTMath.subtract(H_ONE, p), y: p }; }
+  if (EGPTMath.compare(H, H_HALF) < 0) { const p = EGPTMath.divide(EGPTMath.subtract(H, H_QUARTER), H_QUARTER); return { x: EGPTMath.subtract(H_ZERO, p), y: EGPTMath.subtract(H_ONE, p) }; }
+  if (EGPTMath.compare(H, H_3QUARTER) < 0) { const p = EGPTMath.divide(EGPTMath.subtract(H, H_HALF), H_QUARTER); return { x: EGPTMath.subtract(p, H_ONE), y: EGPTMath.subtract(H_ZERO, p) }; }
+  const p = EGPTMath.divide(EGPTMath.subtract(H, H_3QUARTER), H_QUARTER); return { x: p, y: EGPTMath.subtract(p, H_ONE) };
+}
+function l1PositionToCanonicalFraction({ x, y }) {
+  const xPos = EGPTMath.compare(x, H_ZERO) >= 0;
+  const yPos = EGPTMath.compare(y, H_ZERO) >= 0;
+  if (xPos && yPos) return EGPTMath.multiply(y, H_QUARTER);
+  if (!xPos && yPos) return EGPTMath.add(H_QUARTER, EGPTMath.multiply(EGPTMath.subtract(H_ZERO, x), H_QUARTER));
+  if (!xPos && !yPos) return EGPTMath.add(H_HALF, EGPTMath.multiply(EGPTMath.add(x, H_ONE), H_QUARTER));
+  return EGPTMath.add(H_3QUARTER, EGPTMath.multiply(x, H_QUARTER));
+}
+return { pihelp: { ppfOf, bigPow2, bitLengthBigInt, renderValue, canonicalFractionToL1Position, l1PositionToCanonicalFraction,
+  cardinals: { H_ZERO, H_ONE, H_NEG_ONE, H_QUARTER, H_HALF, H_3QUARTER } } };
+</cell>
+
+<cell type="markdown">
+## π1 — PPF {L, offset} ≡ (⌊log₂ N⌋, N − 2^L)
+
+`N = 2^L + offset` with `0 ≤ offset < 2^L` and `L = bitLength(N) − 1`. Asserted bit-exactly for every N ∈ [2,100].
+</cell>
+
+<cell type="js" lane="math" id="pi1" in="pihelp">
+const { display } = caps;
+const { ppfOf, bigPow2, bitLengthBigInt } = inputs.pihelp;
+function check(label, cond) { display((cond ? '  ✓ ' : '  ✗ ') + label); if (!cond) throw new Error('π1 FAILED: ' + label); }
+for (const N of [17n, 21n, 35n, 391n]) { const p = ppfOf(N); display(`N=${N}: PPF {L=${p.L}, offset=${p.offset}} → 2^${p.L}+${p.offset} = ${bigPow2(p.L) + p.offset}`); }
+check('π1 reconstruction: 2^L + offset = N for every N ∈ [2,100]', (() => { for (let N = 2n; N <= 100n; N++) { const { L, offset } = ppfOf(N); if (bigPow2(L) + offset !== N) return false; } return true; })());
+check('π1 offset bound: 0 ≤ offset < 2^L for every N ∈ [2,100]', (() => { for (let N = 2n; N <= 100n; N++) { const { L, offset } = ppfOf(N); if (offset < 0n || offset >= bigPow2(L)) return false; } return true; })());
+check('π1 bit-length identity: L = bitLength(N) − 1 for every N ∈ [2,100]', (() => { for (let N = 2n; N <= 100n; N++) { const { L } = ppfOf(N); if (L !== bitLengthBigInt(N) - 1) return false; } return true; })());
+</cell>
+
+<cell type="markdown">
+## π2 — offset / 2^L ≡ a canonical fraction in [0,1)
+
+The scaled residue `r(N) = offset/2^L` is an exact rational in [0,1); multiplying back by 2^L recovers offset exactly.
+</cell>
+
+<cell type="js" lane="math" id="pi2" in="pihelp">
+const { math, display } = caps;
+const { EGPTReal, EGPTMath } = math;
+const { ppfOf, bigPow2, renderValue, cardinals } = inputs.pihelp;
+const { H_ZERO, H_ONE } = cardinals;
+function check(label, cond) { display((cond ? '  ✓ ' : '  ✗ ') + label); if (!cond) throw new Error('π2 FAILED: ' + label); }
+for (const N of [17n, 21n, 35n, 391n]) { const { L, offset } = ppfOf(N); const r = EGPTReal.fromRational(offset, bigPow2(L)); display(`N=${N}: r(N) = ${offset}/${bigPow2(L)} = ${renderValue(r)}`); }
+check('π2 range: 0 ≤ r(N) < 1 for every N ∈ [2,100]', (() => { for (let N = 2n; N <= 100n; N++) { const { L, offset } = ppfOf(N); const r = EGPTReal.fromRational(offset, bigPow2(L)); if (EGPTMath.compare(r, H_ZERO) < 0 || EGPTMath.compare(r, H_ONE) >= 0) return false; } return true; })());
+check('π2 inversion: r · 2^L = offset (exact) for every N ∈ [2,100]', (() => { for (let N = 2n; N <= 100n; N++) { const { L, offset } = ppfOf(N); const r = EGPTReal.fromRational(offset, bigPow2(L)); const prod = EGPTMath.multiply(r, EGPTReal.fromBigInt(bigPow2(L)))._getPPFRationalParts(); if (prod.denominator !== 1n || prod.numerator !== offset) return false; } return true; })());
+</cell>
+
+<cell type="markdown">
+## π3 — canonical fraction ≡ L1 unit-loop position (x,y)
+
+`r ∈ [0,1)` maps bijectively to (x,y) on |x|+|y|=1 by four straight-line quadrants. Cardinal fractions land on cardinal vertices; the round trip r → (x,y) → r is the identity; the L1 norm is exactly 1. (This is a 1D→2D position readout, not a multiplicative primitive.)
+</cell>
+
+<cell type="js" lane="math" id="pi3" in="pihelp">
+const { math, display } = caps;
+const { EGPTReal, EGPTMath } = math;
+const { ppfOf, bigPow2, renderValue, canonicalFractionToL1Position, l1PositionToCanonicalFraction, cardinals } = inputs.pihelp;
+const { H_ZERO, H_ONE, H_NEG_ONE, H_QUARTER, H_HALF, H_3QUARTER } = cardinals;
+function check(label, cond) { display((cond ? '  ✓ ' : '  ✗ ') + label); if (!cond) throw new Error('π3 FAILED: ' + label); }
+
+for (const N of [17n, 21n, 35n, 391n]) { const { L, offset } = ppfOf(N); const r = EGPTReal.fromRational(offset, bigPow2(L)); const pos = canonicalFractionToL1Position(r); display(`N=${N}: r=${renderValue(r)} → (x,y)=(${renderValue(pos.x)}, ${renderValue(pos.y)})`); }
+
+for (const [label, H_frac, eX, eY] of [
+  ['r=0', H_ZERO, H_ONE, H_ZERO], ['r=1/4', H_QUARTER, H_ZERO, H_ONE],
+  ['r=1/2', H_HALF, H_NEG_ONE, H_ZERO], ['r=3/4', H_3QUARTER, H_ZERO, H_NEG_ONE]
+]) { const pos = canonicalFractionToL1Position(H_frac); check(`cardinal ${label} → (${renderValue(eX)}, ${renderValue(eY)})`, EGPTMath.equals(pos.x, eX) && EGPTMath.equals(pos.y, eY)); }
+
+check('π3 L1 norm |x|+|y| = 1 for every N ∈ [2,100]', (() => {
+  for (let N = 2n; N <= 100n; N++) { const { L, offset } = ppfOf(N); const r = EGPTReal.fromRational(offset, bigPow2(L)); const pos = canonicalFractionToL1Position(r);
+    const px = pos.x._getPPFRationalParts(), py = pos.y._getPPFRationalParts();
+    const ax = EGPTReal.fromRational(px.numerator < 0n ? -px.numerator : px.numerator, px.denominator);
+    const ay = EGPTReal.fromRational(py.numerator < 0n ? -py.numerator : py.numerator, py.denominator);
+    if (!EGPTMath.equals(EGPTMath.add(ax, ay), H_ONE)) return false; } return true; })());
+check('π3 round trip r → (x,y) → r is identity for every N ∈ [2,100]', (() => {
+  for (let N = 2n; N <= 100n; N++) { const { L, offset } = ppfOf(N); const r = EGPTReal.fromRational(offset, bigPow2(L)); const pos = canonicalFractionToL1Position(r); if (!EGPTMath.equals(l1PositionToCanonicalFraction(pos), r)) return false; } return true; })());
+</cell>
+
+<cell type="js" lane="math" id="pi-qed">
+const { display } = caps;
+display('QED — π1/π2/π3 verified bit-exactly over N ∈ [2,100]. The PPF address of N IS its point on the unit loop — exact, no transcendentals.');
+</cell>
+
+</frqtl-notebook>

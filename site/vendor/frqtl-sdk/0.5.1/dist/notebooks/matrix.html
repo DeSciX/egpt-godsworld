@@ -1,0 +1,202 @@
+<frqtl-notebook version="1" title="Matrix Multiplication via the Polynomial Bijective Chain — EGPTMatrix GEMM">
+
+<cell type="markdown">
+# Matrix Multiplication via the Polynomial Bijective Chain
+
+Classical matrix multiplication multiplies two *n × n* matrices in O(n³) operations, touching every element three times. EGPT takes a different route: each matrix row **is** a polynomial in coefficient form, so the dot product of two vectors becomes the (n−1)-th coefficient of a polynomial product. The entire GEMM operation routes through `EGPTPolynomial.multiply` — no Vandermonde, no Toeplitz table, no twiddle precomputation.
+
+This is not notation — it is the implementation. The bijective chain is Lean-formalized in `Translation5.lean` (`(Matrix × Matrix) ≃ ℕ × ℕ`) with closure `{propext, Quot.sound}`. Results are exact rational arithmetic end-to-end; `toMathString()` at the output boundary reads the canonical rational form.
+
+Every cell in this notebook reaches its compute through the single injected `math` builtin. No URL imports, no hardcoded backend labels.
+</cell>
+
+<cell type="js" lane="math" id="backend">
+// Derive the active math backend — never hardcode.
+const { math, display } = caps;
+const backend = math.activeMathBackend;
+display(`Active math backend (derived): ${backend}`);
+</cell>
+
+<cell type="markdown">
+## 1. Constructing matrices with `EGPTMatrix.from`
+
+`EGPTMatrix.from` accepts a rectangular array of JS values and converts each entry to an `EGPTReal`. BigInt literals (`1n`, `2n`, …) are the most explicit form for integer entries — they map directly to `EGPTReal.fromBigInt` with no numeric-precision ambiguity.
+
+The result is a plain 2-D array of `EGPTReal` instances — a representation that is simultaneously a matrix and a polynomial system (each row is a polynomial's coefficient list).
+</cell>
+
+<cell type="js" lane="math" id="construct-matrices" out="A, B">
+const { math, display } = caps;
+const { EGPTMatrix } = math;
+
+// A and B are the two 2×2 matrices from the original demo.
+const A = EGPTMatrix.from([
+  [1n, 2n],
+  [3n, 4n]
+]);
+
+const B = EGPTMatrix.from([
+  [5n, 6n],
+  [7n, 8n]
+]);
+
+display('A =');
+display(EGPTMatrix.format(A, 'A'));
+display('B =');
+display(EGPTMatrix.format(B, 'B'));
+
+return { A, B };
+</cell>
+
+<cell type="markdown">
+## 2. How the dot product becomes polynomial multiplication
+
+The key identity: for two vectors **a** = [a₀, a₁, …, aₙ₋₁] and **b** = [b₀, b₁, …, bₙ₋₁], the dot product Σᵢ aᵢ·bᵢ equals the (n−1)-th coefficient of `P_a(x) · P_b_reversed(x)`, where `P_b_reversed` places the entries of **b** in reverse order as polynomial coefficients.
+
+Convolution at index n−1 picks up exactly Σ_{i+j=n−1} aᵢ · b_{n−1−j} = Σᵢ aᵢ · bᵢ.
+
+`EGPTMatrix.dotViaPolynomial` implements this directly; `EGPTMatrix.gemm` calls it for every (row, column) pair. No scalar multiply-and-accumulate loop, no force equation — just a coefficient extraction from a polynomial product.
+</cell>
+
+<cell type="js" lane="math" id="dot-product-demo" in="A, B">
+const { math, display } = caps;
+const { EGPTMatrix } = math;
+const { A, B } = inputs;
+
+// Demonstrate the dot-product identity directly on row 0 of A and col 0 of B.
+// Row 0 of A  = [1, 2]
+// Col 0 of B  = [5, 7]
+// Expected dot = 1·5 + 2·7 = 19
+const rowA0 = A[0];           // [EGPTReal(1), EGPTReal(2)]
+const colB0 = [B[0][0], B[1][0]];  // [EGPTReal(5), EGPTReal(7)]
+
+const dot = EGPTMatrix.dotViaPolynomial(rowA0, colB0);
+display(`dot(A[0], B[:,0]) via polynomial = ${dot.toMathString()}  (expected 19)`);
+</cell>
+
+<cell type="markdown">
+## 3. GEMM — full matrix-matrix product
+
+`EGPTMatrix.gemm(A, B)` computes C = A · B by applying the polynomial dot-product identity to every (row of A, column of B) pair. The result entries are exact `EGPTReal` rationals read out by `toMathString()`.
+
+Expected result for these inputs:
+
+```
+A · B = [ [1·5+2·7,  1·6+2·8],  =  [ [19, 22],
+           [3·5+4·7,  3·6+4·8] ]       [43, 50] ]
+```
+</cell>
+
+<cell type="js" lane="math" id="gemm" in="A, B" out="C">
+const { math, display } = caps;
+const { EGPTMatrix } = math;
+const { A, B } = inputs;
+
+const C = EGPTMatrix.gemm(A, B);
+
+// Render as string grid for readability.
+const Cstr = C.map(row => row.map(v => v.toMathString()));
+display('C = A · B (via EGPTPolynomial.multiply):');
+display(EGPTMatrix.format(C, 'C = A·B'));
+
+return { C };
+</cell>
+
+<cell type="markdown">
+## 4. Verification — exact rational comparison
+
+EGPT arithmetic is exact. Comparing matrix entries with `toMathString()` (or `EGPTMatrix.equals`) gives a bit-identical answer — no floating-point rounding, no tolerance band. The check below asserts the four entries of C against the expected values and throws on any mismatch (matching the original demo's error semantics).
+</cell>
+
+<cell type="js" lane="math" id="verify" in="C">
+const { math, display } = caps;
+const { C } = inputs;
+
+const expected = [["19","22"],["43","50"]];
+let passed = true;
+const failures = [];
+
+for (let i = 0; i < 2; i++) {
+  for (let j = 0; j < 2; j++) {
+    const got = C[i][j].toMathString();
+    const want = expected[i][j];
+    if (got !== want) {
+      passed = false;
+      failures.push(`C[${i}][${j}]: got ${got}, expected ${want}`);
+    }
+  }
+}
+
+if (!passed) {
+  throw new Error("Matrix multiplication verification failed: " + failures.join("; "));
+}
+
+display(`All 4 entries verified exact: C[0][0]=19, C[0][1]=22, C[1][0]=43, C[1][1]=50`);
+display(`Verification: PASS`);
+</cell>
+
+<cell type="markdown">
+## 5. Value-representation form — the spectral surface
+
+Every matrix has a dual: **coefficient form** (what `EGPTMatrix.from` produces) and **value-representation form** (samples at integer powers of 2). `EGPTMatrix.toValueReps` converts each row to its sample list via `EGPTPolynomial.toValueRepresentation`; `EGPTMatrix.fromValueReps` inverts via Newton divided differences.
+
+The pair `(toValueReps, fromValueReps)` is an invertible bijection — the same entry C that GEMM produced in coefficient form round-trips through spectral form exactly.
+</cell>
+
+<cell type="js" lane="math" id="value-rep-roundtrip" in="A">
+const { math, display } = caps;
+const { EGPTMatrix } = math;
+const { A } = inputs;
+
+// Convert A to value-rep (spectral) form, then back to coefficient form.
+const A_vr = EGPTMatrix.toValueReps(A);
+const A_rt = EGPTMatrix.fromValueReps(A_vr);
+
+display('A (original coefficient form):');
+display(EGPTMatrix.format(A, 'A'));
+display('A → toValueReps (sample form):');
+display(EGPTMatrix.format(A_vr, 'A_vr'));
+display('A_vr → fromValueReps (recovered coefficient form):');
+display(EGPTMatrix.format(A_rt, 'A_rt'));
+
+const roundTrips = EGPTMatrix.equals(A, A_rt);
+display(`Round-trip exact equality (EGPTMatrix.equals): ${roundTrips ? 'PASS' : 'FAIL'}`);
+if (!roundTrips) throw new Error('Value-rep round-trip failed — EGPTMatrix.equals returned false.');
+</cell>
+
+<cell type="markdown">
+## 6. Transpose
+
+`EGPTMatrix.transpose` swaps rows and columns. For a 2×2 matrix this is straightforward, but the implementation handles arbitrary rectangular shapes. The result is a new matrix; entries are the same `EGPTReal` objects (no copies).
+</cell>
+
+<cell type="js" lane="math" id="transpose" in="B">
+const { math, display } = caps;
+const { EGPTMatrix } = math;
+const { B } = inputs;
+
+const Bt = EGPTMatrix.transpose(B);
+
+display('B:');
+display(EGPTMatrix.format(B, 'B'));
+display('B transposed:');
+display(EGPTMatrix.format(Bt, 'Bᵀ'));
+</cell>
+
+<cell type="markdown">
+## Summary
+
+`EGPTMatrix.gemm` computes the matrix product by routing every dot product through `EGPTPolynomial.multiply` — extracting the (n−1)-th coefficient of the convolution. This is the operational realization of Translation5 (`(Matrix × Matrix) ≃ ℕ × ℕ`): matrix arithmetic **is** polynomial arithmetic in coefficient form, and polynomial arithmetic **is** integer arithmetic via the EGPT bijective chain.
+
+Key methods demonstrated:
+- `EGPTMatrix.from(rows)` — construct from BigInt / integer / EGPTReal entries
+- `EGPTMatrix.gemm(A, B)` — polynomial-routed matrix product (exact rational)
+- `EGPTMatrix.dotViaPolynomial(a, b)` — dot product as polynomial coefficient extraction
+- `EGPTMatrix.toValueReps(M)` / `fromValueReps(VR)` — bijection between coefficient and spectral form
+- `EGPTMatrix.transpose(M)` — row ↔ column swap
+- `EGPTMatrix.equals(A, B)` — exact element-wise comparison
+- `EGPTMatrix.format(M, label)` — render as right-aligned string grid
+- `.toMathString()` on `EGPTReal` entries — exact canonical rational output at the output boundary
+</cell>
+
+</frqtl-notebook>

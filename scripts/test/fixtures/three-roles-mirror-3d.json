@@ -1,0 +1,65 @@
+{
+  "outline": "load the 3D mirror and slide the mirror toward the viewer, out of the beam",
+  "note": "Authored replay of the three-role loop on the 3D mirror (cl1a-mirror-3d), asked while a 2D scene is on the stage, in the measured ask_question_to_app body shape {status, response, interaction_id, usage}. The words are written for the page test and the served LOOK; they are not Maxi's, the Builder's or the Owl's. The double answers each role from its own queue, told apart by its thread (replay-door.mjs).",
+  "designer": [
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] Tony, you named the 3D mirror, so we go there: the cl1a mirror as a slab 160 deep in a 600 x 400 x 600 world, the laser along y 200 in the z 0 plane. Sliding the slab 120 px along z takes most of it out of the beam plane, so the beam should run on past it.\n\n```json:plan\n{\n  \"scene\": \"cl1a-mirror-3d\",\n  \"registryMode\": null,\n  \"changes\": [],\n  \"hands\": [\n    \"loadScene\",\n    \"dragTo\"\n  ],\n  \"prediction\": \"the orange slab slides 120 px along z, out of the beam plane; the pale beam that hit its face runs on past it toward the far side\"\n}\n```",
+      "interaction_id": "replay.designer.1",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 0,
+        "model_used": "replay"
+      }
+    }
+  ],
+  "builder": [
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] The stage is not the 3D mirror, so I load it first.\nPREDICTION: the 3D mirror loads: a 600 x 400 x 600 world with the orange slab named mirror centred at [370, 200, 0].\n\n```json:call:loadScene\n{\n  \"id\": \"cl1a-mirror-3d\"\n}\n```",
+      "interaction_id": "replay.builder.1",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 0,
+        "model_used": "replay"
+      }
+    },
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] Loaded, the mirror is at [370, 200, 0]. Now I drag it along z to 120 while filming.\nPREDICTION: the slab slides toward the viewer to z 120; the beam stops meeting its face and runs on past it.\n\n```json:call:dragTo\n{\n  \"name\": \"mirror\",\n  \"to\": [\n    370,\n    200,\n    120\n  ],\n  \"ticks\": 150,\n  \"settle\": 150\n}\n```",
+      "interaction_id": "replay.builder.2",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 0,
+        "model_used": "replay"
+      }
+    },
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] The clip shows the orange slab sliding off the beam line, and the pale beam running on past where it stood. The result says it went from z 0 to z 120. That matches my prediction.\n\n```json:done\n{}\n```",
+      "interaction_id": "replay.builder.3",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 0,
+        "model_used": "replay"
+      }
+    }
+  ],
+  "owl": [
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] The slab moves off the beam and the beam continues past it.\n\n```json:verdict\n{\n  \"seen\": {\n    \"contact\": \"the beam first meets the orange slab, its middle third, then nowhere once the slab has moved\",\n    \"after\": \"straight on, past where the slab stood\",\n    \"passes\": \"yes: after the slide the beam goes past the slab\"\n  },\n  \"verdict\": \"approve\",\n  \"reasons\": [\n    \"the slab moves out of the beam and the beam runs on past it, as the outline asks\"\n  ],\n  \"change\": null\n}\n```",
+      "interaction_id": "replay.owl.1",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 360,
+        "model_used": "replay"
+      }
+    }
+  ]
+}

@@ -1,0 +1,518 @@
+p,
+input[type="range"] {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+body {
+  background-color: black !important;
+  color: #95a3ab;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* =============================================
+   APP SHELL LAYOUT
+   ============================================= */
+
+#app-shell {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* --- Side Navigation --- */
+
+#side-nav {
+  width: 260px;
+  min-width: 260px;
+  background-color: #1a1a1a;
+  border-right: 1px solid #333;
+  color: #95a3ab;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 2000;
+}
+
+/* On desktop (>=992px), offcanvas-lg shows inline automatically via Bootstrap.
+   We just ensure it has the right background. */
+@media (min-width: 992px) {
+  #side-nav {
+    display: flex !important;
+    flex-direction: column;
+  }
+  #side-nav .offcanvas-header {
+    display: none;
+  }
+}
+
+/* Mobile offcanvas overrides */
+@media (max-width: 991.98px) {
+  #side-nav {
+    background-color: #1a1a1a !important;
+  }
+}
+
+.sidebar-brand {
+  padding: 16px 16px 8px 16px;
+  border-bottom: 1px solid #333;
+  margin-bottom: 8px;
+}
+
+.sidebar-brand h5 {
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* --- Hamburger toggle (mobile) --- */
+
+#nav-toggle {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 3000;
+  background-color: rgba(26, 26, 26, 0.9);
+  border: 1px solid #333;
+  color: #95a3ab;
+  padding: 6px 10px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+#nav-toggle .navbar-toggler-icon {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28149, 163, 171, 1%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+/* --- Nav Tree --- */
+
+.nav-tree {
+  padding: 8px 0;
+}
+
+.nav-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  color: #95a3ab;
+  font-size: 0.9rem;
+  border-left: 3px solid transparent;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.nav-item:hover {
+  background-color: #2a2a2a;
+  color: #ccc;
+}
+
+.nav-item.active {
+  background-color: #b6161c;
+  color: #fff;
+  border-left-color: #fff;
+}
+
+.nav-home {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.nav-category {
+  margin-bottom: 2px;
+}
+
+.nav-category-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  cursor: pointer;
+  color: #95a3ab;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: background-color 0.15s, color 0.15s;
+  user-select: none;
+}
+
+.nav-category-header:hover {
+  background-color: #2a2a2a;
+  color: #ccc;
+}
+
+/* Chevron icon via CSS ::before */
+.nav-chevron {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 6px solid #95a3ab;
+  margin-right: 8px;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.nav-category-header.expanded .nav-chevron {
+  transform: rotate(90deg);
+}
+
+.nav-category-title {
+  flex: 1;
+}
+
+.nav-category-list {
+  /* Indent experiment items under category */
+}
+
+.nav-experiment {
+  padding-left: 36px;
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+/* --- Content Area --- */
+
+#content-area {
+  flex-grow: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  background-color: black;
+  height: 100vh;
+}
+
+/* =============================================
+   HOME PAGE
+   ============================================= */
+
+.home-page {
+  width: 100%;
+  min-height: 100%;
+}
+
+.home-hero {
+  width: 100%;
+  min-height: 280px;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+.home-hero-content {
+  text-align: center;
+}
+
+.home-hero-content h1 {
+  color: #fff;
+  font-size: 2rem;
+  margin-bottom: 8px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+}
+
+.home-hero-content h2 {
+  color: #ddd;
+  font-size: 1.2rem;
+  font-weight: 400;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+}
+
+.home-category-card {
+  background-color: #1e1e1e !important;
+  border: 1px solid #333 !important;
+  color: #95a3ab !important;
+  transition: border-color 0.2s, transform 0.15s;
+  height: 100%;
+}
+
+.home-category-card:hover {
+  border-color: #b6161c !important;
+  transform: translateY(-2px);
+}
+
+.home-category-card .card-title {
+  color: #fff;
+}
+
+.home-category-card .card-text {
+  color: #95a3ab;
+  white-space: normal;
+  overflow: visible;
+}
+
+/* =============================================
+   CATEGORY PAGE
+   ============================================= */
+
+.category-page {
+  padding: 24px;
+}
+
+.category-header {
+  margin-bottom: 24px;
+}
+
+.category-header h2 {
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.category-description {
+  color: #95a3ab;
+  font-size: 1rem;
+}
+
+/* --- Experiment Cards (category page grid) --- */
+
+.experiment-card {
+  background-color: #1e1e1e !important;
+  border: 1px solid #333 !important;
+  color: #95a3ab !important;
+  transition: border-color 0.2s, transform 0.15s;
+  overflow: hidden;
+  height: 100%;
+  width: auto !important;
+  margin: 0 !important;
+}
+
+.experiment-card:hover {
+  border-color: #b6161c !important;
+  transform: translateY(-2px);
+}
+
+.experiment-card .card-img-top {
+  height: 180px;
+  object-fit: cover;
+  width: 100%;
+}
+
+.experiment-card .card-title {
+  color: #fff;
+  font-size: 1rem;
+}
+
+.experiment-card .card-text {
+  color: #95a3ab;
+  font-size: 0.85rem;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+.experiment-card .card-body {
+  background-color: transparent;
+}
+
+/* =============================================
+   EXISTING STYLES (game canvas, controls, etc.)
+   ============================================= */
+
+.body-controls {
+  background-color: gray;
+  color: #95a3ab;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #273445;
+  position: absolute;
+  right: 0;
+  z-index: 1000;
+}
+
+.game-canvas {
+  background-color: black;
+  color: #95a3ab;
+  padding: 0px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+}
+
+.controls-panel {
+  background-color: gray;
+  color: #95a3ab;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #273445;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+}
+
+.GameControls {
+  background-color: darkgray;
+  color: #95a3ab;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #273445;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+}
+
+/* General Card Styles (applies to both vertical and carousel cards) */
+.card,
+.carousel-item {
+  /* Target both card types */
+  width: 250px;
+  /* Set a fixed width */
+  height: 350px;
+  /* Set a fixed height */
+  margin: 10px;
+  overflow-y: scroll;
+  /* Hide any content that overflows */
+  display: flex;
+  flex-direction: column;
+  /* Stack elements vertically */
+}
+
+.card-img-top,
+.carousel-item img {
+  /* Target images in both card types */
+  width: 100%;
+  height: 40%;
+  /* Or a fixed height if you prefer */
+  object-fit: cover;
+  /* Ensure image covers the area */
+}
+
+.card-body {
+  padding: 10px;
+  flex-grow: 1;
+  /* Allows card-body to take up remaining space */
+  display: flex;
+  flex-direction: column;
+}
+
+.card-title {
+  margin-bottom: 0.5rem;
+  /* Add some spacing below the title */
+  text-overflow: ellipsis;
+}
+
+
+.card-text {
+  text-wrap:wrap;
+  word-break: break-word;
+  /* Handle long words */
+  hyphens: auto;
+  /* Optional: encourage hyphenation */
+  flex-grow: 1;
+
+  overflow-y: scroll;    /* Add vertical scrollbar if content exceeds max-height */
+
+  /* Remove white-space: nowrap; */
+  /* Crucial: Allow text to wrap */
+  padding: 0 10px;
+  /* Keep the padding */
+}
+
+.interstitial-card {
+  width: 80% !important;
+  /* Or a specific width like 700px */
+  max-width: 900px;
+  /* Set a maximum width to prevent it from becoming too wide on large screens */
+  margin: 0 auto;
+  /* Center the card horizontally */
+  height: auto !important;
+}
+
+/* styles.css */
+#containerRowRight.collapse:not(.show) {
+  display: none;
+}
+
+/* CUSTOMIZE THE CAROUSEL
+-------------------------------------------------- */
+
+/* Carousel base class */
+.carousel {
+  margin-bottom: 4rem;
+}
+
+/* Since positioning the image, we need to help out the caption */
+.carousel-caption {
+  bottom: 3rem;
+  z-index: 10;
+}
+
+/* Declare heights because of positioning of img element */
+.carousel-item {
+  height: 32rem;
+}
+
+.carousel-item .card-text {
+  /* specifically target carousel text */
+
+  padding: 0 10px;
+  /* Keep the padding */
+}
+
+.carousel-background {
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
+.controls-card {
+  background-color: rgb(215, 24, 24);
+  color: #95a3ab;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #b6161c;
+  width: 100%; /* Ensure it takes up the full width */
+  z-index: 1000;
+}
+
+.controls-card-body {
+  background-color: rgb(29, 27, 27);
+  color: #fcfdfe !important;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #273445;
+  width: 100%;
+
+  z-index: 1000;
+}
+
+/* button styles are applied on top of Bootstrap styles */
+.controls-button {
+  background-color: #b6161c;
+  color: #fcfdfe;
+  padding: 2px 10px !important;
+  z-index: 1000;
+}
+
+.controls-group {
+  padding: 10px !important;
+  border-bottom: 1px solid rgb(51, 51, 53);
+}
+
+/* styles.css */
+#controlsPanelBody.collapse:not(.show),
+#controlsPanelFooter.collapse:not(.show) {
+  display: none;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.back-button {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+}
+
+.ControlsMenuButton {
+  position: absolute;
+  top: 10px;
+  right: 100px;
+  z-index: 1000;
+}

@@ -1,0 +1,410 @@
+<frqtl-notebook version="1" title="Topology-Native Function Tests — sin, cos, exp, and FFT roots from the n-gon">
+
+<cell type="markdown">
+# Topology-Native Function Tests
+
+EGPT mathematics replaces the continuous unit circle with a **discrete n-gon topology**.
+In this model, angles are not measured in radians but as rational *phase fractions*
+where `0` = no rotation, `1/2` = half-rotation (π), and `1` = full rotation (τ = 2π).
+
+The payoff: sin, cos, exp, and the FFT twiddle factors all yield **exact rational values**
+for the canonical rotation points — no floating-point approximation, no transcendental
+constants in the computation. The topology is verified here by showing that
+cos²(φ) + sin²(φ) = 1/2, not 1, for a diagonal phase — the signature of the 8-vertex
+discrete square, not a continuous circle.
+
+Ported from `sdk/egpt-math-sdk/src/editor/tests/EGPTTopologyTestSuite.js`.
+`EGPTReal`, `EGPTMath`, `EGPTranscendental`, `ComplexEGPTReal`, `EGPTComplex` come from
+`caps.math`. The `TestFramework` class is inlined (it is a local helper in the source,
+not part of the SDK surface).
+</cell>
+
+<cell type="markdown">
+## Setup — test harness
+
+A minimal inline `TestFramework` mirrors the one used in the source file.
+Each phase cell receives `suite` and appends its results; the final cell prints
+the overall summary.
+</cell>
+
+<cell type="js" lane="math" id="topo-setup" out="suite">
+const { math } = caps;
+const { EGPTReal, EGPTMath, EGPTranscendental, ComplexEGPTReal, EGPTComplex } = math;
+
+class TestFramework {
+    constructor() {
+        this.tests = [];
+        this.categories = {};
+    }
+    test(description, category, testFunction) {
+        const result = { description, category, passed: false, error: null };
+        try {
+            result.passed = testFunction();
+            if (result.passed === undefined) result.passed = true;
+        } catch (e) {
+            result.passed = false;
+            result.error = e.message;
+        }
+        this.tests.push(result);
+        if (!this.categories[category]) this.categories[category] = [];
+        this.categories[category].push(result);
+        const status = result.passed ? '✅ PASS' : '❌ FAIL';
+        const errMsg = result.error ? ` (${result.error})` : '';
+        console.log(`${status}: ${description}${errMsg}`);
+    }
+    printSummary() {
+        const total = this.tests.length;
+        const passed = this.tests.filter(t => t.passed).length;
+        console.log('='.repeat(60));
+        console.log('TEST SUMMARY');
+        console.log('='.repeat(60));
+        for (const [cat, catTests] of Object.entries(this.categories)) {
+            const p = catTests.filter(t => t.passed).length;
+            console.log(`${cat}: ${p}/${catTests.length} passed`);
+        }
+        console.log('-'.repeat(60));
+        console.log(`TOTAL: ${passed}/${total} tests passed`);
+        console.log(`SUCCESS RATE: ${((passed / total) * 100).toFixed(1)}%`);
+        if (passed < total) {
+            console.log('\n❌ FAILED TESTS:');
+            this.tests.filter(t => !t.passed).forEach(t => {
+                console.log(`   ${t.category}: ${t.description}`);
+                if (t.error) console.log(`      Error: ${t.error}`);
+            });
+        }
+        return { total, passed };
+    }
+}
+
+const test = new TestFramework();
+return { suite: { test, EGPTReal, EGPTMath, EGPTranscendental, ComplexEGPTReal, EGPTComplex } };
+</cell>
+
+<cell type="markdown">
+## Phase T1 — Geometric Constants (Phases)
+
+In the n-gon topology, π and τ are not irrational constants. They are exact rational
+*phase fractions*:
+
+- `PI_PHASE = 1/2` — a half-rotation
+- `TAU_PHASE = 1`  — a full rotation
+
+All trig and exponential work operates on these rational fractions, not on floating-point
+approximations of π.
+</cell>
+
+<cell type="js" lane="math" id="topo-t1" in="suite" out="suite">
+const { test, EGPTReal, EGPTranscendental } = inputs.suite;
+
+console.log('=== PHASE T1: GEOMETRIC CONSTANTS ===');
+
+test.test('EGPTranscendental.PI_PHASE represents a half-rotation (1/2)', 'Geometric Constants', () => {
+    const pi_phase = EGPTranscendental.PI_PHASE;
+    const expected = EGPTReal.fromRational(1n, 2n);
+    return pi_phase.equals(expected);
+});
+
+test.test('EGPTranscendental.TAU_PHASE represents a full-rotation (1)', 'Geometric Constants', () => {
+    const tau_phase = EGPTranscendental.TAU_PHASE;
+    const expected = EGPTReal.fromBigInt(1n);
+    return tau_phase.equals(expected);
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase T2 — Topology-Native Trigonometric Functions
+
+Because the phase is rational, the canonical rotation points return exact integers or
+simple fractions — no approximation:
+
+| Phase | Rotation | cos | sin |
+|---|---|---|---|
+| 0 | 0° | 1 | 0 |
+| 1/4 | 90° | 0 | 1 |
+| 1/2 | 180° | −1 | 0 |
+| 1 | 360° | 1 | 0 |
+</cell>
+
+<cell type="js" lane="math" id="topo-t2" in="suite" out="suite">
+const { test, EGPTReal, EGPTMath, EGPTranscendental } = inputs.suite;
+
+console.log('=== PHASE T2: TOPOLOGY-NATIVE TRIGONOMETRY ===');
+
+test.test('cos(0) = 1', 'N-Gon Trigonometry', () => {
+    const phase = EGPTReal.fromBigInt(0n);
+    const result = EGPTranscendental.cos(phase);
+    return result.equals(EGPTReal.fromBigInt(1n));
+});
+
+test.test('sin(0) = 0', 'N-Gon Trigonometry', () => {
+    const phase = EGPTReal.fromBigInt(0n);
+    const result = EGPTranscendental.sin(phase);
+    return result.equals(EGPTReal.fromBigInt(0n));
+});
+
+test.test('cos(PI_PHASE) = -1 (half-rotation)', 'N-Gon Trigonometry', () => {
+    const result = EGPTranscendental.cos(EGPTranscendental.PI_PHASE);
+    return result.equals(EGPTReal.fromBigInt(-1n));
+});
+
+test.test('sin(PI_PHASE) = 0 (half-rotation)', 'N-Gon Trigonometry', () => {
+    const result = EGPTranscendental.sin(EGPTranscendental.PI_PHASE);
+    return result.equals(EGPTReal.fromBigInt(0n));
+});
+
+test.test('cos(PI_PHASE / 2) = 0 (quarter-rotation)', 'N-Gon Trigonometry', () => {
+    const quarter_phase = EGPTMath.divide(EGPTranscendental.PI_PHASE, EGPTReal.fromBigInt(2n));
+    const result = EGPTranscendental.cos(quarter_phase);
+    return result.equals(EGPTReal.fromBigInt(0n));
+});
+
+test.test('sin(PI_PHASE / 2) = 1 (quarter-rotation)', 'N-Gon Trigonometry', () => {
+    const quarter_phase = EGPTMath.divide(EGPTranscendental.PI_PHASE, EGPTReal.fromBigInt(2n));
+    const result = EGPTranscendental.sin(quarter_phase);
+    return result.equals(EGPTReal.fromBigInt(1n));
+});
+
+test.test('cos(TAU_PHASE) = 1 (full-rotation)', 'N-Gon Trigonometry', () => {
+    const result = EGPTranscendental.cos(EGPTranscendental.TAU_PHASE);
+    return result.equals(EGPTReal.fromBigInt(1n));
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase T3 — Verifying the N-Gon (Discrete Vertex) Topology
+
+The Pythagorean identity cos²(φ) + sin²(φ) = 1 holds on the **continuous** unit circle.
+On the **discrete** 8-vertex square (phase 1/8 = a diagonal), both cos and sin equal 1/2,
+so their squares sum to 1/4 + 1/4 = **1/2**, not 1.
+
+This is not an approximation error — it is the exact signature of the discrete vertex
+topology. The cell confirms this distinguishing property.
+</cell>
+
+<cell type="js" lane="math" id="topo-t3" in="suite" out="suite">
+const { test, EGPTReal, EGPTMath, EGPTranscendental } = inputs.suite;
+
+console.log('=== PHASE T3: N-GON TOPOLOGY VERIFICATION ===');
+
+test.test('cos²(phase) + sin²(phase) != 1 for diagonal phases', 'N-Gon Topology Verification', () => {
+    // Phase 1/8 is a diagonal on the discrete vertex topology
+    const diagonal_phase = EGPTReal.fromRational(1n, 8n);
+    const cos_val = EGPTranscendental.cos(diagonal_phase); // 1/2 in discrete topology
+    const sin_val = EGPTranscendental.sin(diagonal_phase); // 1/2 in discrete topology
+    const cos_sq = EGPTMath.multiply(cos_val, cos_val);    // 1/4
+    const sin_sq = EGPTMath.multiply(sin_val, sin_val);    // 1/4
+    const sum = EGPTMath.add(cos_sq, sin_sq);              // 1/2 (not 1)
+    const H_one = EGPTReal.fromBigInt(1n);
+    // Sum should be 1/2, confirming the discrete vertex topology
+    return !sum.equals(H_one) && sum.equals(EGPTReal.fromRational(1n, 2n));
+});
+
+test.test('cos(phase 1/8) = 1/2', 'N-Gon Topology Verification', () => {
+    const phase = EGPTReal.fromRational(1n, 8n);
+    const result = EGPTranscendental.cos(phase);
+    return result.equals(EGPTReal.fromRational(1n, 2n));
+});
+
+test.test('sin(phase 1/8) = 1/2', 'N-Gon Topology Verification', () => {
+    const phase = EGPTReal.fromRational(1n, 8n);
+    const result = EGPTranscendental.sin(phase);
+    return result.equals(EGPTReal.fromRational(1n, 2n));
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase T4 — Geometric Exponential Function
+
+The complex exponential `exp(a + i·b)` in the n-gon topology:
+
+- Maps imaginary exponent `i·b` to the rotation by phase `b` → exact Euler's identity
+- Acts as a **frequency multiplier**: the output phase is `b × 2^(−a)`
+- Computes exact factorial values for small `n` via direct iteration
+- Provides a Stirling approximation for large `n` using topology-native π and e
+
+Euler's identity becomes `exp(i·PI_PHASE) = −1 + 0i` with exact rational arithmetic —
+no floating-point π involved.
+</cell>
+
+<cell type="js" lane="math" id="topo-t4" in="suite" out="suite">
+const { test, EGPTReal, EGPTMath, EGPTranscendental, ComplexEGPTReal, EGPTComplex } = inputs.suite;
+
+console.log('=== PHASE T4: GEOMETRIC EXPONENTIAL ===');
+
+test.test("exp(i * PI_PHASE) = -1 (Euler's Identity)", 'Geometric Exponential', () => {
+    const H_ZERO = EGPTReal.fromBigInt(0n);
+    const z = new ComplexEGPTReal(H_ZERO, EGPTranscendental.PI_PHASE);
+    const result = EGPTComplex.exp(z);
+    const expected = new ComplexEGPTReal(EGPTReal.fromBigInt(-1n), EGPTReal.fromBigInt(0n));
+    return result.equals(expected);
+});
+
+test.test('exp(i * PI_PHASE / 2) = i (Quarter Turn)', 'Geometric Exponential', () => {
+    const H_ZERO = EGPTReal.fromBigInt(0n);
+    const quarter_phase = EGPTMath.divide(EGPTranscendental.PI_PHASE, EGPTReal.fromBigInt(2n));
+    const z = new ComplexEGPTReal(H_ZERO, quarter_phase);
+    const result = EGPTComplex.exp(z);
+    const expected = new ComplexEGPTReal(EGPTReal.fromBigInt(0n), EGPTReal.fromBigInt(1n));
+    return result.equals(expected);
+});
+
+test.test('Unit Circle Identity: |exp(z)| == 1 (L1 norm)', 'Geometric Exponential', () => {
+    // a=2, b=1/8: in the discrete topology the L1 magnitude is |x|+|y|
+    const z = new ComplexEGPTReal(EGPTReal.fromBigInt(2n), EGPTReal.fromRational(1n, 8n));
+    const result = EGPTComplex.exp(z);
+    const abs_x = EGPTMath.abs(result.real);
+    const abs_y = EGPTMath.abs(result.imag);
+    const magnitude = EGPTMath.add(abs_x, abs_y);
+    return magnitude.equals(EGPTReal.fromBigInt(1n));
+});
+
+test.test('exp(a) acts as frequency multiplier 2^-a', 'Geometric Exponential', () => {
+    const H_a = EGPTReal.fromBigInt(1n);
+    const H_b = EGPTReal.fromRational(1n, 8n);
+    const z = new ComplexEGPTReal(H_a, H_b);
+    const result = EGPTComplex.exp(z);
+    const result_phase = result.getPhase();
+    // Expected phase = b * 2^(-a) = (1/8) * (1/2) = 1/16
+    const H_neg_a = EGPTReal.negate(H_a);
+    const H_freq_multiplier = EGPTranscendental.exp2(H_neg_a);
+    const H_expected_phase = EGPTMath.normalMultiply(H_b, H_freq_multiplier);
+    return result_phase.equals(H_expected_phase);
+});
+
+test.test('Factorial computation: 5! = 120 using topology-native operations', 'Geometric Exponential', () => {
+    const n = 5n;
+    const H_result = EGPTranscendental.factorial(n);
+    const H_expected = EGPTReal.fromBigInt(120n);
+    return EGPTMath.equals(H_result, H_expected);
+});
+
+test.test("Factorial Stirling approximation: 97! computed via topology-native formula", 'Geometric Exponential', () => {
+    // Compute 97! exactly via iterative multiplication
+    const n = 97n;
+    let en_97_factorial = EGPTReal.fromBigInt(1n);
+    for (let i = 2n; i <= n; i++) {
+        en_97_factorial = EGPTMath.multiply(en_97_factorial, EGPTReal.fromBigInt(i));
+    }
+    // Compute via Stirling's approximation
+    const H_stirling_result = EGPTranscendental.factorial(n);
+    // Compare: relative error = |exact - approx| / exact
+    const H_diff = EGPTMath.subtract(en_97_factorial, H_stirling_result);
+    const H_abs_diff = EGPTMath.abs(H_diff);
+    const H_relative_error = EGPTMath.normalDivide(H_abs_diff, en_97_factorial);
+    const relative_error = H_relative_error.breakSymbolicToApproximateJSNumber();
+    console.log(`      97! (Stirling) relative error: ${isFinite(relative_error) ? (relative_error * 100).toFixed(4) + '%' : 'Infinity (scaled vector — see note)'}`);
+    return relative_error < 0.01;
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase T5 — FFT / FAT Foundational Elements
+
+The Discrete Fourier Transform uses **roots of unity** ω_N^k = exp(i · 2π · k/N).
+In the n-gon topology, these are `EGPTComplex.exp(0 + i · TAU_PHASE · (k/N))` and
+evaluate to exact rational complex numbers at every lattice point.
+
+Key properties verified:
+- **ω_N^0 = 1** for any N (identity)
+- **ω_N^N = 1** (full-period periodicity)
+- **ω_N^k and ω_N^(N−k) are conjugates** (symmetry that halves real FFT work)
+- **DC component** X[0] = Σ x[n] (sum of all inputs)
+- **Unnormalized inverse** of normalized = N × original
+</cell>
+
+<cell type="js" lane="math" id="topo-t5" in="suite" out="suite">
+const { test, EGPTReal, EGPTMath, EGPTranscendental, ComplexEGPTReal, EGPTComplex } = inputs.suite;
+
+console.log('=== PHASE T5: FFT FOUNDATIONAL ELEMENTS ===');
+
+test.test('Roots of unity: ω_N^0 = 1 for any N', 'FFT Foundations', () => {
+    const N = 8;
+    const phase = EGPTReal.fromRational(0n, BigInt(N));
+    const root = EGPTComplex.exp(new ComplexEGPTReal(
+        EGPTReal.fromBigInt(0n),
+        EGPTMath.multiply(EGPTranscendental.TAU_PHASE, phase)
+    ));
+    const one = new ComplexEGPTReal(EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(0n));
+    return root.equals(one);
+});
+
+test.test('Roots of unity: ω_N^N = 1 (periodicity)', 'FFT Foundations', () => {
+    const N = 8;
+    const phase = EGPTReal.fromRational(BigInt(N), BigInt(N)); // full rotation = 1
+    const root = EGPTComplex.exp(new ComplexEGPTReal(
+        EGPTReal.fromBigInt(0n),
+        EGPTMath.multiply(EGPTranscendental.TAU_PHASE, phase)
+    ));
+    const one = new ComplexEGPTReal(EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(0n));
+    return root.equals(one);
+});
+
+test.test('Roots of unity: ω_N^k and ω_N^(N-k) are conjugates', 'FFT Foundations', () => {
+    const N = 8, k = 2;
+    const phase_k  = EGPTReal.fromRational(BigInt(k), BigInt(N));
+    const phase_Nk = EGPTReal.fromRational(BigInt(N - k), BigInt(N));
+    const root_k  = EGPTComplex.exp(new ComplexEGPTReal(
+        EGPTReal.fromBigInt(0n),
+        EGPTMath.multiply(EGPTranscendental.TAU_PHASE, phase_k)
+    ));
+    const root_Nk = EGPTComplex.exp(new ComplexEGPTReal(
+        EGPTReal.fromBigInt(0n),
+        EGPTMath.multiply(EGPTranscendental.TAU_PHASE, phase_Nk)
+    ));
+    return root_k.conjugate().equals(root_Nk);
+});
+
+test.test('Forward FFT: DC component = sum of all inputs', 'FFT Foundations', () => {
+    // X[0] = Σ x[n] for n = 0 to N-1; signal = [1, 2, 3, 4]
+    const N = 4;
+    const signal = [];
+    for (let i = 0; i < N; i++) {
+        signal.push(new ComplexEGPTReal(EGPTReal.fromBigInt(BigInt(i + 1)), EGPTReal.fromBigInt(0n)));
+    }
+    let sum = EGPTReal.fromBigInt(0n);
+    for (const s of signal) { sum = EGPTMath.add(sum, s.real); }
+    return sum.equals(EGPTReal.fromBigInt(10n)); // 1+2+3+4 = 10
+});
+
+test.test('Inverse FFT normalization: unnormalized result = N * original', 'FFT Foundations', () => {
+    // IEQFT without normalization: N * original
+    const N = 4;
+    const scale = EGPTReal.fromBigInt(BigInt(N));
+    const original = EGPTReal.fromBigInt(5n);
+    const scaled = EGPTMath.multiply(original, scale);
+    return scaled.equals(EGPTReal.fromBigInt(20n)); // 4 * 5 = 20
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Summary
+
+The final cell accumulates results from all phases and prints the suite totals.
+</cell>
+
+<cell type="js" lane="math" id="topo-summary" in="suite">
+const { test } = inputs.suite;
+
+console.log('\n' + '='.repeat(60));
+const { total, passed } = test.printSummary();
+console.log('='.repeat(60));
+
+const failed = total - passed;
+if (failed === 0) {
+    console.log('All topology-native functions validated.');
+} else {
+    console.log(`${failed} test(s) failed — see FAILED TESTS list above.`);
+}
+</cell>
+
+</frqtl-notebook>

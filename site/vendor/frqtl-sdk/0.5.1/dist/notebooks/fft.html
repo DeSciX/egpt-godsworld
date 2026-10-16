@@ -1,0 +1,154 @@
+<frqtl-notebook version="1" title="EGPT FFT — Polynomial Forward/Inverse Transform in Canonical Space">
+
+<cell type="markdown">
+# EGPT FFT — Polynomial Forward/Inverse Transform in Canonical Space
+
+The `EGPTFFT` class is the pedagogical entry point to EGPT's transform discipline.
+Where a classical FFT works in floating-point complex arithmetic (`e^{2πik/N}` twiddles, `sin`/`cos` calls), the EGPT formulation stays entirely in **rational canonical space**:
+
+- **Forward transform** — Horner-evaluate the coefficient polynomial `P(x)` at the `N` equally-spaced rational nodes `x_k = k/N` for `k = 0, 1, …, N−1`.
+- **Inverse transform** — recover the original coefficients from those N sample values via Newton divided differences.
+
+Both operations are **O(N²)** in exact `EGPTReal` arithmetic. No `Math.sin`, no `Math.cos`, no floating-point rounding. The round-trip `inverse(forward(c)) ≡ c` is a structural fact proved in the theorem file `F_FFTPolynomialIsomorphism.js`, not a numerical approximation.
+
+Every cell below computes through the injected `math` builtin. No URL imports.
+</cell>
+
+<cell type="js" lane="math" id="backend">
+// Show the active math backend (truth-in-labeling: derived, never asserted).
+const { math, display } = caps;
+const backend = math.activeMathBackend;
+display(`Active math backend (derived from SDK registry): ${backend}`);
+</cell>
+
+<cell type="markdown">
+## 1. Build the input — three integer coefficients
+
+We start with the polynomial `P(x) = 1 + 2x + 3x²` represented as an array of
+`EGPTReal` values. `EGPTReal.fromBigInt(n)` constructs the exact canonical
+representation of the integer `n` (no floating-point, no approximation).
+</cell>
+
+<cell type="js" lane="math" id="build-coeffs" out="coeffs">
+const { math, display } = caps;
+const { EGPTReal } = math;
+
+// P(x) = 1 + 2x + 3x²
+const coeffs = [
+  EGPTReal.fromBigInt(1n),
+  EGPTReal.fromBigInt(2n),
+  EGPTReal.fromBigInt(3n)
+];
+
+display('Coefficients (toMathString): ' + coeffs.map(c => c.toMathString()).join(', '));
+return { coeffs };
+</cell>
+
+<cell type="markdown">
+## 2. Forward transform — evaluate at rational nodes 0/3, 1/3, 2/3
+
+`EGPTFFT.forward(coeffs, N)` evaluates `P(x)` at each of the `N` nodes `k/N`
+using Horner's method in canonical space:
+
+```
+P(0/3) = 1 + 2·(0) + 3·(0)² = 1
+P(1/3) = 1 + 2·(1/3) + 3·(1/3)² = 1 + 2/3 + 1/3 = 2
+P(2/3) = 1 + 2·(2/3) + 3·(2/3)² = 1 + 4/3 + 4/3 = 11/3
+```
+
+These are exact rational results — no approximation.
+</cell>
+
+<cell type="js" lane="math" id="forward" in="coeffs" out="forward">
+const { math, display } = caps;
+const { EGPTFFT } = math;
+const { coeffs } = inputs;
+
+const forward = EGPTFFT.forward(coeffs, 3);
+
+display('Forward transform values at k/3 (toMathString):');
+forward.forEach((v, k) => {
+  display(`  P(${k}/3) = ${v.toMathString()}`);
+});
+
+return { forward };
+</cell>
+
+<cell type="markdown">
+## 3. Inverse transform — recover the original coefficients
+
+`EGPTFFT.inverse(values, N)` runs Newton divided differences on the N sample values
+and reconstructs the polynomial coefficient vector. The result must be
+bit-identical to the original `[1, 2, 3]` — not approximately equal, **exactly equal**
+in `EGPTReal` canonical arithmetic.
+</cell>
+
+<cell type="js" lane="math" id="inverse" in="forward" out="inverse">
+const { math, display } = caps;
+const { EGPTFFT } = math;
+const { forward } = inputs;
+
+const inverse = EGPTFFT.inverse(forward, 3);
+
+display('Recovered coefficients (toMathString):');
+inverse.forEach((c, i) => {
+  display(`  c[${i}] = ${c.toMathString()}`);
+});
+
+return { inverse };
+</cell>
+
+<cell type="markdown">
+## 4. Round-trip verification
+
+The original polynomial was `[1, 2, 3]`. After `forward` then `inverse` we expect
+to get exactly `["1", "2", "3"]` from `toMathString()`. Any deviation would be a
+violation of the polynomial bijection theorem `F2: inverse ∘ forward ≡ identity`.
+</cell>
+
+<cell type="js" lane="math" id="verify" in="inverse">
+const { math, display } = caps;
+const { inverse } = inputs;
+
+const expected = ['1', '2', '3'];
+const got = inverse.map(c => c.toMathString());
+
+const ok = got.length === expected.length &&
+           got.every((v, i) => v === expected[i]);
+
+const el = document.createElement('div');
+el.style.cssText =
+  'font:600 0.95rem/1.5 system-ui,sans-serif;padding:10px 14px;border-radius:6px;margin:4px 0;' +
+  (ok
+    ? 'background:#0f2417;border:1px solid #1f5a36;color:#7ee2a8;'
+    : 'background:#2a0c0c;border:1px solid #5a1f1f;color:#ff8a8a;');
+el.textContent = ok
+  ? `ROUND-TRIP VERIFIED: inverse(forward([1,2,3])) = [${got.join(', ')}] — bit-exact.`
+  : `MISMATCH: expected [${expected.join(', ')}], got [${got.join(', ')}]`;
+
+display(el);
+
+if (!ok) {
+  throw new Error('FFT forward/inverse roundtrip failed');
+}
+</cell>
+
+<cell type="markdown">
+## 5. What makes this different from a classical FFT?
+
+| | Classical FFT | EGPT FFT |
+|---|---|---|
+| Twiddle factors | `e^{2πik/N}` — transcendental, computed via `sin`/`cos` | `k/N` — exact rational nodes, no transcendentals |
+| Arithmetic domain | Complex floating-point (`float64`) | Canonical `EGPTReal` (exact BigInt rationals) |
+| Round-trip error | Floating-point accumulation (`~1e-15`) | Zero — `inverse(forward(c))` is exactly `c` |
+| Complexity | `O(N log N)` via Cooley-Tukey twiddle caching | `O(N²)` Horner + Newton DD in rational space |
+| Purpose | Signal processing via approximation | Polynomial bijection — transform as exact algebraic operation |
+
+The EGPT FFT is not competing with Cooley-Tukey on wall-clock speed for large N.
+Its role is to make the polynomial ↔ transform bijection visible and provable:
+evaluating `P` at `N` nodes and recovering `P` from those values is a bijection —
+`inverse ∘ forward = identity` — with no approximation involved.
+This is the foundation for the matrix ↔ ℕ chain (Translation1–7).
+</cell>
+
+</frqtl-notebook>

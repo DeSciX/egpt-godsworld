@@ -1,0 +1,27 @@
+{
+  "_purpose": "Deployable site set for the egpt-godsworld PROD app. WITHOUT this manifest the CLI's legacy flow uploads the whole app directory. Site URLs are non-expiring and unsigned, so the set is an explicit ALLOWLIST: SiteWalker treats an empty `include` as match-everything. A new file under site/ must be added to `include` or the upload silently leaves it out.",
+  "_repo_root_excluded": "The only source is `site`, so the repo-root assets/ and .descix/ are outside the walk and never uploaded. Do not add them as bare-name excludes: SiteWalker.isDirExcluded matches a bare directory name at ANY depth. Do not add a source whose path is `.` or a repo-root directory.",
+  "_schema": "@descix/cli@1.0.20 ManifestLoader.validateSiteManifest: sources[] non-empty; each {path required string, include?/exclude? string arrays}; buildCommand string|null. Exclude is tested BEFORE include (exclude wins); directory excludes are bare names, no glob suffix.",
+  "sources": [
+    {
+      "path": "site",
+      "include": [
+        "index.html",
+        "share.json",
+        "app.html",
+        "images/**",
+        "images/share/**",
+        "DeSciXAppSDK.js",
+        "app-assets/**",
+        "scene.html",
+        "vendor/**",
+        "memories/**"
+      ],
+      "exclude": [
+        ".descix",
+        "node_modules"
+      ]
+    }
+  ],
+  "buildCommand": null
+}

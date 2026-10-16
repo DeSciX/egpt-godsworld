@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EGPT — Empty Universe</title>
+    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+</head>
+<body>
+
+    <!-- WASM pkg URL (resolved relative to this page) -->
+    <script>window._egptDefaultEngine = "wasm";
+    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","scenes/":"../../scenes/","shim/":"../../ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+
+    <!-- Vendored three.js (r128) — a load-by-eval rung may request the three renderer
+         (a scene registered with renderState.renderer 'three', ?renderer=three). render-boot.js reads this before
+         falling back to a CDN; setting it mirrors the _egptWasmPkgUrl precedent so the
+         dev realm has no silent CDN dependency. Harmless for 2D/p5 loads (only read
+         when three is selected). -->
+    <script>window._egptThreeUrl = new URL("../../js/lib/three.min.js", document.baseURI).href;</script>
+
+    <!-- Canonical shared loader. No page scripts: the universe is created via the
+         RecipeContext object and populated by an eval'd buildExperiment(exp) module
+         (a saved project) OR left blank (Empty Universe / palette authoring). -->
+    <script src="../_shared/stack-boot.js"></script>
+
+    <!-- Page structure -->
+    <div class="experiment-container">
+        <div class="experiment-canvas" id="canvas-wrapper"></div>
+    </div>
+
+    <!--
+      WORLD INTROSPECTION — what SAMPLER is this world actually running?
+
+      The one stamping site on this page for resolved-world `data-*` attributes
+      (the pattern documented on lib/frqtl/experiments/single-source-interference/
+      index.html's #ssi-metrics; SAME attribute name, same resolution ladder, same
+      'engine-default' sentinel — a second spelling would defeat the purpose).
+
+      WHY it exists: a fixed-vs-average A/B whose two arms cannot be told apart
+      from the evidence is a null experiment. This element makes the arm READABLE
+      off the DOM (`[data-stepping]`) and, whenever a sampler was explicitly
+      declared, VISIBLE in the still — so a capture can never be a silent no-op
+      mistaken for a result.
+
+      HIDDEN when nothing was declared: a STUDIO scene that never names a sampler
+      renders exactly as before (no badge, no layout change); the attribute is
+      still stamped for machine readback.
+    -->
+    <div id="frqtl-world-introspect" data-role="world-introspect"
+         data-stepping="engine-default" hidden
+         style="position:fixed;left:8px;bottom:8px;z-index:9997;padding:3px 7px;
+                background:rgba(0,0,0,0.62);color:#8fe3ff;border:1px solid #2a6b80;
+                border-radius:3px;font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;
+                pointer-events:none;"></div>
+
+    <!-- Empty universe — the load target for saved .js projects (Phase 3) -->
+    <script>
+    /* Copyright 2023-2026 by Essam Abadir */
+
+    /**
+     * Empty Universe — blank canvas + the load target for saved .js projects.
+     *
+     * A "project" is a buildExperiment(exp) .js recipe (see codegen.js). This page
+     * constructs a RecipeContext, inits a blank universe, and exposes
+     * window.FrqtlPage.applyModuleSource(src) so the IDE author surface (and any
+     * other consumer — the hosted eyes, a doc snippet) can eval a saved recipe
+     * against the live RecipeContext. With no module it is simply an empty
+     * universe the palette authors into.
+     *
+     * Engine-agnostic: runs JS or WASM identically.
+     */
+    var experiment = null;
+
+    window.setup = function () {
+        // WS Studio Controls Realignment S6 (save realignment) — honor a forwarded `?seed=`
+        // (lib/shim/page-params KEYS.SEED — read via the contract, never a raw literal), so a
+        // saved project's reload reproduces the RNG stream it was authored under. Absent or
+        // non-numeric falls back to 42.
+        var _seedParam = (window.PageParams)
+            ? new URLSearchParams(window.location.search).get(window.PageParams.KEYS.SEED)
+            : null;
+        var _seed = (_seedParam !== null && _seedParam !== '' && !isNaN(Number(_seedParam)))
+            ? Number(_seedParam) : 42;
+        // SIZELESS: this page states no world. The scene applied next states it, in its first
+        // statement (exp.createCanvas(w, h, cfg) / exp.createScene(w, h, d, cfg)); 600x400 is not
+        // this page's to choose. Until a scene is applied there is no runner.
+        experiment = new RecipeContext({ canvasParentId: 'canvas-wrapper', seed: _seed });
+        window._egptExperiment = experiment;   // FrqtlPage.isReady() — hosts may apply a scene now
+    };
+
+    /** Publish the world a scene just built: the runner hosts drive, the loop left STOPPED. */
+    function _publishWorld(exp, sourceRef) {
+        if (!exp.world) {
+            throw new Error('scene ' + (sourceRef || '(unnamed)') + ' never created its world — its first ' +
+                'statement is exp.createCanvas(w, h, cfg) or exp.createScene(w, h, d, cfg).');
+        }
+        exp.runner.stop();
+        window._frqtlApp = exp.runner;
+        _stampWorldIntrospection();
+    }
+
+    /**
+     * _resolvedStepping() — WHICH WAVE-WALK SAMPLER IS THIS WORLD RUNNING?
+     *
+     * The SAME resolution ladder single-source-interference/index.html documents for
+     * its own #ssi-metrics stamp, one hop up (a recipe page has no LOCKED opts bag —
+     * its declared world config IS `exp.world.cfg`):
+     *
+     *   1. the universe's own RESOLVED read-back, when the provider ever exposes one
+     *      (truth-in-labeling: what RAN beats what was asked). Vestigial today —
+     *      wasm-engine.js deliberately publishes no `stepping` read-back, because that
+     *      would require a JS copy of the engine's default.
+     *   2. `exp.world.cfg.stepping` — what the SCENE SOURCE declared. Exact whenever a
+     *      recipe named a sampler, which since the RecipeContext ferry is also exactly
+     *      when the engine received one (before the ferry this would have certified a
+     *      lie: the cfg claimed a sampler universe.init never got).
+     *   3. 'engine-default' — a SENTINEL, never a copied value. The default has exactly
+     *      one home (the Rust `Stepping` serde enum); a page printing 'fixed' here would
+     *      have minted a second, driftable copy of it.
+     *
+     * @returns {string} 'fixed' | 'average' | 'engine-default' (or whatever a recipe
+     *                   declared — this reports, it does not validate).
+     */
+    function _resolvedStepping() {
+        var exp = window._egptExperiment;
+        var u   = (exp && exp.world) ? exp.runner.universe : null;
+        if (u && u.stepping !== undefined && u.stepping !== null) { return String(u.stepping); }
+        var cfg = (exp && exp.world) ? exp.world.cfg : null;
+        if (cfg && cfg.stepping !== undefined && cfg.stepping !== null) { return String(cfg.stepping); }
+        return 'engine-default';
+    }
+
+    /**
+     * _stampWorldIntrospection() — THE one site on this page that writes the resolved-
+     * world data-* attributes. Called after every world step (FrqtlPage.applyModuleSource →
+     * _buildScene → _publishWorld), which is exactly when the answer can change: `exp.world` is
+     * written by the scene's co-init call and by nothing else, so there is no per-tick stamping to do.
+     *
+     * The badge is SHOWN only when a sampler was actually declared — an A/B still then
+     * carries its own arm label, while an ordinary STUDIO scene (which names no sampler)
+     * renders byte-identically to before.
+     */
+    function _stampWorldIntrospection() {
+        var el = document.getElementById('frqtl-world-introspect');
+        if (!el) { return; }
+        var stepping = _resolvedStepping();
+        el.setAttribute('data-stepping', stepping);
+        var declared = (stepping !== 'engine-default');
+        el.hidden = !declared;
+        el.textContent = declared ? ('stepping: ' + stepping) : '';
+    }
+
+    /**
+     * The renderer a scene's co-init call asked for when it did not match the booted one
+     * (RecipeContext's mismatch error carries it) — read by displayResolution().
+     */
+    var _requiredRenderer = null;
+
+    /**
+     * The page's boot `sketch` phase is DEFERRED (see the _egptStartSketch call below): setup()
+     * builds only the sizeless facade, so the phase settles on the FIRST scene a host applies —
+     * complete after its exp.build, failed when it throws. Later applies do not touch it.
+     */
+    var _sketchSettled = false;
+    function _settleSketch(err) {
+        if (_sketchSettled) { return; }
+        _sketchSettled = true;
+        if (err) { window._egptFailSketch(err); } else { window._egptCompleteSketch(); }
+    }
+
+    /** Build a scene source against this page's facade (RecipeContext.buildSource — the one
+        source→scene door); publish its world. */
+    function _buildScene(src, sourceRef) {
+        var exp = window._egptExperiment;
+        try {
+            exp._built = false;
+            try {
+                exp.buildSource(src);   // the scene's first statement creates its world
+            } catch (e) {
+                if (e && e.frqtlRequiredRenderer) { _requiredRenderer = e.frqtlRequiredRenderer; }
+                throw e;
+            }
+            _publishWorld(exp, sourceRef);
+        } catch (e) {
+            _settleSketch(e);
+            throw e;
+        }
+        _settleSketch(null);
+    }
+
+    /**
+     * window.FrqtlPage — this page's PUBLIC surface.
+     *
+     * A public hook gets a public name: this IS the shipped, documented way to load a scene into
+     * the blank page — the ONE door every host comes through (STUDIO's author surface, the GYM's
+     * rung frame via rung-frame.js applySceneText, the hosted eyes, the getting-started doc) — and
+     * the ONE door a host hands a renderState bag through (applyRenderState). The
+     * page itself states NO world: every scene does, in its first statement — the blank STUDIO
+     * universe is the scene file scenes/empty.js like any other. A member joins this object only
+     * through review: it is a front door, not a dumping ground.
+     */
+    window.FrqtlPage = {
+        /** True once the page's sizeless facade exists — the moment a host may apply a scene. */
+        isReady: function () { return !!window._egptExperiment; },
+
+        /**
+         * Apply a scene / saved project's .js recipe against this page's facade. Leaves the loop
+         * STOPPED and publishes `window._frqtlApp` (the runner the scene's co-init call built).
+         *
+         * FAIL-LOUD: no facade, an empty source, a source with no buildExperiment(exp), a scene
+         * that never creates its world, or any throw from the recipe paints the visible error
+         * overlay AND rethrows. A silent blank canvas is never a result.
+         *
+         * @param {string} src — the buildExperiment(exp) module source
+         * @returns {boolean} true (throws on any failure)
+         */
+        applyModuleSource: function (src) {
+            if (!window._egptExperiment) {
+                _egptPaintWalkthroughError('Recipe load failed', 'no RecipeContext on the page.');
+                throw new Error('[empty] FrqtlPage.applyModuleSource: no RecipeContext');
+            }
+            try {
+                _buildScene(src, null);
+                return true;
+            } catch (e) {
+                _egptPaintWalkthroughError('Recipe load failed', String((e && e.stack) || e));
+                console.error('[empty] FrqtlPage.applyModuleSource failed:', e);
+                throw e;   // FAIL-LOUD — surface, never swallow to a blank canvas.
+            }
+        },
+
+        /**
+         * Apply a renderState bag (a rung's effectiveRenderState, or a saved project's bag) to the
+         * runner the last applied scene built — the peer of applyModuleSource. The procedure (rows
+         * against the booted renderer, the camera, the backdrop) is lib/shim/render-state/apply.js
+         * `RenderState.apply`; this page supplies what only it has: its runner and its renderer
+         * registry (`env.knownNames`).
+         *
+         * FAIL-LOUD: no scene applied yet, or any throw from the owner (a row no renderer declares,
+         * a value its descriptor refuses, a camera on a display with no pose control) paints the
+         * visible error overlay AND rethrows.
+         *
+         * @param {object} bag — a renderState bag (raw or normalized)
+         * @returns {{applied:Object, retained:Array, camera:string|null, preset:string|null,
+         *   backdrop:boolean|null}} the owner's report — a host decides whether `retained` rows / a
+         *   `retained` camera are acceptable (the hosted eyes accept neither).
+         */
+        applyRenderState: function (bag) {
+            try {
+                if (!window._frqtlApp) {
+                    throw new Error('[empty] FrqtlPage.applyRenderState: no scene has been applied on the page — ' +
+                        'apply a scene source first. (FAIL-LOUD.)');
+                }
+                if (!window.RenderState || !window.RenderCapabilitiesCommon) {
+                    throw new Error('[empty] FrqtlPage.applyRenderState: ' + (!window.RenderState
+                        ? 'window.RenderState missing (the ENGINE phase did not load lib/shim/render-state/apply.js)'
+                        : 'window.RenderCapabilitiesCommon missing (the RENDERER phase did not load ' +
+                          'renderCapabilities-common.js)') + '. (FAIL-LOUD.)');
+                }
+                return window.RenderState.apply(window._frqtlApp, bag, {
+                    knownNames: window.RenderCapabilitiesCommon.knownRenderCapabilityNames(window._egptRendererProviders)
+                });
+            } catch (e) {
+                _egptPaintWalkthroughError('Render state failed', String((e && e.stack) || e));
+                console.error('[empty] FrqtlPage.applyRenderState failed:', e);
+                throw e;   // FAIL-LOUD — surface, never swallow.
+            }
+        },
+
+        /**
+         * displayResolution() — which renderer does the SCENE require, and which did this page
+         * boot? THE SCENE SOURCE IS THE ONE AUTHORITY: its co-init call names the renderer
+         * (createCanvas ⇒ p5, createScene ⇒ three). After a successful build the answer is
+         * `exp.world.renderer`; after a mismatch the scene's call threw naming the renderer it
+         * needs, and that is reported here, so a host that booted the wrong display reloads with
+         * the answer (`?renderer=`, the one renderer-selection authority in render-boot.js).
+         *
+         * @returns {{required:{renderer:string}, booted:{renderer:string|null}}}
+         */
+        displayResolution: function () {
+            var exp = window._egptExperiment;
+            var required = (exp && exp.world) ? exp.world.renderer : _requiredRenderer;
+            if (!required) {
+                throw new Error('[empty] FrqtlPage.displayResolution: no scene has been applied on the ' +
+                    'page — apply a scene source first. (FAIL-LOUD.)');
+            }
+            return {
+                required: { renderer: required },
+                booted: { renderer: (typeof window._egptRenderer === 'string') ? window._egptRenderer : null }
+            };
+        }
+    };
+
+    /**
+     * Paint a visible FAIL-LOUD overlay in the canvas area — every recipe load
+     * path must SURFACE an error, never paint a silent blank canvas on a missing
+     * factory / bad recipe.
+     */
+    function _egptPaintWalkthroughError(title, detail) {
+        var host = document.getElementById('canvas-wrapper') || document.body;
+        var box = document.createElement('div');
+        box.setAttribute('data-role', 'walkthrough-error');
+        box.style.cssText =
+            'position:absolute;inset:0;z-index:9998;padding:14px;overflow:auto;' +
+            'white-space:pre-wrap;background:#1a0000;color:#ff6b6b;border:2px solid #b6161c;' +
+            'font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;';
+        box.textContent = title + '\n\n' + detail;
+        if (host.style && (!host.style.position || host.style.position === 'static')) {
+            host.style.position = 'relative';
+        }
+        host.appendChild(box);
+    }
+
+    // Boot — the ONE dance stack-boot.js owns: engine → renderer → the stack-complete
+    // promise (every data-page-scripts entry) → p5 (its load calls
+    // window.setup) on every renderer (FRAQTL #74). The sketch phase is DEFERRED: it settles
+    // when the first applied scene has built (_buildScene → _settleSketch).
+    window._egptStartSketch({ p5: 'always', sketch: 'deferred' });
+    </script>
+
+</body>
+</html>

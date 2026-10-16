@@ -1,0 +1,187 @@
+<frqtl-notebook version="1" title="EGPTFFT — forward / inverse round-trip tests">
+
+<cell type="markdown">
+# EGPTFFT — forward / inverse round-trip tests
+
+`EGPTFFT` is a pedagogical wrapper that makes the polynomial-transform interpretation explicit.
+
+Two canonical methods are exposed:
+
+| Method | What it computes |
+|--------|-----------------|
+| `EGPTFFT.forward(coeffs, N)` | Evaluates the polynomial `P(x) = c₀ + c₁x + …` at the N uniform rational nodes `k/N` (k = 0 … N−1) via Horner's method. Each sample is an exact `EGPTReal` rational. |
+| `EGPTFFT.inverse(values, N)` | Recovers the original coefficient vector from those N samples via Newton divided-differences — bit-exact inverse. |
+
+The bijection is:
+
+```
+coeffs  ─forward─►  values at k/N
+values  ─inverse─►  coeffs  (exactly)
+```
+
+No floating-point, no approximate inversion — the round trip holds to the last bit because both operations stay in Shannon/PPF (rational) space throughout.
+
+This notebook runs the three canonical tests from `EGPTFFTTest.js`:
+1. Integer-coefficient round trip (N = 4)
+2. Fractional-coefficient round trip (N = 5)
+3. `forward` output agrees with per-point Horner evaluation via `EGPTPolynomial.evaluateAt`
+</cell>
+
+<cell type="markdown">
+## Setup — helpers and test harness
+
+Inline helpers for constructing `EGPTReal` values from integers and fractions, plus a
+minimal test harness (`test` / `assert` / `assertEqPoly`) that mirrors the original file.
+The harness accumulates pass/fail counts; phase cells consume it via `in="suite"`.
+</cell>
+
+<cell type="js" lane="math" id="fft-setup" out="suite">
+const { math } = caps;
+const { EGPTReal, EGPTPolynomial } = math;
+
+const ONE  = EGPTReal.fromBigInt(1n);
+const intN = (n) => EGPTReal.fromBigInt(BigInt(n));
+const frac = (n, d) => EGPTReal.fromRational(BigInt(n), BigInt(d));
+
+let passed = 0, failed = 0;
+const failures = [];
+
+function test(name, fn) {
+    try {
+        fn();
+        console.log('  ok  — ' + name);
+        passed++;
+    } catch (err) {
+        console.log('  FAIL — ' + name + '\n        ' + err.message);
+        failed++;
+        failures.push(name);
+    }
+}
+
+function assert(cond, msg) {
+    if (!cond) throw new Error(msg || 'assertion failed');
+}
+
+function assertEqPoly(a, b, label) {
+    if (a.length !== b.length)
+        throw new Error(label + ': length ' + a.length + ' vs ' + b.length);
+    for (let i = 0; i < a.length; i++) {
+        if (!a[i].equals(b[i])) {
+            throw new Error(
+                label + ': index ' + i + ': ' +
+                a[i].breakSymbolicToString() + ' vs ' + b[i].breakSymbolicToString()
+            );
+        }
+    }
+}
+
+return { suite: { test, assert, assertEqPoly, intN, frac, ONE, getResults: () => ({ passed, failed, failures }) } };
+</cell>
+
+<cell type="markdown">
+## Round-trip tests
+
+### Test 1 — integer coefficients, N = 4
+
+Coefficients `[3, 1, 4, 1]` (the first four digits of π). After `forward` the four samples are
+rational values at `0/4, 1/4, 2/4, 3/4`; `inverse` must return exactly `[3, 1, 4, 1]`.
+
+### Test 2 — fractional coefficients, N = 5
+
+Coefficients `[1/3, −7/6, 1, 2/5, −1/2]`. Fractions stress the rational arithmetic path;
+the round trip must still be bit-exact.
+</cell>
+
+<cell type="js" lane="math" id="fft-round-trip" in="suite" out="rt">
+const { math } = caps;
+const { EGPTFFT } = math;
+const { test, assertEqPoly, intN, frac, ONE } = inputs.suite;
+
+console.log('\n[EGPTFFT] forward / inverse round trip');
+
+test('integer coeffs round trip exactly at N=4', () => {
+    const c = [intN(3), intN(1), intN(4), intN(1)];
+    const values = EGPTFFT.forward(c);
+    const recovered = EGPTFFT.inverse(values);
+    assertEqPoly(recovered, c, 'integer N=4');
+});
+
+test('fractional coeffs round trip exactly at N=5', () => {
+    const c = [frac(1, 3), frac(-7, 6), ONE, frac(2, 5), frac(-1, 2)];
+    const values = EGPTFFT.forward(c);
+    const recovered = EGPTFFT.inverse(values);
+    assertEqPoly(recovered, c, 'fractional N=5');
+});
+
+const snap = inputs.suite.getResults();
+return { rt: snap };
+</cell>
+
+<cell type="markdown">
+## Horner agreement test
+
+### Test 3 — `forward(c)` agrees with per-point `EGPTPolynomial.evaluateAt`
+
+`EGPTFFT.forward(c, N)` must return the same values as evaluating `c` at each node `k/N`
+individually via `EGPTPolynomial.evaluateAt`.
+
+This is T1 from the canonical chain: the transform IS Horner evaluation at uniform nodes.
+
+**Note on error-message construction:** the message strings are built lazily (inside the
+catch branch only) to avoid calling `.breakSymbolicToString()` on values that are equal —
+calling it eagerly would throw `DiscontinuumViolationError` for any value that actually
+passes the `.equals()` check.
+</cell>
+
+<cell type="js" lane="math" id="fft-horner-agree" in="suite" out="ha">
+const { math } = caps;
+const { EGPTFFT, EGPTPolynomial, EGPTReal } = math;
+const { test, assert, intN, frac } = inputs.suite;
+
+console.log('\n[EGPTFFT] forward agrees with per-point Horner evaluation');
+
+test('forward(c) agrees with per-point Horner evaluation', () => {
+    const c = [intN(5), intN(-2), intN(7), intN(-1)];
+    const N = c.length;
+    const values = EGPTFFT.forward(c, N);
+    for (let k = 0; k < N; k++) {
+        const x = EGPTReal.fromRational(BigInt(k), BigInt(N));
+        const expected = EGPTPolynomial.evaluateAt(c, x);
+        // Build the diagnostic string ONLY when the check fails (lazy construction)
+        // to avoid DiscontinuumViolationError on equal values.
+        if (!values[k].equals(expected)) {
+            throw new Error(
+                'bin ' + k + ': forward ' + values[k].breakSymbolicToString() +
+                ' vs Horner ' + expected.breakSymbolicToString()
+            );
+        }
+    }
+});
+
+const snap = inputs.suite.getResults();
+return { ha: snap };
+</cell>
+
+<cell type="markdown">
+## Summary
+
+Final tally across all three tests.
+</cell>
+
+<cell type="js" lane="math" id="fft-summary" in="ha">
+const { passed, failed, failures } = inputs.ha;
+const total = passed + failed;
+
+console.log('');
+console.log('='.repeat(60));
+console.log('Results: ' + passed + ' passed, ' + failed + ' failed  (total: ' + total + ')');
+if (failures.length > 0) {
+    console.log('Failed tests:');
+    failures.forEach((f) => console.log('  - ' + f));
+}
+console.log('='.repeat(60));
+
+if (failed > 0) throw new Error('[EGPTFFTTest] ' + failed + ' test(s) failed');
+</cell>
+
+</frqtl-notebook>

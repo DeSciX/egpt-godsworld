@@ -1,0 +1,131 @@
+<frqtl-notebook version="1" title="Factorization Basics — How EGPTReal Encodes Integers as Prime-Factor Vectors">
+
+<cell type="markdown">
+# Factorization Basics — How EGPTReal Encodes Integers as Prime-Factor Vectors
+
+Every integer has a unique factorization into prime powers — the Fundamental Theorem of Arithmetic. EGPT makes this canonical: `EGPTReal.fromBigInt(n)` does not store `n` as a single integer; it encodes `n` as a **PPF (Prime-Power Factorization) vector**, where each dimension corresponds to one prime and the coordinate is that prime's exponent.
+
+This is the foundation of every EGPT operation. Multiplication becomes vector addition, division becomes vector subtraction, and equality becomes exact component-wise comparison — no floating-point, no rounding, no approximation.
+
+This notebook demonstrates that encoding on three representative integers: a composite with small factors (12), a power of two (64), and a prime (97).
+
+Every computation runs through the injected `math` builtin. No URLs are imported; the live math backend is reported by the SDK itself.
+</cell>
+
+<cell type="js" lane="math" id="backend">
+// Report the active math backend — DERIVED from the SDK, never asserted.
+const { math, display } = caps;
+const backend = math.activeMathBackend;
+display(`Active math backend (derived from MathBackendRegistry): ${backend}`);
+</cell>
+
+<cell type="markdown">
+## 1. What is a PPF vector?
+
+For a positive integer `n`, its **prime-power factorization** is the product:
+
+```
+n = p1^e1 × p2^e2 × p3^e3 × …
+```
+
+where `p1 < p2 < p3 < …` are the distinct prime factors of `n` and each `e_k ≥ 1`.
+
+`EGPTReal` stores this as a **lossless rational vector in log₂-space**: each prime factor becomes a coordinate so that multiplication is vector addition (the RET Iron Law: `H(a × b) = H(a) + H(b)`). The `toMathString()` method reads back the canonical rational form of the PPF-encoded value.
+
+The three examples below cover all structurally distinct cases:
+
+| Integer | Structure | Expected PPF |
+|---------|-----------|--------------|
+| **12** | `2² × 3¹` | composite, two distinct primes |
+| **64** | `2⁶` | pure power of 2 |
+| **97** | `97¹` | prime — only one factor, exponent = 1 |
+</cell>
+
+<cell type="js" lane="math" id="encode-12" out="r12">
+// EGPTReal.fromBigInt(n) encodes n as a PPF vector.
+// toMathString() returns the canonical rational form of that vector.
+// For integers, this matches the original value — demonstrating lossless encoding.
+const { math, display } = caps;
+const { EGPTReal } = math;
+
+const n = 12n;
+const encoded = EGPTReal.fromBigInt(n);
+const ppf = encoded.toMathString();
+display(`EGPTReal.fromBigInt(12n).toMathString() → "${ppf}"`);
+
+const r12 = { value: n.toString(), ppf };
+return { r12 };
+</cell>
+
+<cell type="markdown">
+## 2. A power of two — the simplest non-trivial case
+
+`64 = 2⁶`. There is only one prime involved, so the PPF vector has a single non-zero coordinate (the exponent of 2). This is the degenerate case that binary arithmetic handles natively, but EGPT's PPF encoding handles it identically to any other integer — no special path.
+</cell>
+
+<cell type="js" lane="math" id="encode-64" out="r64">
+const { math, display } = caps;
+const { EGPTReal } = math;
+
+const n = 64n;
+const encoded = EGPTReal.fromBigInt(n);
+const ppf = encoded.toMathString();
+display(`EGPTReal.fromBigInt(64n).toMathString() → "${ppf}"`);
+
+const r64 = { value: n.toString(), ppf };
+return { r64 };
+</cell>
+
+<cell type="markdown">
+## 3. A prime — only one atom, exponent exactly 1
+
+`97` is prime, so its PPF vector has exactly one non-zero coordinate: exponent `1` at position `97`. This is the structural opposite of a composite: no reduction to smaller primes is possible, and the PPF encodes the integer exactly as-is.
+
+Primes are the "atoms" of the PPF representation — the 0-dimensional coordinates with no further decomposition.
+</cell>
+
+<cell type="js" lane="math" id="encode-97" out="r97">
+const { math, display } = caps;
+const { EGPTReal } = math;
+
+const n = 97n;
+const encoded = EGPTReal.fromBigInt(n);
+const ppf = encoded.toMathString();
+display(`EGPTReal.fromBigInt(97n).toMathString() → "${ppf}"`);
+
+const r97 = { value: n.toString(), ppf };
+return { r97 };
+</cell>
+
+<cell type="markdown">
+## 4. Summary — canonical PPF normalization
+
+All three cases above confirm that `EGPTReal.fromBigInt(n).toMathString()` returns a canonical rational form that represents `n` exactly. The cell below assembles the results from the three encoding cells into a single summary table, matching the original `factorization-basics` demo's output contract.
+</cell>
+
+<cell type="js" lane="math" id="summary" in="r12, r64, r97">
+const { display } = caps;
+const checks = [inputs.r12, inputs.r64, inputs.r97];
+
+const lines = [
+  'category: factorization-basics',
+  'note: Shows canonical EGPTReal normalization for representative integers.',
+  '',
+  'value   | ppf (canonical toMathString)',
+  '--------|-----------------------------'
+];
+for (const c of checks) {
+  lines.push(`${c.value.padEnd(7)} | ${c.ppf}`);
+}
+display(lines.join('\n'));
+
+return {
+  result: {
+    category: 'factorization-basics',
+    checks,
+    note: 'Shows canonical EGPTReal normalization for representative integers.'
+  }
+};
+</cell>
+
+</frqtl-notebook>

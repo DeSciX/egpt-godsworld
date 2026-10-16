@@ -1,0 +1,703 @@
+<frqtl-notebook version="1" title="EGPT Polynomial Test Suite — Arithmetic, Transforms, and Factor Detection">
+
+<cell type="markdown">
+# EGPT Polynomial Test Suite
+
+This notebook ports the canonical polynomial test suite authored by E. Abadir. It exercises `EGPTPolynomial` — the polynomial algebra layer over `EGPTReal` exact rationals — at three transform sizes (N=32, N=64, N=128) and verifies that the library stays entirely in canonical space (no `toFloat()`, no `toBigInt()` for comparisons).
+
+**What is tested:**
+
+- **Phase 1 — Basic arithmetic:** `add`, `subtract`, `multiply`, `divide`, `evaluateAt`, `equals`, `trimZeros`, `degree` on small integer and rational polynomials.
+- **Phases 2–3 — N=32 transforms:** forward evaluation at k/N sample points, and the inverse round-trip (forward then inverse recovers the original coefficients exactly), including polynomials with fractional coefficients.
+- **Phases 4–5 — N=64 transforms:** same battery at the next size.
+- **Phases 6–7 — N=128 transforms:** same battery at the largest size.
+- **Phase 8 — Value representation:** `evaluateValueRepresentation(k, p)` returns an integer result exactly when `p` is a factor of `k`, and a non-integer otherwise.
+
+All comparisons use `.equals()` on `EGPTReal` values — the canonical exactness criterion.
+</cell>
+
+<cell type="markdown">
+## Test harness setup
+
+`TestFramework` is not on the SDK surface — it is inlined here. The harness accumulates pass/fail results so the final summary cell can report totals.
+</cell>
+
+<cell type="js" lane="math" id="poly-harness" out="suite">
+const { math } = caps;
+
+class TestFramework {
+  constructor() {
+    this.tests = [];
+    this.categories = {};
+  }
+
+  test(description, category, testFunction) {
+    const result = { description, category, passed: false, error: null };
+    try {
+      result.passed = testFunction();
+      if (result.passed === undefined) result.passed = true;
+    } catch (error) {
+      result.passed = false;
+      result.error = error.message;
+    }
+    this.tests.push(result);
+    if (!this.categories[category]) this.categories[category] = [];
+    this.categories[category].push(result);
+    const status = result.passed ? 'PASS' : 'FAIL';
+    const errMsg = result.error ? ` (${result.error})` : '';
+    console.log(`${status}: ${description}${errMsg}`);
+  }
+
+  getSummary() {
+    const total  = this.tests.length;
+    const passed = this.tests.filter(t => t.passed).length;
+    const failed = total - passed;
+    const lines  = [];
+    lines.push('='.repeat(60));
+    lines.push('TEST SUMMARY');
+    lines.push('='.repeat(60));
+    for (const [cat, catTests] of Object.entries(this.categories)) {
+      const cp = catTests.filter(t => t.passed).length;
+      lines.push(`  ${cat}: ${cp}/${catTests.length} passed`);
+    }
+    lines.push('-'.repeat(60));
+    lines.push(`TOTAL: ${passed}/${total} tests passed`);
+    lines.push(`SUCCESS RATE: ${((passed / total) * 100).toFixed(1)}%`);
+    if (failed > 0) {
+      lines.push('\nFAILED TESTS:');
+      for (const t of this.tests.filter(t => !t.passed)) {
+        lines.push(`  - [${t.category}] ${t.description}${t.error ? ': ' + t.error : ''}`);
+      }
+    }
+    lines.push('='.repeat(60));
+    return lines.join('\n');
+  }
+}
+
+const test = new TestFramework();
+return { suite: test };
+</cell>
+
+<cell type="markdown">
+## Phase 1 — Basic arithmetic
+
+These tests cover the foundational operations: `add`, `subtract`, `multiply`, `divide`, `evaluateAt`, `equals`, `trimZeros`, and `degree`. Polynomials are represented as coefficient arrays `[a₀, a₁, …, aₙ]` where index `i` is the coefficient of `xⁱ`. Every coefficient is an `EGPTReal` exact rational.
+</cell>
+
+<cell type="js" lane="math" id="poly-phase1" in="suite" out="suite">
+const { math } = caps;
+const { EGPTReal, EGPTPolynomial } = math;
+const test = inputs.suite;
+
+console.log('--- PHASE 1: Basic Arithmetic Tests ---');
+
+// Polynomial addition: same length
+test.test('Polynomial addition: [1,2] + [3,4] = [4,6]', 'Arithmetic', () => {
+  const poly1 = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(2n)];
+  const poly2 = [EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(4n)];
+  const result = EGPTPolynomial.add(poly1, poly2);
+  const expected = [EGPTReal.fromBigInt(4n), EGPTReal.fromBigInt(6n)];
+  return EGPTPolynomial.equals(result, expected);
+});
+
+// Polynomial addition: different lengths — longer wins
+test.test('Polynomial addition with different lengths', 'Arithmetic', () => {
+  const poly1 = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(3n)];
+  const poly2 = [EGPTReal.fromBigInt(5n), EGPTReal.fromBigInt(7n)];
+  const result = EGPTPolynomial.add(poly1, poly2);
+  const expected = [EGPTReal.fromBigInt(6n), EGPTReal.fromBigInt(9n), EGPTReal.fromBigInt(3n)];
+  return EGPTPolynomial.equals(result, expected);
+});
+
+// Polynomial subtraction
+test.test('Polynomial subtraction: [5,8] - [2,3] = [3,5]', 'Arithmetic', () => {
+  const poly1 = [EGPTReal.fromBigInt(5n), EGPTReal.fromBigInt(8n)];
+  const poly2 = [EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(3n)];
+  const result = EGPTPolynomial.subtract(poly1, poly2);
+  const expected = [EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(5n)];
+  return EGPTPolynomial.equals(result, expected);
+});
+
+// Polynomial multiplication: (1 + 2x)(3 + 4x) = 3 + 10x + 8x²
+test.test('Polynomial multiplication: [1,2] * [3,4] = [3,10,8]', 'Arithmetic', () => {
+  const poly1 = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(2n)];
+  const poly2 = [EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(4n)];
+  const result = EGPTPolynomial.multiply(poly1, poly2);
+  const expected = [EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(10n), EGPTReal.fromBigInt(8n)];
+  return EGPTPolynomial.equals(result, expected);
+});
+
+// Multiplication by a constant scalar polynomial
+test.test('Polynomial multiplication by constant', 'Arithmetic', () => {
+  const poly1 = [EGPTReal.fromBigInt(5n)];
+  const poly2 = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(3n)];
+  const result = EGPTPolynomial.multiply(poly1, poly2);
+  const expected = [EGPTReal.fromBigInt(5n), EGPTReal.fromBigInt(10n), EGPTReal.fromBigInt(15n)];
+  return EGPTPolynomial.equals(result, expected);
+});
+
+// Division with a fractional quotient
+// (6 + 11x + 6x² + x³) ÷ (2 + 3x) — quotient has rational coefficients
+test.test('Polynomial division with fractional quotient', 'Arithmetic', () => {
+  const dividend = [
+    EGPTReal.fromBigInt(6n), EGPTReal.fromBigInt(11n),
+    EGPTReal.fromBigInt(6n), EGPTReal.fromBigInt(1n)
+  ];
+  const divisor = [EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(3n)];
+  const { quotient, remainder } = EGPTPolynomial.divide(dividend, divisor);
+  const expectedQuot = [
+    EGPTReal.fromRational(67n, 27n),
+    EGPTReal.fromRational(16n, 9n),
+    EGPTReal.fromRational(1n, 3n)
+  ];
+  const expectedRem = [EGPTReal.fromRational(28n, 27n)];
+  return EGPTPolynomial.equals(quotient, expectedQuot) &&
+         EGPTPolynomial.equals(remainder, expectedRem);
+});
+
+// Division with integer remainder — verify via reconstruction
+// (5 + 4x + 3x²) ÷ (2 + x): dividend = divisor * quotient + remainder
+test.test('Polynomial division with remainder (reconstruction check)', 'Arithmetic', () => {
+  const dividend = [EGPTReal.fromBigInt(5n), EGPTReal.fromBigInt(4n), EGPTReal.fromBigInt(3n)];
+  const divisor  = [EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(1n)];
+  const { quotient, remainder } = EGPTPolynomial.divide(dividend, divisor);
+  const check = EGPTPolynomial.add(EGPTPolynomial.multiply(divisor, quotient), remainder);
+  return EGPTPolynomial.equals(dividend, check);
+});
+
+// evaluateAt: 3 + 2x + x² at x=2 should equal 11
+test.test('Polynomial evaluate at x=2: 3 + 2x + x² = 11', 'Arithmetic', () => {
+  const poly = [EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(1n)];
+  const result = EGPTPolynomial.evaluateAt(poly, EGPTReal.fromBigInt(2n));
+  return result.equals(EGPTReal.fromBigInt(11n));
+});
+
+// evaluateAt: 4 + 2x at x=1/2 should equal 5 (rational point)
+test.test('Polynomial evaluate at x=1/2: 4 + 2x = 5', 'Arithmetic', () => {
+  const poly = [EGPTReal.fromBigInt(4n), EGPTReal.fromBigInt(2n)];
+  const result = EGPTPolynomial.evaluateAt(poly, EGPTReal.fromRational(1n, 2n));
+  return result.equals(EGPTReal.fromBigInt(5n));
+});
+
+// equals: identical polynomials
+test.test('Polynomial equals comparison (identical)', 'Arithmetic', () => {
+  const poly1 = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(3n)];
+  const poly2 = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(3n)];
+  return EGPTPolynomial.equals(poly1, poly2);
+});
+
+// equals: different polynomials
+test.test('Polynomial equals comparison (different)', 'Arithmetic', () => {
+  const poly1 = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(2n)];
+  const poly2 = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(3n)];
+  return !EGPTPolynomial.equals(poly1, poly2);
+});
+
+// Rational coefficients
+test.test('Polynomial with rational coefficients: addition', 'Arithmetic', () => {
+  const poly1 = [EGPTReal.fromRational(1n, 2n), EGPTReal.fromRational(3n, 4n)];
+  const poly2 = [EGPTReal.fromRational(1n, 4n), EGPTReal.fromRational(1n, 4n)];
+  const result = EGPTPolynomial.add(poly1, poly2);
+  const expected = [EGPTReal.fromRational(3n, 4n), EGPTReal.fromBigInt(1n)];
+  return EGPTPolynomial.equals(result, expected);
+});
+
+// trimZeros removes trailing zero coefficients
+test.test('trimZeros removes trailing zeros', 'Arithmetic', () => {
+  const poly = [
+    EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(2n),
+    EGPTReal.fromBigInt(0n), EGPTReal.fromBigInt(0n)
+  ];
+  const result = EGPTPolynomial.trimZeros(poly);
+  const expected = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(2n)];
+  return EGPTPolynomial.equals(result, expected);
+});
+
+// degree: highest non-zero exponent
+test.test('Degree calculation for polynomial', 'Arithmetic', () => {
+  const poly = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(3n)];
+  return EGPTPolynomial.degree(poly) === 2;
+});
+
+return { suite: test };
+</cell>
+
+<cell type="markdown">
+## Phase 2 — Forward transform at N=32
+
+`EGPTPolynomial.forwardTransform(coeffs, N)` evaluates the polynomial at the N rational points `k/N` for `k = 0, 1, …, N−1`. These tests check specific expected values for simple polynomials: an impulse at position 0 must give constant samples; a constant polynomial `[c]` padded to N terms must produce all samples equal to `c`; linear and quadratic polynomials are checked at selected sample indices.
+</cell>
+
+<cell type="js" lane="math" id="poly-phase2" in="suite" out="suite">
+const { math } = caps;
+const { EGPTReal, EGPTPolynomial } = math;
+const test = inputs.suite;
+
+console.log('--- PHASE 2: Forward Transform Tests (N=32) ---');
+
+test.test('N=32 Forward: Impulse at position 0', 'N=32 Forward', () => {
+  const coeffs = new Array(32).fill(null).map(() => EGPTReal.fromBigInt(0n));
+  coeffs[0] = EGPTReal.fromBigInt(1n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 32);
+  const expected = EGPTReal.fromBigInt(1n);
+  return samples.every(s => s.equals(expected));
+});
+
+test.test('N=32 Forward: Impulse at position 15', 'N=32 Forward', () => {
+  const coeffs = new Array(32).fill(null).map(() => EGPTReal.fromBigInt(0n));
+  coeffs[15] = EGPTReal.fromBigInt(1n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 32);
+  return samples.length === 32 && samples.every(s => s instanceof EGPTReal);
+});
+
+test.test('N=32 Forward: Constant polynomial [5]', 'N=32 Forward', () => {
+  const coeffs = new Array(32).fill(null).map(() => EGPTReal.fromBigInt(0n));
+  coeffs[0] = EGPTReal.fromBigInt(5n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 32);
+  const expected = EGPTReal.fromBigInt(5n);
+  return samples.every(s => s.equals(expected));
+});
+
+// Linear polynomial 1 + x evaluated at k/32:
+// sample[0] = 1 + 0 = 1; sample[16] = 1 + 16/32 = 3/2
+test.test('N=32 Forward: Linear polynomial [1,1]', 'N=32 Forward', () => {
+  const coeffs = new Array(32).fill(null).map(() => EGPTReal.fromBigInt(0n));
+  coeffs[0] = EGPTReal.fromBigInt(1n);
+  coeffs[1] = EGPTReal.fromBigInt(1n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 32);
+  return samples[0].equals(EGPTReal.fromBigInt(1n)) &&
+         samples[16].equals(EGPTReal.fromRational(3n, 2n));
+});
+
+// Quadratic 1 + x²: sample[0] = 1 + 0 = 1
+test.test('N=32 Forward: Quadratic polynomial [1,0,1]', 'N=32 Forward', () => {
+  const coeffs = new Array(32).fill(null).map(() => EGPTReal.fromBigInt(0n));
+  coeffs[0] = EGPTReal.fromBigInt(1n);
+  coeffs[2] = EGPTReal.fromBigInt(1n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 32);
+  return samples[0].equals(EGPTReal.fromBigInt(1n)) && samples.length === 32;
+});
+
+// x^31: sample[0] = 0^31 = 0
+test.test('N=32 Forward: High-degree monomial x^31', 'N=32 Forward', () => {
+  const coeffs = new Array(32).fill(null).map(() => EGPTReal.fromBigInt(0n));
+  coeffs[31] = EGPTReal.fromBigInt(1n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 32);
+  return samples[0].equals(EGPTReal.fromBigInt(0n)) && samples.length === 32;
+});
+
+return { suite: test };
+</cell>
+
+<cell type="markdown">
+## Phase 3 — Inverse (round-trip) transform at N=32
+
+`inverseTransform(forwardTransform(c), N)` must recover `c` exactly — bit-for-bit in rational arithmetic. This is the core property the library must satisfy. The phase also includes **fractional-coefficient** polynomials (9 tests), verifying that the round-trip holds for polynomials with `1/2`, `1/3`, `−3/4`, large denominators, and sparse distributions.
+</cell>
+
+<cell type="js" lane="math" id="poly-phase3" in="suite" out="suite">
+const { math } = caps;
+const { EGPTReal, EGPTPolynomial } = math;
+const test = inputs.suite;
+
+console.log('--- PHASE 3: Inverse Transform / Round-trip Tests (N=32) ---');
+
+function roundTrip32(original) {
+  const samples   = EGPTPolynomial.forwardTransform(original, 32);
+  const recovered = EGPTPolynomial.inverseTransform(samples, 32);
+  return EGPTPolynomial.equals(original, recovered);
+}
+
+function makeCoeffs32() {
+  return new Array(32).fill(null).map(() => EGPTReal.fromBigInt(0n));
+}
+
+test.test('N=32 Round-trip: Impulse at position 0', 'N=32 Inverse', () => {
+  const orig = makeCoeffs32(); orig[0] = EGPTReal.fromBigInt(1n);
+  return roundTrip32(orig);
+});
+
+test.test('N=32 Round-trip: Impulse at position 15', 'N=32 Inverse', () => {
+  const orig = makeCoeffs32(); orig[15] = EGPTReal.fromBigInt(1n);
+  return roundTrip32(orig);
+});
+
+test.test('N=32 Round-trip: Constant polynomial [5]', 'N=32 Inverse', () => {
+  const orig = makeCoeffs32(); orig[0] = EGPTReal.fromBigInt(5n);
+  return roundTrip32(orig);
+});
+
+test.test('N=32 Round-trip: Linear polynomial [1,1]', 'N=32 Inverse', () => {
+  const orig = makeCoeffs32();
+  orig[0] = EGPTReal.fromBigInt(1n); orig[1] = EGPTReal.fromBigInt(1n);
+  return roundTrip32(orig);
+});
+
+test.test('N=32 Round-trip: Quadratic polynomial [1,0,1]', 'N=32 Inverse', () => {
+  const orig = makeCoeffs32();
+  orig[0] = EGPTReal.fromBigInt(1n); orig[2] = EGPTReal.fromBigInt(1n);
+  return roundTrip32(orig);
+});
+
+test.test('N=32 Round-trip: High-degree monomial x^31', 'N=32 Inverse', () => {
+  const orig = makeCoeffs32(); orig[31] = EGPTReal.fromBigInt(1n);
+  return roundTrip32(orig);
+});
+
+// -- Fractional coefficient tests --
+test.test('N=32 Round-trip: Fractional constant [1/2]', 'N=32 Fractional', () => {
+  const orig = makeCoeffs32(); orig[0] = EGPTReal.fromRational(1n, 2n);
+  return roundTrip32(orig);
+});
+
+test.test('N=32 Round-trip: Fractional linear [1/2, 1/3]', 'N=32 Fractional', () => {
+  const orig = makeCoeffs32();
+  orig[0] = EGPTReal.fromRational(1n, 2n); orig[1] = EGPTReal.fromRational(1n, 3n);
+  return roundTrip32(orig);
+});
+
+test.test('N=32 Round-trip: Fractional quadratic [3/4, 1/2, 1/4]', 'N=32 Fractional', () => {
+  const orig = makeCoeffs32();
+  orig[0] = EGPTReal.fromRational(3n, 4n);
+  orig[1] = EGPTReal.fromRational(1n, 2n);
+  orig[2] = EGPTReal.fromRational(1n, 4n);
+  return roundTrip32(orig);
+});
+
+test.test('N=32 Round-trip: Mixed integer/fraction [2, 1/3, 0, 5/7]', 'N=32 Fractional', () => {
+  const orig = makeCoeffs32();
+  orig[0] = EGPTReal.fromBigInt(2n);
+  orig[1] = EGPTReal.fromRational(1n, 3n);
+  orig[3] = EGPTReal.fromRational(5n, 7n);
+  return roundTrip32(orig);
+});
+
+test.test('N=32 Round-trip: Negative fractions [-1/2, 3/4, -2/3]', 'N=32 Fractional', () => {
+  const orig = makeCoeffs32();
+  orig[0] = EGPTReal.fromRational(-1n, 2n);
+  orig[1] = EGPTReal.fromRational(3n, 4n);
+  orig[2] = EGPTReal.fromRational(-2n, 3n);
+  return roundTrip32(orig);
+});
+
+test.test('N=32 Round-trip: Dense fractions [1/2, 1/3, 1/4, 1/5, 1/6]', 'N=32 Fractional', () => {
+  const orig = makeCoeffs32();
+  orig[0] = EGPTReal.fromRational(1n, 2n); orig[1] = EGPTReal.fromRational(1n, 3n);
+  orig[2] = EGPTReal.fromRational(1n, 4n); orig[3] = EGPTReal.fromRational(1n, 5n);
+  orig[4] = EGPTReal.fromRational(1n, 6n);
+  return roundTrip32(orig);
+});
+
+test.test('N=32 Round-trip: Large denominators [1/100, 7/50]', 'N=32 Fractional', () => {
+  const orig = makeCoeffs32();
+  orig[0] = EGPTReal.fromRational(1n, 100n); orig[1] = EGPTReal.fromRational(7n, 50n);
+  return roundTrip32(orig);
+});
+
+test.test('N=32 Round-trip: High-degree fractional monomial [5/7] at x^31', 'N=32 Fractional', () => {
+  const orig = makeCoeffs32(); orig[31] = EGPTReal.fromRational(5n, 7n);
+  return roundTrip32(orig);
+});
+
+test.test('N=32 Round-trip: Complex sparse fractions', 'N=32 Fractional', () => {
+  const orig = makeCoeffs32();
+  orig[0]  = EGPTReal.fromBigInt(2n);
+  orig[1]  = EGPTReal.fromRational(-3n, 4n);
+  orig[3]  = EGPTReal.fromRational(1n, 2n);
+  orig[7]  = EGPTReal.fromRational(-5n, 3n);
+  orig[20] = EGPTReal.fromRational(7n, 11n);
+  return roundTrip32(orig);
+});
+
+return { suite: test };
+</cell>
+
+<cell type="markdown">
+## Phase 4 — Forward transform at N=64
+
+Same battery as Phase 2 but at N=64. The extra size validates that the rational-point evaluation `k/64` grid produces correct values.
+</cell>
+
+<cell type="js" lane="math" id="poly-phase4" in="suite" out="suite">
+const { math } = caps;
+const { EGPTReal, EGPTPolynomial } = math;
+const test = inputs.suite;
+
+console.log('--- PHASE 4: Forward Transform Tests (N=64) ---');
+
+function makeCoeffs64() {
+  return new Array(64).fill(null).map(() => EGPTReal.fromBigInt(0n));
+}
+
+test.test('N=64 Forward: Impulse at position 0', 'N=64 Forward', () => {
+  const coeffs = makeCoeffs64(); coeffs[0] = EGPTReal.fromBigInt(1n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 64);
+  return samples.every(s => s.equals(EGPTReal.fromBigInt(1n)));
+});
+
+test.test('N=64 Forward: Constant polynomial [7]', 'N=64 Forward', () => {
+  const coeffs = makeCoeffs64(); coeffs[0] = EGPTReal.fromBigInt(7n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 64);
+  return samples.every(s => s.equals(EGPTReal.fromBigInt(7n)));
+});
+
+// Linear 2 + 3x: sample[0] = 2 + 3(0) = 2
+test.test('N=64 Forward: Linear polynomial [2,3]', 'N=64 Forward', () => {
+  const coeffs = makeCoeffs64();
+  coeffs[0] = EGPTReal.fromBigInt(2n); coeffs[1] = EGPTReal.fromBigInt(3n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 64);
+  return samples[0].equals(EGPTReal.fromBigInt(2n)) && samples.length === 64;
+});
+
+// Sparse: non-zero at positions 0, 10, 20, 30
+test.test('N=64 Forward: Sparse polynomial with gaps', 'N=64 Forward', () => {
+  const coeffs = makeCoeffs64();
+  coeffs[0] = EGPTReal.fromBigInt(1n); coeffs[10] = EGPTReal.fromBigInt(1n);
+  coeffs[20] = EGPTReal.fromBigInt(1n); coeffs[30] = EGPTReal.fromBigInt(1n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 64);
+  return samples.length === 64 && samples.every(s => s instanceof EGPTReal);
+});
+
+// x^63: sample[0] = 0^63 = 0
+test.test('N=64 Forward: High-degree monomial x^63', 'N=64 Forward', () => {
+  const coeffs = makeCoeffs64(); coeffs[63] = EGPTReal.fromBigInt(1n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 64);
+  return samples[0].equals(EGPTReal.fromBigInt(0n)) && samples.length === 64;
+});
+
+return { suite: test };
+</cell>
+
+<cell type="markdown">
+## Phase 5 — Inverse (round-trip) transform at N=64
+
+Exact coefficient recovery after forward→inverse at N=64.
+</cell>
+
+<cell type="js" lane="math" id="poly-phase5" in="suite" out="suite">
+const { math } = caps;
+const { EGPTReal, EGPTPolynomial } = math;
+const test = inputs.suite;
+
+console.log('--- PHASE 5: Inverse Transform / Round-trip Tests (N=64) ---');
+
+function makeCoeffs64() {
+  return new Array(64).fill(null).map(() => EGPTReal.fromBigInt(0n));
+}
+
+function roundTrip64(original) {
+  const samples   = EGPTPolynomial.forwardTransform(original, 64);
+  const recovered = EGPTPolynomial.inverseTransform(samples, 64);
+  return EGPTPolynomial.equals(original, recovered);
+}
+
+test.test('N=64 Round-trip: Impulse at position 0', 'N=64 Inverse', () => {
+  const orig = makeCoeffs64(); orig[0] = EGPTReal.fromBigInt(1n);
+  return roundTrip64(orig);
+});
+
+test.test('N=64 Round-trip: Constant polynomial [7]', 'N=64 Inverse', () => {
+  const orig = makeCoeffs64(); orig[0] = EGPTReal.fromBigInt(7n);
+  return roundTrip64(orig);
+});
+
+test.test('N=64 Round-trip: Linear polynomial [2,3]', 'N=64 Inverse', () => {
+  const orig = makeCoeffs64();
+  orig[0] = EGPTReal.fromBigInt(2n); orig[1] = EGPTReal.fromBigInt(3n);
+  return roundTrip64(orig);
+});
+
+test.test('N=64 Round-trip: Sparse polynomial with gaps', 'N=64 Inverse', () => {
+  const orig = makeCoeffs64();
+  orig[0] = EGPTReal.fromBigInt(1n); orig[10] = EGPTReal.fromBigInt(1n);
+  orig[20] = EGPTReal.fromBigInt(1n); orig[30] = EGPTReal.fromBigInt(1n);
+  return roundTrip64(orig);
+});
+
+test.test('N=64 Round-trip: High-degree monomial x^63', 'N=64 Inverse', () => {
+  const orig = makeCoeffs64(); orig[63] = EGPTReal.fromBigInt(1n);
+  return roundTrip64(orig);
+});
+
+return { suite: test };
+</cell>
+
+<cell type="markdown">
+## Phase 6 — Forward transform at N=128
+
+The largest transform size in the suite. N=128 requires 128 polynomial evaluations at rational points `k/128`.
+</cell>
+
+<cell type="js" lane="math" id="poly-phase6" in="suite" out="suite">
+const { math } = caps;
+const { EGPTReal, EGPTPolynomial } = math;
+const test = inputs.suite;
+
+console.log('--- PHASE 6: Forward Transform Tests (N=128) ---');
+
+function makeCoeffs128() {
+  return new Array(128).fill(null).map(() => EGPTReal.fromBigInt(0n));
+}
+
+test.test('N=128 Forward: Impulse at position 0', 'N=128 Forward', () => {
+  const coeffs = makeCoeffs128(); coeffs[0] = EGPTReal.fromBigInt(1n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 128);
+  return samples.every(s => s.equals(EGPTReal.fromBigInt(1n)));
+});
+
+test.test('N=128 Forward: Constant polynomial [11]', 'N=128 Forward', () => {
+  const coeffs = makeCoeffs128(); coeffs[0] = EGPTReal.fromBigInt(11n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 128);
+  return samples.every(s => s.equals(EGPTReal.fromBigInt(11n)));
+});
+
+// Linear 1 + 2x: sample[0] = 1 + 2(0) = 1
+test.test('N=128 Forward: Linear polynomial [1,2]', 'N=128 Forward', () => {
+  const coeffs = makeCoeffs128();
+  coeffs[0] = EGPTReal.fromBigInt(1n); coeffs[1] = EGPTReal.fromBigInt(2n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 128);
+  return samples[0].equals(EGPTReal.fromBigInt(1n)) && samples.length === 128;
+});
+
+// Sparse at positions 0, 16, 32, 64
+test.test('N=128 Forward: Sparse polynomial', 'N=128 Forward', () => {
+  const coeffs = makeCoeffs128();
+  coeffs[0] = EGPTReal.fromBigInt(1n); coeffs[16] = EGPTReal.fromBigInt(1n);
+  coeffs[32] = EGPTReal.fromBigInt(1n); coeffs[64] = EGPTReal.fromBigInt(1n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 128);
+  return samples.length === 128 && samples.every(s => s instanceof EGPTReal);
+});
+
+// x^127: sample[0] = 0^127 = 0
+test.test('N=128 Forward: High-degree monomial x^127', 'N=128 Forward', () => {
+  const coeffs = makeCoeffs128(); coeffs[127] = EGPTReal.fromBigInt(1n);
+  const samples = EGPTPolynomial.forwardTransform(coeffs, 128);
+  return samples[0].equals(EGPTReal.fromBigInt(0n)) && samples.length === 128;
+});
+
+return { suite: test };
+</cell>
+
+<cell type="markdown">
+## Phase 7 — Inverse (round-trip) transform at N=128
+
+Exact coefficient recovery at N=128. The high-degree monomial `x^127` is the most demanding case.
+</cell>
+
+<cell type="js" lane="math" id="poly-phase7" in="suite" out="suite">
+const { math } = caps;
+const { EGPTReal, EGPTPolynomial } = math;
+const test = inputs.suite;
+
+console.log('--- PHASE 7: Inverse Transform / Round-trip Tests (N=128) ---');
+
+function makeCoeffs128() {
+  return new Array(128).fill(null).map(() => EGPTReal.fromBigInt(0n));
+}
+
+function roundTrip128(original) {
+  const samples   = EGPTPolynomial.forwardTransform(original, 128);
+  const recovered = EGPTPolynomial.inverseTransform(samples, 128);
+  return EGPTPolynomial.equals(original, recovered);
+}
+
+test.test('N=128 Round-trip: Impulse at position 0', 'N=128 Inverse', () => {
+  const orig = makeCoeffs128(); orig[0] = EGPTReal.fromBigInt(1n);
+  return roundTrip128(orig);
+});
+
+test.test('N=128 Round-trip: Constant polynomial [11]', 'N=128 Inverse', () => {
+  const orig = makeCoeffs128(); orig[0] = EGPTReal.fromBigInt(11n);
+  return roundTrip128(orig);
+});
+
+test.test('N=128 Round-trip: Linear polynomial [1,2]', 'N=128 Inverse', () => {
+  const orig = makeCoeffs128();
+  orig[0] = EGPTReal.fromBigInt(1n); orig[1] = EGPTReal.fromBigInt(2n);
+  return roundTrip128(orig);
+});
+
+test.test('N=128 Round-trip: Sparse polynomial', 'N=128 Inverse', () => {
+  const orig = makeCoeffs128();
+  orig[0] = EGPTReal.fromBigInt(1n); orig[16] = EGPTReal.fromBigInt(1n);
+  orig[32] = EGPTReal.fromBigInt(1n); orig[64] = EGPTReal.fromBigInt(1n);
+  return roundTrip128(orig);
+});
+
+test.test('N=128 Round-trip: High-degree monomial x^127', 'N=128 Inverse', () => {
+  const orig = makeCoeffs128(); orig[127] = EGPTReal.fromBigInt(1n);
+  return roundTrip128(orig);
+});
+
+return { suite: test };
+</cell>
+
+<cell type="markdown">
+## Phase 8 — Value representation (factor detection)
+
+`EGPTPolynomial.evaluateValueRepresentation(k, p)` computes the rational value `k/p`. When `p` is an exact factor of `k` this quotient is an integer — detectable via `EGPTReal.isInteger()` and retrievable as a `BigInt` via `breakSymbolicToApproximateBigInt()`. When `p` does not divide `k`, the result is a proper fraction and `isInteger()` returns `false`.
+
+This is the foundational divisibility test that underlies prime-factor detection in the EGPTMath bijection chain.
+</cell>
+
+<cell type="js" lane="math" id="poly-phase8" in="suite" out="suite">
+const { math } = caps;
+const { EGPTReal, EGPTPolynomial } = math;
+const test = inputs.suite;
+
+console.log('--- PHASE 8: Value Representation Tests (Factor Detection) ---');
+
+// 35 / 5 = 7 (exact) → isInteger() true, breakSymbolicToApproximateBigInt() === 7n
+test.test('Value representation: 35 / 5 (exact factor)', 'Value Representation', () => {
+  const entropy = EGPTPolynomial.evaluateValueRepresentation(
+    EGPTReal.fromBigInt(35n), EGPTReal.fromBigInt(5n)
+  );
+  return entropy.isInteger() && entropy.breakSymbolicToApproximateBigInt() === 7n;
+});
+
+// 35 / 6 — 6 does not divide 35 → isInteger() false
+test.test('Value representation: 35 / 6 (non-factor)', 'Value Representation', () => {
+  const entropy = EGPTPolynomial.evaluateValueRepresentation(
+    EGPTReal.fromBigInt(35n), EGPTReal.fromBigInt(6n)
+  );
+  return !entropy.isInteger();
+});
+
+// 77 / 7 = 11 (exact)
+test.test('Value representation: 77 / 7 (exact factor)', 'Value Representation', () => {
+  const entropy = EGPTPolynomial.evaluateValueRepresentation(
+    EGPTReal.fromBigInt(77n), EGPTReal.fromBigInt(7n)
+  );
+  return entropy.isInteger() && entropy.breakSymbolicToApproximateBigInt() === 11n;
+});
+
+// 77 / 8 — 8 does not divide 77
+test.test('Value representation: 77 / 8 (non-factor)', 'Value Representation', () => {
+  const entropy = EGPTPolynomial.evaluateValueRepresentation(
+    EGPTReal.fromBigInt(77n), EGPTReal.fromBigInt(8n)
+  );
+  return !entropy.isInteger();
+});
+
+return { suite: test };
+</cell>
+
+<cell type="markdown">
+## Summary
+
+All eight phases have run. The final cell prints the complete pass/fail accounting — the same summary the original test file emitted to the console.
+</cell>
+
+<cell type="js" lane="math" id="poly-summary" in="suite">
+const test = inputs.suite;
+const summary = test.getSummary();
+console.log(summary);
+
+const total  = test.tests.length;
+const passed = test.tests.filter(t => t.passed).length;
+if (passed < total) {
+  throw new Error(`Suite incomplete: ${passed}/${total} passed. See summary above.`);
+}
+</cell>
+
+</frqtl-notebook>

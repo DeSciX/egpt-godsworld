@@ -1,0 +1,542 @@
+<frqtl-notebook version="1" title="Prime Atom Polynomial — LFTA Bijection and Sparsity Bound">
+
+<cell type="markdown">
+# Prime Atom Polynomial — LFTA Bijection and Sparsity Bound
+
+The **Logarithmic Fundamental Theorem of Arithmetic (LFTA)** says that every natural number N decomposes additively in log-space:
+
+> log₂ N = Σ_{p | N} v_p(N) · log₂ p
+
+where v_p(N) is the p-adic valuation of N (how many times the prime p divides N). In the "numbers as waves" framing, each prime is a **pure frequency** and a composite N is a **superposition** of those frequencies with integer amplitudes v_p(N).
+
+`PrimeAtomPolynomial` exposes this bijection as a first-class object in the EGPTMath chain. Its methods are thin wrappers over integer operations that the Lean chain already proves:
+
+- `factorize(N)` → the coefficient vector `[{ prime, exponent }, …]`
+- `totient(N)` → Euler's φ(N) from the coefficient vector alone (no arithmetic on N needed)
+- `divisorsOf(n)` → sorted divisors
+- `omega(N)` / `bigOmega(N)` → distinct prime count / total atom count with multiplicity
+- `bitLength(N)` → ⌊log₂ N⌋ + 1 (the sparsity-degree bound)
+- `logspaceSum(N)` → pedagogical log-space string
+
+A key **sparsity bound** falls out of the LFTA: Ω(N) ≤ bitLength(N). Since 2 is the smallest prime atom, 2^(Ω(N)) ≤ N, so Ω(N) ≤ log₂ N &lt; bitLength(N). This means that no matter how large N is, the factorization vector is never longer than its bit-length.
+
+The final suite chains `PrimeAtomPolynomial` through a **prime-atom matMul** using the SDK's `factMultiply`, `reconstruct`, `refactorize`, and `makeMeter` helpers, demonstrating that multiplicative operations stay entirely in compressed (exponent-vector) space while additive accumulation forces visible boundary crossings.
+
+*(Ported from `sdk/egpt-math-sdk/src/examples/reference/PrimeAtomPolynomialTest.js`. All compute reaches the SDK through the `math` builtin.)*
+</cell>
+
+<cell type="markdown">
+## Setup — test harness
+
+A minimal `test` / `assert` / `assertFactors` harness, inlined here (these are not on the SDK surface). Phase cells receive it as `suite` and use it to accumulate pass/fail counts.
+</cell>
+
+<cell type="js" lane="math" id="pap-setup" out="suite">
+const { math } = caps;
+const { PrimeAtomPolynomial } = math;
+
+let passed = 0, failed = 0;
+const failures = [];
+
+function test(name, fn) {
+    try {
+        fn();
+        console.log(`  ok  — ${name}`);
+        passed++;
+    } catch (err) {
+        console.log(`  FAIL — ${name}\n        ${err.message}`);
+        failures.push({ name, message: err.message });
+        failed++;
+    }
+}
+
+function assert(cond, msg) {
+    if (!cond) throw new Error(msg || 'assertion failed');
+}
+
+function assertFactors(actual, expected) {
+    if (actual.length !== expected.length) {
+        throw new Error(
+            `length ${actual.length} vs ${expected.length}; got ${JSON.stringify(actual.map(f => ({ p: String(f.prime), e: String(f.exponent) })))}`
+        );
+    }
+    for (let i = 0; i < actual.length; i++) {
+        if (actual[i].prime !== expected[i][0] || actual[i].exponent !== expected[i][1]) {
+            throw new Error(
+                `index ${i}: got (${actual[i].prime}, ${actual[i].exponent}) expected (${expected[i][0]}, ${expected[i][1]})`
+            );
+        }
+    }
+}
+
+console.log('Test harness ready. PrimeAtomPolynomial loaded from math builtin.');
+return { suite: { test, assert, assertFactors, getPassed: () => passed, getFailed: () => failed, getFailures: () => failures } };
+</cell>
+
+<cell type="markdown">
+## Suite 1 — factorize / LFTA coefficient extraction
+
+`factorize(N)` extracts the prime-atom coefficient vector of N. Each `{ prime, exponent }` entry is a (p, v_p(N)) pair: the prime and the number of times it divides N. The vector is sorted by prime in increasing order and contains only atoms with nonzero exponent.
+
+- N = 1 has no prime factors → the empty vector (the "zero polynomial")
+- N = 2 → the single atom (2, 1)
+- N = 12 = 2²·3 → [(2,2), (3,1)]
+- N = 391 = 17·23 → the §2 example from the LFTA markdown
+- N = 1024 = 2¹⁰ → pure power of 2
+- N = 210 = 2·3·5·7 → the primorial; all exponents are 1
+- N = 97 (prime) → exits via the "n &gt; 1 tail" branch of trial division
+</cell>
+
+<cell type="js" lane="math" id="pap-suite1" in="suite" out="suite">
+const { math } = caps;
+const { PrimeAtomPolynomial } = math;
+const { test, assertFactors } = inputs.suite;
+
+console.log('\n[Suite 1] factorize / LFTA coefficient extraction');
+
+test('factorize(1) = [] (zero polynomial)', () => {
+    assertFactors(PrimeAtomPolynomial.factorize(1n), []);
+});
+
+test('factorize(2) = [(2, 1)]', () => {
+    assertFactors(PrimeAtomPolynomial.factorize(2n), [[2n, 1n]]);
+});
+
+test('factorize(12) = [(2, 2), (3, 1)]', () => {
+    assertFactors(PrimeAtomPolynomial.factorize(12n), [[2n, 2n], [3n, 1n]]);
+});
+
+test('factorize(391) = [(17, 1), (23, 1)]  (the §2 example in the markdown)', () => {
+    assertFactors(PrimeAtomPolynomial.factorize(391n), [[17n, 1n], [23n, 1n]]);
+});
+
+test('factorize(1024) = [(2, 10)]  (pure power of 2)', () => {
+    assertFactors(PrimeAtomPolynomial.factorize(1024n), [[2n, 10n]]);
+});
+
+test('factorize(210) = [(2,1),(3,1),(5,1),(7,1)]  (primorial)', () => {
+    assertFactors(PrimeAtomPolynomial.factorize(210n), [[2n, 1n], [3n, 1n], [5n, 1n], [7n, 1n]]);
+});
+
+test('factorize(97) = [(97, 1)]  (large prime, exits via n > 1 tail)', () => {
+    assertFactors(PrimeAtomPolynomial.factorize(97n), [[97n, 1n]]);
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Suite 2 — Euler's totient φ(N) from the LFTA coefficients
+
+Once the factorization vector is in hand, φ(N) is a **closed form on the coefficients**:
+
+> φ(N) = Π_p  p^(v_p(N) − 1) · (p − 1)
+
+No further arithmetic on N itself is needed. This is the LFTA giving us number-theoretic functions "for free" from the coefficient vector.
+
+A quick spot-check table: φ(1)=1, φ(7)=6, φ(8)=4, φ(10)=4, φ(15)=8, φ(21)=12, φ(35)=24, φ(36)=12, φ(100)=40, φ(1024)=512.
+</cell>
+
+<cell type="js" lane="math" id="pap-suite2" in="suite" out="suite">
+const { math } = caps;
+const { PrimeAtomPolynomial } = math;
+const { test } = inputs.suite;
+
+console.log('\n[Suite 2] totient φ(N) from the LFTA coefficients');
+
+function expectTotient(N, expected) {
+    const phi = PrimeAtomPolynomial.totient(N);
+    if (phi !== expected) {
+        throw new Error(`φ(${N}) = ${phi}, expected ${expected}`);
+    }
+}
+
+test('φ(1) = 1',      () => expectTotient(1n,    1n));
+test('φ(7) = 6',      () => expectTotient(7n,    6n));
+test('φ(8) = 4',      () => expectTotient(8n,    4n));
+test('φ(10) = 4',     () => expectTotient(10n,   4n));
+test('φ(15) = 8',     () => expectTotient(15n,   8n));
+test('φ(21) = 12',    () => expectTotient(21n,  12n));
+test('φ(35) = 24',    () => expectTotient(35n,  24n));
+test('φ(36) = 12',    () => expectTotient(36n,  12n));
+test('φ(100) = 40',   () => expectTotient(100n, 40n));
+test('φ(2^10) = 512', () => expectTotient(1024n, 512n));
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Suite 3 — divisor enumeration (sorted, unique)
+
+`divisorsOf(n)` returns every positive divisor of n in increasing order. In the order-finding context, this list is the search space the order finder walks: by Lagrange's theorem the multiplicative order of a in ℤ_N* divides φ(N), so the smallest divisor r with a^r ≡ 1 (mod N) is the order.
+
+Key cases: 1 has one divisor (itself); a prime p has exactly two (1 and p); composites enumerate all divisors from the product of prime-power divisor lists.
+</cell>
+
+<cell type="js" lane="math" id="pap-suite3" in="suite" out="suite">
+const { math } = caps;
+const { PrimeAtomPolynomial } = math;
+const { test } = inputs.suite;
+
+console.log('\n[Suite 3] divisorsOf');
+
+function expectDivisors(n, expected) {
+    const d = PrimeAtomPolynomial.divisorsOf(n).map(String);
+    if (d.length !== expected.length || !d.every((v, i) => v === String(expected[i]))) {
+        throw new Error(`divisorsOf(${n}) = [${d.join(',')}], expected [${expected.join(',')}]`);
+    }
+}
+
+test('divisorsOf(1) = [1]',       () => expectDivisors(1n,  [1n]));
+test('divisorsOf(6) = [1,2,3,6]', () => expectDivisors(6n,  [1n, 2n, 3n, 6n]));
+test('divisorsOf(12) = [1..12 divisors]', () =>
+    expectDivisors(12n, [1n, 2n, 3n, 4n, 6n, 12n]));
+test('divisorsOf(24) = [1,2,3,4,6,8,12,24]', () =>
+    expectDivisors(24n, [1n, 2n, 3n, 4n, 6n, 8n, 12n, 24n]));
+test('divisorsOf(prime 97) = [1, 97]', () => expectDivisors(97n, [1n, 97n]));
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Suite 4 — Sparsity bound: Ω(N) ≤ bitLength(N)
+
+This is the key LFTA corollary that makes the prime-atom polynomial **sparse**: the total atom count with multiplicity (Ω(N) = Σ v_p(N)) never exceeds the bit-length of N.
+
+**Why?** Since 2 is the smallest prime atom, 2^(Ω(N)) ≤ N, so Ω(N) ≤ log₂ N &lt; bitLength(N).
+
+The **tight case** is N = 2^k: here Ω(2^k) = k and bitLength(2^k) = k+1, so the bound is tight by exactly 1. This means we only need bitLength(N) "samples" (conditional-entropy tests = trial divisions) to read the entire polynomial.
+
+We also verify that ω(N) ≤ Ω(N) for a sample of N: the distinct prime count is always no greater than the total atom count.
+</cell>
+
+<cell type="js" lane="math" id="pap-suite4" in="suite" out="suite">
+const { math } = caps;
+const { PrimeAtomPolynomial } = math;
+const { test, assert } = inputs.suite;
+
+console.log('\n[Suite 4] sparsity bound: Ω(N) ≤ bitLength(N)');
+
+test('Ω(N) ≤ bitLength(N) for every N in [2, 200]', () => {
+    for (let N = 2n; N <= 200n; N++) {
+        const omega = PrimeAtomPolynomial.bigOmega(N);
+        const bits  = BigInt(PrimeAtomPolynomial.bitLength(N));
+        assert(omega <= bits, `N=${N}: Ω=${omega} > bitLength=${bits}`);
+    }
+});
+
+test('Ω(2^k) = k = bitLength(2^k) − 1  (tight case, smallest prime)', () => {
+    for (let k = 1n; k <= 20n; k++) {
+        const N = 1n << k;
+        const omega = PrimeAtomPolynomial.bigOmega(N);
+        const bits  = BigInt(PrimeAtomPolynomial.bitLength(N));
+        assert(omega === k, `Ω(2^${k}) = ${omega}, expected ${k}`);
+        assert(bits === k + 1n, `bitLength(2^${k}) = ${bits}, expected ${k + 1n}`);
+    }
+});
+
+test('ω(N) ≤ Ω(N) for a sample of N', () => {
+    for (const N of [6n, 12n, 30n, 60n, 180n, 1024n, 391n, 2310n]) {
+        const o = BigInt(PrimeAtomPolynomial.omega(N));
+        const O = PrimeAtomPolynomial.bigOmega(N);
+        assert(o <= O, `N=${N}: ω=${o} > Ω=${O}`);
+    }
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Suite 5 — logspaceSum: pedagogical log-space string
+
+`logspaceSum(N)` renders the LFTA decomposition as a human-readable string:
+
+> 12 ≡ 2·log₂(2) + 1·log₂(3)
+
+This makes the "N as a wave = weighted sum of pure-frequency logs" interpretation concrete and printable. The string format is exact (not approximate): each coefficient is the integer exponent, each base is the exact prime atom.
+</cell>
+
+<cell type="js" lane="math" id="pap-suite5" in="suite" out="suite">
+const { math } = caps;
+const { PrimeAtomPolynomial } = math;
+const { test, assert } = inputs.suite;
+
+console.log('\n[Suite 5] logspaceSum formatting');
+
+test('logspaceSum(12) = "12 ≡ 2·log₂(2) + 1·log₂(3)"', () => {
+    const s = PrimeAtomPolynomial.logspaceSum(12n);
+    assert(s === '12 ≡ 2·log₂(2) + 1·log₂(3)', `got: ${s}`);
+});
+
+test('logspaceSum(391) = "391 ≡ 1·log₂(17) + 1·log₂(23)"', () => {
+    const s = PrimeAtomPolynomial.logspaceSum(391n);
+    assert(s === '391 ≡ 1·log₂(17) + 1·log₂(23)', `got: ${s}`);
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Suite 6 — Polynomial-system matMul chained through prime-atom factorization
+
+This suite chains the polynomial-system construction from `MatrixAsPolynomial` **into** the prime-atom factorization discipline of `PrimeAtomPolynomial`. It uses the SDK's `factMultiply`, `reconstruct`, `refactorize`, and `makeMeter` helpers directly (they are on the SDK surface).
+
+**Two levels of the ONE canonical chain:**
+
+- **Outer level:** rows of A and B are polynomials in y. MatMul = c_i(y) = Σ_j A[i,j]·b_j(y).
+- **Inner level:** every integer scalar A[i,j] and B[j,l] is carried as its prime-atom factorization vector v⃗(N). Scalar multiply = exponent-vector ADD (compressed-space). Scalar add = decode → int add → re-factorize (boundary).
+
+**What the suite asserts:**
+
+(a) Every scalar product at the prime-atom level reconstructs to the correct integer product (the LFTA bijection).
+
+(b) The chained matMul agrees bit-exactly with the direct integer matMul.
+
+(c) The boundary-crossing count matches the theoretical formula: m·n decodes + (k−1)·m·n adds + m·n re-factorizations, while compressed-space ops count m·n·k (one exponent-vector add per scalar multiply inside the polynomial-system sum).
+
+Note: `factMultiply`, `reconstruct`, `refactorize`, and `makeMeter` are all on the SDK surface; `chainedMatMul` is a local orchestrator that drives them.
+</cell>
+
+<cell type="js" lane="math" id="pap-suite6-setup" out="chainedMatMul">
+const { math } = caps;
+const { factMultiply, reconstruct, refactorize } = math;
+
+/**
+ * Chained matMul — polynomial-system at matrix level, prime-atom at scalar level.
+ *
+ * The outer loop is the polynomial-system matMul: c_i(y) = Σ_j A[i,j]·b_j(y).
+ * The inner scalar ops operate on factorization vectors v⃗.
+ *
+ * Input matrices carry their entries as factorization vectors.
+ * Output matrix C is returned with entries as factorization vectors.
+ */
+function chainedMatMul(vA, vB, meter) {
+    const m = vA.length;
+    const k = vA[0].length;
+    const n = vB[0].length;
+    const vC = new Array(m);
+
+    for (let i = 0; i < m; i++) {
+        // c_i(y) starts as the length-n row of ZEROs. At the prime-atom level,
+        // "zero" has no factorization — we store it as the literal integer 0
+        // and fall back to refactorize once we have a nonzero sum.
+        const c_i_int = new Array(n).fill(0n);
+
+        for (let j = 0; j < k; j++) {
+            // For each coefficient position q of b_j, compute scalar · coefficient
+            // at the prime-atom level (exponent-vector add), then accumulate into
+            // c_i at integer level (boundary crossing per accumulation).
+            for (let q = 0; q < n; q++) {
+                // prime-atom scalar multiply (compressed)
+                const productVec = factMultiply(vA[i][j], vB[j][q], meter);
+                // accumulator forces a boundary crossing — the honest cost of "+"
+                c_i_int[q] += reconstruct(productVec, meter);
+                meter.integerAdds += 1;
+            }
+        }
+        // Encode each output coefficient back to prime-atom form. This is the
+        // second boundary crossing per output cell and closes the chain.
+        vC[i] = c_i_int.map(N => N === 0n ? [] : refactorize(N, meter));
+    }
+    return vC;
+}
+
+console.log('chainedMatMul helper ready (uses SDK factMultiply, reconstruct, refactorize).');
+return { chainedMatMul };
+</cell>
+
+<cell type="js" lane="math" id="pap-suite6" in="suite, chainedMatMul" out="suite">
+const { math } = caps;
+const { PrimeAtomPolynomial, factMultiply, reconstruct, refactorize, makeMeter } = math;
+const { test, assert } = inputs.suite;
+const { chainedMatMul } = inputs;
+
+console.log('\n[Suite 6] polynomial-system matMul chained through prime-atom factorization');
+
+test('6.1 scalar multiplication at the prime-atom level reconstructs correctly', () => {
+    // v⃗(12) · v⃗(18) via exponent-vector add must reconstruct to 216.
+    const meter = makeMeter();
+    const va = PrimeAtomPolynomial.factorize(12n);
+    const vb = PrimeAtomPolynomial.factorize(18n);
+    const vab = factMultiply(va, vb, meter);
+    const ab = reconstruct(vab, meter);
+    assert(ab === 216n, `12·18 should be 216, got ${ab}`);
+    assert(meter.compressedOps >= 1, 'expected at least one exponent-vector add');
+});
+
+test('6.2 chained matMul on a 2×2 integer case agrees with direct matMul', () => {
+    // Entries chosen so each factorizes non-trivially, exercising the LFTA path.
+    const A = [[ 2n,  3n],
+               [ 5n,  7n]];
+    const B = [[ 4n,  9n],
+               [25n, 49n]];
+
+    // Encode entries into factorization-vector form (outside the meter so
+    // encoding cost is not conflated with engine cost).
+    const encMeter = makeMeter();
+    const vA = A.map(row => row.map(x => refactorize(x, encMeter)));
+    const vB = B.map(row => row.map(x => refactorize(x, encMeter)));
+
+    const engineMeter = makeMeter();
+    const vC = chainedMatMul(vA, vB, engineMeter);
+
+    // Direct integer matMul for the reference.
+    const Cref = [[0n, 0n], [0n, 0n]];
+    for (let i = 0; i < 2; i++) {
+        for (let l = 0; l < 2; l++) {
+            let acc = 0n;
+            for (let j = 0; j < 2; j++) acc += A[i][j] * B[j][l];
+            Cref[i][l] = acc;
+        }
+    }
+
+    // Cross-check every entry. Reconstruction here is part of the assertion,
+    // not part of the engine — we use a throwaway meter for it.
+    const checkMeter = makeMeter();
+    for (let i = 0; i < 2; i++) {
+        for (let l = 0; l < 2; l++) {
+            const got = reconstruct(vC[i][l], checkMeter);
+            if (got !== Cref[i][l]) {
+                throw new Error(`C[${i},${l}] = ${got}, expected ${Cref[i][l]}`);
+            }
+        }
+    }
+});
+
+test('6.3 chained matMul ops: boundary count matches m·n·(k+1), integer adds = m·n·k', () => {
+    // For the 2×2 · 2×2 case: m=n=k=2. The INVARIANT counts (independent of
+    // prime overlap between entries) are:
+    //   integerAdds   = m·n·k        (one accumulator add per scalar product)
+    //   boundaryOps   = m·n·(k+1)    (k reconstructs per cell + 1 refactorize)
+    // Entries: A[i,j] and B[j,l] use disjoint small primes so compressedOps stays 0.
+    const A = [[ 2n,  3n],
+               [11n, 13n]];
+    const B = [[ 5n,  7n],
+               [17n, 19n]];
+
+    const encMeter = makeMeter();
+    const vA = A.map(row => row.map(x => refactorize(x, encMeter)));
+    const vB = B.map(row => row.map(x => refactorize(x, encMeter)));
+
+    const meter = makeMeter();
+    chainedMatMul(vA, vB, meter);
+
+    const m = 2, k = 2, n = 2;
+    assert(meter.integerAdds === m * n * k,
+        `integerAdds: got ${meter.integerAdds}, expected ${m * n * k}`);
+    const expectedBoundary = m * n * (k + 1);
+    assert(meter.boundaryOps === expectedBoundary,
+        `boundaryOps: got ${meter.boundaryOps}, expected ${expectedBoundary}`);
+    // All four pairs here use distinct primes, so no exponent-vector add
+    // merges a shared prime — the factMultiply fast-path takes the "append"
+    // branch for every pair.
+    assert(meter.compressedOps === 0,
+        `compressedOps: got ${meter.compressedOps}, expected 0 (all pairs use disjoint primes)`);
+});
+
+test('6.4 shared-prime entries exercise the compressed-space merge', () => {
+    // A = [[12, 18], [24, 36]], B = [[6, 10], [15, 21]] — lots of shared primes.
+    // Every pair (A[i,j], B[j,l]) shares at least one prime, so every
+    // factMultiply call records at least one compressed-space op.
+    const A = [[12n, 18n],
+               [24n, 36n]];
+    const B = [[ 6n, 10n],
+               [15n, 21n]];
+
+    const encMeter = makeMeter();
+    const vA = A.map(row => row.map(x => refactorize(x, encMeter)));
+    const vB = B.map(row => row.map(x => refactorize(x, encMeter)));
+
+    const meter = makeMeter();
+    const vC = chainedMatMul(vA, vB, meter);
+
+    // Reference.
+    const Cref = [[0n, 0n], [0n, 0n]];
+    for (let i = 0; i < 2; i++) {
+        for (let l = 0; l < 2; l++) {
+            let acc = 0n;
+            for (let j = 0; j < 2; j++) acc += A[i][j] * B[j][l];
+            Cref[i][l] = acc;
+        }
+    }
+
+    const checkMeter = makeMeter();
+    for (let i = 0; i < 2; i++) {
+        for (let l = 0; l < 2; l++) {
+            const got = reconstruct(vC[i][l], checkMeter);
+            if (got !== Cref[i][l]) {
+                throw new Error(`C[${i},${l}] = ${got}, expected ${Cref[i][l]}`);
+            }
+        }
+    }
+    assert(meter.compressedOps >= 8,
+        `compressedOps: got ${meter.compressedOps}, expected >= 8 (every pair shares at least one prime)`);
+});
+
+test('6.5 chained matMul distributes over (A, B) factorization encoding', () => {
+    // Encoding A and B entries into v⃗ form before the chain, or reconstructing
+    // them afterwards — both must land at the same integer matrix C. This is
+    // the LFTA bijection extended to matMul: the factorization-level chain
+    // commutes with integer reconstruction at the boundary.
+    const A = [[ 6n,  4n],
+               [10n, 15n]];
+    const B = [[ 9n,  8n],
+               [ 7n, 12n]];
+
+    const encMeter = makeMeter();
+    const vA = A.map(row => row.map(x => refactorize(x, encMeter)));
+    const vB = B.map(row => row.map(x => refactorize(x, encMeter)));
+
+    const meter = makeMeter();
+    const vC = chainedMatMul(vA, vB, meter);
+
+    const Cref = [[0n, 0n], [0n, 0n]];
+    for (let i = 0; i < 2; i++) {
+        for (let l = 0; l < 2; l++) {
+            for (let j = 0; j < 2; j++) Cref[i][l] += A[i][j] * B[j][l];
+        }
+    }
+
+    const checkMeter = makeMeter();
+    for (let i = 0; i < 2; i++) {
+        for (let l = 0; l < 2; l++) {
+            const got = reconstruct(vC[i][l], checkMeter);
+            if (got !== Cref[i][l]) {
+                throw new Error(`C[${i},${l}] = ${got}, expected ${Cref[i][l]}`);
+            }
+        }
+    }
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Summary
+
+Total pass/fail counts and a FAIL-LOUD throw if any test failed.
+</cell>
+
+<cell type="js" lane="math" id="pap-summary" in="suite">
+const { getPassed, getFailed, getFailures } = inputs.suite;
+const passed = getPassed();
+const failed = getFailed();
+const failures = getFailures();
+
+console.log('\n' + '='.repeat(60));
+console.log(`Results: ${passed} passed, ${failed} failed`);
+console.log('='.repeat(60));
+
+if (failures.length > 0) {
+    console.log('\nFailed tests:');
+    for (const { name, message } of failures) {
+        console.log(`  FAIL — ${name}`);
+        console.log(`        ${message}`);
+    }
+    throw new Error(`[PrimeAtomPolynomialTest] ${failed} test(s) failed`);
+}
+
+console.log(`TOTAL: ${passed}/${passed + failed} passed — all tests OK`);
+</cell>
+
+</frqtl-notebook>

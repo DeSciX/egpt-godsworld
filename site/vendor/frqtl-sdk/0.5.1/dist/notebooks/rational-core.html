@@ -1,0 +1,179 @@
+<frqtl-notebook version="1" title="Rational-Core: Exact Arithmetic with EGPTReal and EGPTMath">
+
+<cell type="markdown">
+# Rational-Core: Exact Arithmetic with EGPTReal and EGPTMath
+
+EGPTMath stores numbers as **exact rational values** — numerator and denominator as arbitrary-precision
+BigInts — rather than as IEEE-754 floats. This eliminates the rounding errors that accumulate in
+floating-point pipelines and is the foundation of FRAQTL's bit-exact codec chain.
+
+Two classes carry all the weight:
+
+- **`EGPTReal`** — an immutable, symbolic rational value. You construct one via
+  `EGPTReal.fromRational(numerator, denominator)` (BigInt arguments). It lives in _compressed
+  information space_ and blocks implicit coercion to JS primitives so that accidental
+  float-leaks cause a loud error rather than a silent precision loss.
+
+- **`EGPTMath`** — a static algebra engine. All arithmetic between `EGPTReal` values goes through
+  its methods (`add`, `multiply`, `normalDivide`, `compare`, …). It returns new `EGPTReal` instances
+  and never mutates its inputs.
+
+This notebook walks through the four fundamental operations on two concrete rational numbers:
+`left = 11/7` and `right = 2/3`.
+</cell>
+
+<cell type="js" lane="math" id="construct" out="left, right">
+// Step 1: construct two exact rational values.
+//
+// EGPTReal.fromRational(numerator, denominator) accepts BigInt arguments and
+// reduces the fraction to lowest terms automatically.
+//
+// 11n and 7n are already coprime, so left stores H(11/7) exactly.
+// 2n and 3n are already coprime, so right stores H(2/3) exactly.
+const { EGPTReal, display } = { ...caps.math, display: caps.display };   // math + display are on caps, never bare globals
+
+const left  = EGPTReal.fromRational(11n, 7n);
+const right = EGPTReal.fromRational(2n, 3n);
+
+display(`left  = ${left.toMathString()}`);
+display(`right = ${right.toMathString()}`);
+
+return { left, right };
+</cell>
+
+<cell type="markdown">
+## Addition — `EGPTMath.add`
+
+`EGPTMath.add(a, b)` performs exact rational addition using cross-multiplication:
+
+```
+a/b + c/d  =  (a·d + b·c) / (b·d)
+```
+
+The result is immediately reduced to lowest terms. For our two values:
+
+```
+11/7 + 2/3  =  (11·3 + 2·7) / (7·3)  =  (33 + 14) / 21  =  47/21
+```
+</cell>
+
+<cell type="js" lane="math" id="addition" in="left, right" out="sum">
+// EGPTMath.add — exact rational addition.
+const { EGPTMath, display } = { ...caps.math, display: caps.display };   // math + display are on caps, never bare globals
+const { left, right } = inputs;
+
+const sum = EGPTMath.add(left, right);
+
+display(`11/7 + 2/3 = ${sum.toMathString()}`);
+
+return { sum };
+</cell>
+
+<cell type="markdown">
+## Multiplication — `EGPTMath.multiply`
+
+`EGPTMath.multiply(a, b)` multiplies two rational values. In Shannon information space,
+multiplication in normal space maps to **vector addition** (`H(p×q) = H(p) + H(q)`),
+but the result surfaces back as a reduced rational via `toMathString()`:
+
+```
+11/7 × 2/3  =  22/21
+```
+</cell>
+
+<cell type="js" lane="math" id="multiplication" in="left, right" out="product">
+// EGPTMath.multiply — exact rational multiplication.
+const { EGPTMath, display } = { ...caps.math, display: caps.display };   // math + display are on caps, never bare globals
+const { left, right } = inputs;
+
+const product = EGPTMath.multiply(left, right);
+
+display(`11/7 × 2/3 = ${product.toMathString()}`);
+
+return { product };
+</cell>
+
+<cell type="markdown">
+## Division — `EGPTMath.normalDivide`
+
+`EGPTMath.normalDivide(a, b)` computes the ratio `a / b` in normal space (not Shannon space).
+Internally it cross-multiplies the two rational pairs:
+
+```
+(a/b) ÷ (c/d)  =  (a·d) / (b·c)
+```
+
+For our values:
+
+```
+(11/7) ÷ (2/3)  =  (11·3) / (7·2)  =  33/14
+```
+</cell>
+
+<cell type="js" lane="math" id="division" in="left, right" out="quotient">
+// EGPTMath.normalDivide — exact rational division.
+const { EGPTMath, display } = { ...caps.math, display: caps.display };   // math + display are on caps, never bare globals
+const { left, right } = inputs;
+
+const quotient = EGPTMath.normalDivide(left, right);
+
+display(`(11/7) ÷ (2/3) = ${quotient.toMathString()}`);
+
+return { quotient };
+</cell>
+
+<cell type="markdown">
+## Comparison — `EGPTMath.compare`
+
+`EGPTMath.compare(a, b)` returns `-1`, `0`, or `1` using exact BigInt cross-multiplication
+(no floating-point involved):
+
+| Return | Meaning |
+|--------|---------|
+| `-1`   | a &lt; b |
+|  `0`   | a = b |
+|  `1`   | a &gt; b |
+
+Since `11/7 ≈ 1.571` and `2/3 ≈ 0.667`, we expect `compare(left, right)` to return `1`.
+</cell>
+
+<cell type="js" lane="math" id="comparison" in="left, right" out="cmp">
+// EGPTMath.compare — exact rational ordering.
+const { EGPTMath, display } = { ...caps.math, display: caps.display };   // math + display are on caps, never bare globals
+const { left, right } = inputs;
+
+const cmp = EGPTMath.compare(left, right);
+
+const label = cmp === -1 ? 'left < right'
+            : cmp ===  0 ? 'left = right'
+            :               'left > right';
+
+display(`compare(11/7, 2/3) = ${cmp}  →  ${label}`);
+
+return { cmp };
+</cell>
+
+<cell type="markdown">
+## Summary
+
+All four operations produce exact rational results with no floating-point rounding.
+The final cell mirrors the shape returned by the original `rational-core.js` demo.
+</cell>
+
+<cell type="js" lane="math" id="summary" in="sum, product, quotient, cmp">
+// Reproduce the exact return shape of the original rational-core.js demo.
+const { display } = caps;
+const { sum, product, quotient, cmp } = inputs;
+
+const result = {
+  category: "rational-core",
+  sum:      sum.toMathString(),
+  product:  product.toMathString(),
+  quotient: quotient.toMathString(),
+  cmp
+};
+
+display(result);
+</cell>
+
+</frqtl-notebook>

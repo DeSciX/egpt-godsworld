@@ -1,0 +1,9 @@
+{
+  "name": "mediabunny",
+  "version": "1.55.1",
+  "license": "MPL-2.0",
+  "file": "mediabunny.min.mjs",
+  "upstreamPath": "dist/bundles/mediabunny.min.mjs",
+  "sha256": "953110266df5e5ea4d3c339ffe24a70f795643be07ee8375093897534bad1346",
+  "rule": "Vendored UNMODIFIED from the npm tarball. Never edit the bundle: patch upstream, then re-vendor and update version + sha256 together."
+}

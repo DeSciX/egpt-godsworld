@@ -1,0 +1,101 @@
+<frqtl-notebook version="1" title="N — Number Theory Four Views (factoring, roots, order, period are one object)">
+
+<cell type="markdown">
+# N — Number Theory Four Views
+
+Inspired by the three-layer equivalence in Lean: `three_layer_equivalence` ([Bridge.lean](https://github.com/DeSciX/EGPT/blob/main/08_LEAN/EGPT/InformationTheory/Bridge.lean)).
+
+A single `(a, N)` pair projects through four classical number-theoretic surfaces, all reading the same prime-atom vector `v⃗(N)`:
+
+- **N1** prime factorisation ≡ `v⃗(N)` (LFTA, Lean-backed)
+- **N2** polynomial root finding ≡ roots of `P_N(x) = ∏_p (x−p)^{v_p(N)}` (constructive over EGPTReal)
+- **N3** order finding ≡ min divisor of φ(N) with `a^r ≡ 1` (LFTA + Lagrange)
+- **N4** signal period ≡ direct orbit period of `a^k mod N` (classical Shor, definitional)
+
+The four projections agree on r and on the prime set every time — not by tuning, but because they are the same operation under four labels.
+
+*(Ported from `theorems/N_NumberTheoryFourViews.js`. `EGPTReal/EGPTPolynomial/PrimeAtomPolynomial/OrderFinder` come from `caps.math` — no imports. The runner + helpers are inlined.)*
+</cell>
+
+<cell type="markdown">
+## Setup — the four-view runner
+
+Builds the atom-root polynomial, checks each prime is a root (N1≡N2), finds the order via `OrderFinder` (N3), and the direct orbit period (N4), asserting N3≡N4 and N1≡N2. Produced as a binding the case cells call.
+</cell>
+
+<cell type="js" lane="math" id="n-setup" out="nrun">
+const { math, display } = caps;
+const { EGPTReal, EGPTPolynomial, PrimeAtomPolynomial, OrderFinder } = math;
+const ZERO = EGPTReal.fromBigInt(0n);
+const ONE  = EGPTReal.fromBigInt(1n);
+const intN = (n) => EGPTReal.fromBigInt(BigInt(n));
+
+function buildAtomRootPolynomial(N) {
+  const factors = PrimeAtomPolynomial.factorize(N);
+  let poly = [ONE];
+  for (const { prime, exponent } of factors) {
+    const linear = [intN(-prime), ONE];
+    for (let k = 0n; k < exponent; k++) poly = EGPTPolynomial.multiply(poly, linear);
+  }
+  return poly;
+}
+function directPeriodOfOrbit(a, N) {
+  const aBi = BigInt(a), NBi = BigInt(N);
+  let current = 1n;
+  for (let r = 1; r <= Number(NBi); r++) { current = (current * aBi) % NBi; if (current === 1n) return r; }
+  return null;
+}
+function check(label, cond) { display((cond ? '  ✓ ' : '  ✗ ') + label); if (!cond) throw new Error('N FAILED: ' + label); }
+
+function runFourViews(a, N, expectedOrder) {
+  const aBi = BigInt(a), NBi = BigInt(N);
+  display(`── a = ${aBi}, N = ${NBi}`);
+  // N1
+  const factors = PrimeAtomPolynomial.factorize(NBi);
+  const primeSet = factors.map(f => f.prime);
+  display(`  N1  factorize(${NBi}) = ${factors.map(f => `(${f.prime}^${f.exponent})`).join(' · ') || '1'}   Ω=${PrimeAtomPolynomial.bigOmega(NBi)} bitLen=${PrimeAtomPolynomial.bitLength(NBi)}`);
+  // N2
+  const P = buildAtomRootPolynomial(NBi);
+  for (const p of primeSet) check(`N2  P_${NBi}(${p}) = 0`, EGPTPolynomial.evaluateAt(P, intN(p)).equals(ZERO));
+  check(`deg(P) = Ω(N) = ${Number(PrimeAtomPolynomial.bigOmega(NBi))}`, EGPTPolynomial.degree(P) === Number(PrimeAtomPolynomial.bigOmega(NBi)));
+  // N3
+  const phi = PrimeAtomPolynomial.totient(NBi);
+  const orderR = OrderFinder.findOrder(aBi, NBi);
+  display(`  N3  φ(${NBi})=${phi}  order(${aBi} mod ${NBi})=${orderR}`);
+  check(`order(${aBi} mod ${NBi}) = ${expectedOrder}`, orderR === expectedOrder);
+  check(`verify: ${aBi}^${orderR} ≡ 1 (mod ${NBi})`, OrderFinder.verifyOrder(aBi, NBi, orderR));
+  // N4
+  const directPeriod = directPeriodOfOrbit(aBi, NBi);
+  display(`  N4  direct orbit period = ${directPeriod}`);
+  check(`direct orbit period = ${expectedOrder}`, directPeriod === expectedOrder);
+  check('N3 order ≡ N4 period', orderR === directPeriod);
+}
+return { nrun: runFourViews };
+</cell>
+
+<cell type="markdown">
+## Cases — eight (a, N) pairs
+
+Each pair runs all four projections and asserts they agree on the order/period and the prime set.
+</cell>
+
+<cell type="js" lane="math" id="n-cases" in="nrun">
+const { display } = caps;
+const run = inputs.nrun;
+run(3n,   8n,  2);
+run(7n,  15n,  4);
+run(2n,   7n,  3);
+run(2n,  15n,  4);
+run(4n,  15n,  2);
+run(2n,  21n,  6);
+run(5n,  21n,  6);
+run(3n,  35n, 12);
+display('All eight cases agree across N1/N2/N3/N4.');
+</cell>
+
+<cell type="js" lane="math" id="n-qed">
+const { display } = caps;
+display('QED — factoring, polynomial roots, order finding, and signal period are four labels for one object: v⃗(N).');
+</cell>
+
+</frqtl-notebook>

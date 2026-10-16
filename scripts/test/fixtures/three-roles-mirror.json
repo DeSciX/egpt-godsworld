@@ -1,0 +1,109 @@
+{
+  "outline": "a laser hitting a mirror at 30 degrees",
+  "note": "Authored replay of the three-role loop on the 2D mirror (cl1a-mirror) in the measured ask_question_to_app body shape {status, response, interaction_id, usage}. The words are written for the page test; they are not Maxi's, the Builder's or the Owl's. The double answers each role from its own queue, told apart by its thread (replay-door.mjs).",
+  "designer": [
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] Imagine it with me, Tony: we take the mirror memory — a laser along y 200 into an orange bounce wall — and turn the mirror from 45 to 30 degrees. At 45 the beam goes straight up; at 30 it should leave at 120 degrees, up and back toward the laser. The Builder will set the angle, then slide the mirror along the beam so we watch the hit point travel.\n\n```json:plan\n{\n  \"scene\": \"cl1a-mirror\",\n  \"changes\": [\n    {\n      \"object\": \"mirror\",\n      \"param\": \"orientationDeg\",\n      \"value\": 30,\n      \"why\": \"the mirror memory turns the slab 45 degrees to send the beam straight up; 30 degrees sends it out at 120 degrees, up and back toward the source\"\n    }\n  ],\n  \"hands\": [\n    \"loadScene\",\n    \"openSketch\",\n    \"dragTo\"\n  ],\n  \"prediction\": \"the pale beam runs right along y 200, meets the orange mirror and leaves orange, up and to the left at about 120 degrees\"\n}\n```",
+      "interaction_id": "replay.designer.1",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 0,
+        "model_used": "replay"
+      }
+    }
+  ],
+  "builder": [
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] Loading the mirror scene first.\nPREDICTION: the 45-degree mirror scene loads with the beam rising straight up from the mirror.\n\n```json:call:loadScene\n{\n  \"id\": \"cl1a-mirror\"\n}\n```",
+      "interaction_id": "replay.builder.1",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 0,
+        "model_used": "replay"
+      }
+    },
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] Scene is up. Now the same sketch with the mirror at 30 degrees.\nPREDICTION: the sketch boots with the mirror slab turned to 30 degrees; the reflected beam leaves up and to the left.\n\n```json:call:openSketch\n{\n  \"source\": \"function buildExperiment(exp) {\\n  // Collision Lab 1A (Mirror) — a collimated LASER aimed at a rotatable Bounce/Reflect\\n  // Wall. LASER TUNING (CEO 2026-07-25): particle-walk pins PURE +x momentum (the\\n  // tightest constrained-angle the emitter supports — zero angular spread); a SINGLE\\n  // (positive) charge removes the random transverse braiding; wavelength 1 → the\\n  // minimal transverse wiggle; fundamentalWaveLength 4 → wavelengthScale 1 (the\\n  // 256px scale-spread REMOVED — that spray was the 'visually non-sensical' look);\\n  // a TINY burst (2/tick) keeps it a thin beam (frame-rate protection). Rotate the\\n  // mirror to steer the reflected beam: 45 -> straight-up exit, 30 -> R(120) exit.\\n  var W = 600, H = 400;   // THE WORLD this scene states (its co-init call below)\\n  var cy = Math.round(H / 2);\\n  var SRC = {\\n    preset: 'particle-walk', is2D: true, center: [Math.round(W * 0.12), cy],\\n    orientationDeg: 0, chargeMode: 'positive', fundamentalDimension: 2, wavelength: 1,\\n    fundamentalWaveLength: 4, burstSize: 2, emitEveryTicks: 1\\n  };\\n  exp.createCanvas(W, H, setupSphereEmitter3D.worldCfg(SRC));   // THE WORLD: a 2D canvas + universe — first, then parts\\n  exp.addObject('SphereEmitter', SRC);\\n  exp.addObject('Wall', {\\n    rect: [Math.round(W * 0.6), Math.round(H * 0.2), 20, Math.round(H * 0.6)],\\n    collisionBehavior: 'bounce', bounceDirection: 'reflect',\\n    orientationDeg: 30, name: 'mirror', color: [255, 120, 0], hooks: ['recolor']\\n  });\\n}\\nif (typeof module !== 'undefined' && module.exports) { module.exports = { buildExperiment: buildExperiment }; }\\nelse if (typeof window !== 'undefined') { window.buildExperiment = buildExperiment; }\\n\"\n}\n```",
+      "interaction_id": "replay.builder.2",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 0,
+        "model_used": "replay"
+      }
+    },
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] Booted. Now I drag the mirror 60 px down while filming.\nPREDICTION: the beam keeps hitting the mirror while it slides down; the orange reflected beam leaves up and to the left at about 120 degrees and its exit point moves with the mirror.\n\n```json:call:dragTo\n{\n  \"name\": \"mirror\",\n  \"to\": [\n    370,\n    260\n  ],\n  \"ticks\": 150,\n  \"settle\": 150\n}\n```",
+      "interaction_id": "replay.builder.3",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 0,
+        "model_used": "replay"
+      }
+    },
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] The clip shows the slide; handing it to the Owl.\n\n```json:done\n{}\n```",
+      "interaction_id": "replay.builder.4",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 0,
+        "model_used": "replay"
+      }
+    },
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] Understood: back on the beam line, centred.\nPREDICTION: the mirror slides back up to centre (370, 200); the beam strikes its middle and the orange reflection leaves up and to the left at about 120 degrees.\n\n```json:call:dragTo\n{\n  \"name\": \"mirror\",\n  \"to\": [\n    370,\n    200\n  ],\n  \"ticks\": 150,\n  \"settle\": 150\n}\n```",
+      "interaction_id": "replay.builder.5",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 0,
+        "model_used": "replay"
+      }
+    },
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] Centred; handing back.\n\n```json:done\n{}\n```",
+      "interaction_id": "replay.builder.6",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 0,
+        "model_used": "replay"
+      }
+    }
+  ],
+  "owl": [
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] The mirror ends low, so the beam strikes near its top edge.\n\n```json:verdict\n{\n  \"seen\": {\n    \"contact\": \"the mirror, its top third\",\n    \"after\": \"up and to the left\",\n    \"passes\": \"no\"\n  },\n  \"verdict\": \"revise\",\n  \"reasons\": [\n    \"the beam meets the mirror near its upper end, not its face\"\n  ],\n  \"change\": \"centre the mirror on the beam line at y 200\"\n}\n```",
+      "interaction_id": "replay.owl.1",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 360,
+        "model_used": "replay"
+      }
+    },
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] The beam strikes the middle of the mirror and the orange reflection leaves up and to the left.\n\n```json:verdict\n{\n  \"seen\": {\n    \"contact\": \"the mirror, its middle third\",\n    \"after\": \"up and to the left, back toward the source\",\n    \"passes\": \"a few pale dots show to the right of the mirror while it slides\"\n  },\n  \"verdict\": \"approve\",\n  \"reasons\": [\n    \"the reflection leaves up and back toward the source, as predicted\"\n  ]\n}\n```",
+      "interaction_id": "replay.owl.2",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 360,
+        "model_used": "replay"
+      }
+    }
+  ]
+}

@@ -1,0 +1,1387 @@
+<frqtl-notebook version="1" title="EGPT Test Suite — Vector/Scalar Paradigm Validation">
+
+<cell type="markdown">
+# EGPT Test Suite — Vector/Scalar Paradigm Validation
+
+This notebook validates the EGPTReal + EGPTMath architecture: the separation of
+**data containers** (`EGPTReal`) from **algebra engines** (`EGPTMath`, `EGPTranscendental`,
+`EGPTComplex`). It also tests statistical functions (`EGPTStat`, `EGPTStatData`) and
+the phase-based `TwiddleTable` required for exact FFT operations.
+
+The core insight behind this architecture:
+
+- `EGPTReal` is a **pure vector data container** — it holds a value in PPF (Prime-Power
+  Factorization) encoding and provides scalar mutation methods (`scalarAdd`, `scalarMultiply`,
+  etc.) that operate on the rational representation.
+- `EGPTMath` is a **pure static algebra engine** — it takes two `EGPTReal` vectors and
+  applies operations in Shannon/log space (multiply = add exponent vectors; divide =
+  subtract exponent vectors).
+- The **RET Iron Law**: `H(p × q) = H(p) + H(q)`. Multiplying two numbers in normal space
+  is the same as adding their entropy vectors in log space. This identity is the central
+  invariant verified throughout the suite.
+
+Negative numbers, fractional exponents, complex numbers, and irrational (scaled-vector)
+representations are all tested to demonstrate the breadth of the PPF encoding.
+</cell>
+
+<cell type="markdown">
+## Setup — Test Harness
+
+The `TestFramework` class mirrors the original test runner: each `.test()` call runs a
+function, records pass/fail, and logs the result. Phase cells share this harness via the
+`suite` binding. A final summary cell prints totals and the list of any failures.
+</cell>
+
+<cell type="js" lane="math" id="setup" out="suite">
+const { math } = caps;
+const { EGPTReal, EGPTMath, ComplexEGPTReal, EGPTranscendental, EGPTComplex,
+        TwiddleTable, EGPTStat, EGPTStatData } = math;
+
+class TestFramework {
+  constructor() {
+    this.tests = [];
+    this.categories = {};
+  }
+  test(description, category, fn) {
+    const result = { description, category, passed: false, error: null };
+    try {
+      result.passed = fn();
+      if (result.passed === undefined) result.passed = true;
+    } catch (e) {
+      result.passed = false;
+      result.error = e.message;
+    }
+    this.tests.push(result);
+    if (!this.categories[category]) this.categories[category] = [];
+    this.categories[category].push(result);
+    const status = result.passed ? "PASS" : "FAIL";
+    const errMsg = result.error ? ` (${result.error})` : "";
+    console.log(`[${status}] ${description}${errMsg}`);
+  }
+  printSummary() {
+    const total = this.tests.length;
+    const passed = this.tests.filter(t => t.passed).length;
+    const failed = total - passed;
+    console.log("=".repeat(60));
+    console.log("TEST SUMMARY");
+    console.log("=".repeat(60));
+    for (const [cat, catTests] of Object.entries(this.categories)) {
+      const p = catTests.filter(t => t.passed).length;
+      console.log(`  ${cat}: ${p}/${catTests.length} passed`);
+    }
+    console.log("-".repeat(60));
+    console.log(`TOTAL: ${passed}/${total} tests passed`);
+    console.log(`SUCCESS RATE: ${((passed / total) * 100).toFixed(1)}%`);
+    if (failed > 0) {
+      console.log("\nFAILED TESTS:");
+      this.tests.filter(t => !t.passed).forEach(t => {
+        console.log(`  [${t.category}] ${t.description}`);
+        if (t.error) console.log(`    Error: ${t.error}`);
+      });
+    }
+    return { total, passed, failed };
+  }
+}
+
+const tf = new TestFramework();
+return { suite: { tf, EGPTReal, EGPTMath, ComplexEGPTReal, EGPTranscendental,
+                  EGPTComplex, TwiddleTable, EGPTStat, EGPTStatData } };
+</cell>
+
+<cell type="markdown">
+## Phase 1 — EGPTReal: Vector Data Container
+
+`EGPTReal` stores numbers in PPF encoding. These tests verify that integers and rationals
+can be created, cloned, compared for equality, and inspected for integrality — all without
+any algebra engine.
+
+`fromBigInt(n)` → PPF of `n`. `fromRational(p, q)` → PPF of `p/q` in lowest terms.
+`_getPPFRationalParts()` extracts the canonical `{numerator, denominator}` BigInt pair.
+</cell>
+
+<cell type="js" lane="math" id="phase1" in="suite" out="suite">
+const { tf, EGPTReal } = inputs.suite;
+
+console.log("PHASE 1: EGPTReal (Vector Data Container)");
+
+tf.test("EGPTReal.fromBigInt creates vector from scalar", "Vector Creation", () => {
+  const v = EGPTReal.fromBigInt(42n);
+  return v.breakSymbolicToApproximateBigInt() === 42n;
+});
+
+tf.test("EGPTReal.fromRational creates vector from rational", "Vector Creation", () => {
+  const v = EGPTReal.fromRational(3n, 4n);
+  const r = v._getPPFRationalParts();
+  return r.numerator === 3n && r.denominator === 4n;
+});
+
+tf.test("Vector clone creates independent copy", "Vector Creation", () => {
+  const original = EGPTReal.fromBigInt(10n);
+  const clone = original.clone();
+  clone.scalarAdd(5n);
+  return original.breakSymbolicToApproximateBigInt() === 10n
+      && clone.breakSymbolicToApproximateBigInt() === 15n;
+});
+
+tf.test("Vector equality works correctly", "Vector Identity", () => {
+  const v1 = EGPTReal.fromRational(6n, 8n);
+  const v2 = EGPTReal.fromRational(3n, 4n);
+  return v1.equals(v2);
+});
+
+tf.test("Vector isInteger detection works", "Vector Identity", () => {
+  const intV = EGPTReal.fromBigInt(42n);
+  const fracV = EGPTReal.fromRational(3n, 4n);
+  return intV.isInteger() && !fracV.isInteger();
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 1.5 — Negative Number Encoding
+
+Negative numbers require a special PPF encoding: the absolute value is encoded normally,
+then the exponent `N` is sign-transformed so the representation stays within the PPF
+lattice. The encoding convention: for negative integer with `|x|` having PPF exponent `N`,
+store `N_neg = -N - 2`. This test phase verifies the round-trip from BigInt → PPF → BigInt
+for negative values, including sign normalization for rationals.
+</cell>
+
+<cell type="js" lane="math" id="phase15" in="suite" out="suite">
+const { tf, EGPTReal } = inputs.suite;
+
+console.log("PHASE 1.5: Negative Number Encoding");
+
+tf.test("Negative integer encoding: fromBigInt(-13n)", "Negative Numbers", () => {
+  return EGPTReal.fromBigInt(-13n).breakSymbolicToApproximateBigInt() === -13n;
+});
+
+tf.test("Negative rational: fromRational(-13n, 1n)", "Negative Numbers", () => {
+  return EGPTReal.fromRational(-13n, 1n).breakSymbolicToApproximateBigInt() === -13n;
+});
+
+tf.test("Negative rational: fromRational(-3n, 4n)", "Negative Numbers", () => {
+  const r = EGPTReal.fromRational(-3n, 4n)._getPPFRationalParts();
+  return r.numerator === -3n && r.denominator === 4n;
+});
+
+tf.test("Negative denominator normalization: fromRational(3n, -4n) = -3/4", "Negative Numbers", () => {
+  const r = EGPTReal.fromRational(3n, -4n)._getPPFRationalParts();
+  return r.numerator === -3n && r.denominator === 4n;
+});
+
+tf.test("Double negative normalization: fromRational(-3n, -4n) = 3/4", "Negative Numbers", () => {
+  const r = EGPTReal.fromRational(-3n, -4n)._getPPFRationalParts();
+  return r.numerator === 3n && r.denominator === 4n;
+});
+
+tf.test("Negative number round-trip: -77n", "Negative Numbers", () => {
+  return EGPTReal.fromBigInt(-77n).breakSymbolicToApproximateBigInt() === -77n;
+});
+
+tf.test("PPF encoding for -13: N transformation stores N_neg = -5", "Negative Numbers", () => {
+  const ppf = EGPTReal.fromBigInt(-13n).toPPF();
+  return ppf.numerator.N === -5n && ppf.numerator.offset === 5n;
+});
+
+tf.test("PPF decoding for negative: fromPPF({N:-5,offset:5}) = -13n", "Negative Numbers", () => {
+  const v = EGPTReal.fromPPF({ numerator: { N: -5n, offset: 5n }, denominator: { N: 0n, offset: 0n } });
+  return v.breakSymbolicToApproximateBigInt() === -13n;
+});
+
+tf.test("Negative number equality: fromBigInt(-42n) === fromRational(-42n, 1n)", "Negative Numbers", () => {
+  return EGPTReal.fromBigInt(-42n).equals(EGPTReal.fromRational(-42n, 1n));
+});
+
+tf.test("Mixed sign equality: -6/8 equals -3/4", "Negative Numbers", () => {
+  return EGPTReal.fromRational(-6n, 8n).equals(EGPTReal.fromRational(-3n, 4n));
+});
+
+tf.test("Negative toMathString: -42 and -3/4", "Negative Numbers", () => {
+  return EGPTReal.fromBigInt(-42n).toMathString() === "-42"
+      && EGPTReal.fromRational(-3n, 4n).toMathString() === "-3/4";
+});
+
+tf.test("Negative zero normalization: -0n becomes 0n", "Negative Numbers", () => {
+  return EGPTReal.fromBigInt(-0n).breakSymbolicToApproximateBigInt() === 0n;
+});
+
+tf.test("Trace verification: -13 PPF encode then decode", "Negative Numbers", () => {
+  const v = EGPTReal.fromRational(-13n, 1n);
+  const ppf = v.toPPF();
+  const stored = ppf.numerator.N === -5n && ppf.numerator.offset === 5n;
+  const decoded = v.breakSymbolicToApproximateBigInt() === -13n;
+  return stored && decoded;
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 2 — Scalar Operations (Mutable Chaining)
+
+`EGPTReal` supports **in-place** scalar mutations via BigInt arguments. These operate
+directly on the underlying rational representation. Each method returns `this` to enable
+fluent chaining. Note that scalar operations require `BigInt` — passing a `Number` throws.
+</cell>
+
+<cell type="js" lane="math" id="phase2" in="suite" out="suite">
+const { tf, EGPTReal } = inputs.suite;
+
+console.log("PHASE 2: Scalar Operations (Mutable Chaining)");
+
+tf.test("scalarAdd modifies in-place and returns this", "Scalar Operations", () => {
+  const v = EGPTReal.fromBigInt(10n);
+  const r = v.scalarAdd(5n);
+  return r === v && v.breakSymbolicToApproximateBigInt() === 15n;
+});
+
+tf.test("scalarSubtract: 10 - 3 = 7", "Scalar Operations", () => {
+  const v = EGPTReal.fromBigInt(10n); v.scalarSubtract(3n);
+  return v.breakSymbolicToApproximateBigInt() === 7n;
+});
+
+tf.test("scalarMultiply: 6 * 3 = 18", "Scalar Operations", () => {
+  const v = EGPTReal.fromBigInt(6n); v.scalarMultiply(3n);
+  return v.breakSymbolicToApproximateBigInt() === 18n;
+});
+
+tf.test("scalarDivide: 20 / 4 = 5", "Scalar Operations", () => {
+  const v = EGPTReal.fromBigInt(20n); v.scalarDivide(4n);
+  return v.breakSymbolicToApproximateBigInt() === 5n;
+});
+
+tf.test("Fluent chaining: (10+5)*2/5 = 6", "Scalar Operations", () => {
+  const v = EGPTReal.fromBigInt(10n);
+  v.scalarAdd(5n).scalarMultiply(2n).scalarDivide(5n);
+  return v.breakSymbolicToApproximateBigInt() === 6n;
+});
+
+tf.test("Scalar operations require BigInt (Number throws)", "Scalar Operations", () => {
+  const v = EGPTReal.fromBigInt(10n);
+  try { v.scalarAdd(5); return false; }
+  catch (e) { return e.message.includes("BigInt"); }
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 2.5 — Scalar Operations with Negative Numbers
+
+Scalar operations must handle sign changes correctly — adding a positive to a negative,
+crossing zero, multiplying two negatives, and dividing by a negative. These tests probe
+the boundary where the PPF sign-encoding has to flip during mutation.
+</cell>
+
+<cell type="js" lane="math" id="phase25" in="suite" out="suite">
+const { tf, EGPTReal } = inputs.suite;
+
+console.log("PHASE 2.5: Scalar Operations with Negative Numbers");
+
+tf.test("-10 + 5 = -5", "Negative Scalar Ops", () => {
+  const v = EGPTReal.fromBigInt(-10n); v.scalarAdd(5n);
+  return v.breakSymbolicToApproximateBigInt() === -5n;
+});
+
+tf.test("-3 + 8 = 5 (negative becomes positive)", "Negative Scalar Ops", () => {
+  const v = EGPTReal.fromBigInt(-3n); v.scalarAdd(8n);
+  return v.breakSymbolicToApproximateBigInt() === 5n;
+});
+
+tf.test("-10 - 5 = -15", "Negative Scalar Ops", () => {
+  const v = EGPTReal.fromBigInt(-10n); v.scalarSubtract(5n);
+  return v.breakSymbolicToApproximateBigInt() === -15n;
+});
+
+tf.test("3 - 8 = -5 (positive becomes negative)", "Negative Scalar Ops", () => {
+  const v = EGPTReal.fromBigInt(3n); v.scalarSubtract(8n);
+  return v.breakSymbolicToApproximateBigInt() === -5n;
+});
+
+tf.test("-6 * 3 = -18", "Negative Scalar Ops", () => {
+  const v = EGPTReal.fromBigInt(-6n); v.scalarMultiply(3n);
+  return v.breakSymbolicToApproximateBigInt() === -18n;
+});
+
+tf.test("-6 * -3 = 18 (negative × negative = positive)", "Negative Scalar Ops", () => {
+  const v = EGPTReal.fromBigInt(-6n); v.scalarMultiply(-3n);
+  return v.breakSymbolicToApproximateBigInt() === 18n;
+});
+
+tf.test("-20 / 4 = -5", "Negative Scalar Ops", () => {
+  const v = EGPTReal.fromBigInt(-20n); v.scalarDivide(4n);
+  return v.breakSymbolicToApproximateBigInt() === -5n;
+});
+
+tf.test("20 / -4 = -5", "Negative Scalar Ops", () => {
+  const v = EGPTReal.fromBigInt(20n); v.scalarDivide(-4n);
+  return v.breakSymbolicToApproximateBigInt() === -5n;
+});
+
+tf.test("Negative fluent chain: (-10+5)*2/(-5) = 2", "Negative Scalar Ops", () => {
+  const v = EGPTReal.fromBigInt(-10n);
+  v.scalarAdd(5n).scalarMultiply(2n).scalarDivide(-5n);
+  return v.breakSymbolicToApproximateBigInt() === 2n;
+});
+
+tf.test("-3/4 + 1 = 1/4", "Negative Scalar Ops", () => {
+  const v = EGPTReal.fromRational(-3n, 4n); v.scalarAdd(1n);
+  const r = v._getPPFRationalParts();
+  return r.numerator === 1n && r.denominator === 4n;
+});
+
+tf.test("Crossing zero: -1 + 2 = 1", "Negative Scalar Ops", () => {
+  const v = EGPTReal.fromBigInt(-1n); v.scalarAdd(2n);
+  return v.breakSymbolicToApproximateBigInt() === 1n;
+});
+
+tf.test("-7 / 3 creates fraction -7/3", "Negative Scalar Ops", () => {
+  const v = EGPTReal.fromBigInt(-7n); v.scalarDivide(3n);
+  const r = v._getPPFRationalParts();
+  return r.numerator === -7n && r.denominator === 3n;
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 3 — EGPTMath: Vector Algebra Engine
+
+`EGPTMath` is a **static-only** class (instantiation throws). Its operations work in
+Shannon/log space where multiplication of values becomes addition of their PPF exponent
+vectors (RET Iron Law). The `add` / `subtract` methods perform normal-space rational
+arithmetic.
+
+| Method | Shannon interpretation | Normal-space result |
+|---|---|---|
+| `multiply(a, b)` | add exponent vectors `H(a) + H(b)` | `a × b` |
+| `divide(a, b)` | subtract exponent vectors `H(a) − H(b)` | `a / b` |
+| `pow(a, p, q)` | scale exponent vector by `p/q` | `a^(p/q)` |
+| `sqrt(a)` | scale exponent vector by `1/2` | `√a` |
+| `add(a, b)` | normal-space rational add | `a + b` |
+| `subtract(a, b)` | normal-space rational subtract | `a − b` |
+</cell>
+
+<cell type="js" lane="math" id="phase3" in="suite" out="suite">
+const { tf, EGPTReal, EGPTMath } = inputs.suite;
+
+console.log("PHASE 3: EGPTMath (Vector Algebra Engine)");
+
+tf.test("EGPTMath cannot be instantiated (static class)", "Architecture", () => {
+  try { new EGPTMath(); return false; }
+  catch (e) { return e.message.includes("static class"); }
+});
+
+tf.test("multiply() RET Iron Law: 2 × 3 = 6", "Vector Algebra", () => {
+  return EGPTMath.multiply(EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(3n))
+                 .breakSymbolicToApproximateBigInt() === 6n;
+});
+
+tf.test("divide() Shannon subtraction: 6 ÷ 2 = 3", "Vector Algebra", () => {
+  return EGPTMath.divide(EGPTReal.fromBigInt(6n), EGPTReal.fromBigInt(2n))
+                 .breakSymbolicToApproximateBigInt() === 3n;
+});
+
+tf.test("pow() Shannon scaling: 2^3 = 8", "Vector Algebra", () => {
+  return EGPTMath.pow(EGPTReal.fromBigInt(2n), 3n, 1n)
+                 .breakSymbolicToApproximateBigInt() === 8n;
+});
+
+tf.test("sqrt(): √16 = 4", "Vector Algebra", () => {
+  return EGPTMath.sqrt(EGPTReal.fromBigInt(16n))
+                 .breakSymbolicToApproximateBigInt() === 4n;
+});
+
+tf.test("add(): 1/3 + 1/6 = 1/2", "Vector Algebra", () => {
+  const sum = EGPTMath.add(EGPTReal.fromRational(1n, 3n), EGPTReal.fromRational(1n, 6n));
+  const r = sum._getPPFRationalParts();
+  return r.numerator === 1n && r.denominator === 2n;
+});
+
+tf.test("subtract(): 2/3 - 1/6 = 1/2", "Vector Algebra", () => {
+  const diff = EGPTMath.subtract(EGPTReal.fromRational(2n, 3n), EGPTReal.fromRational(1n, 6n));
+  const r = diff._getPPFRationalParts();
+  return r.numerator === 1n && r.denominator === 2n;
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 4 — Pedagogical Dual Naming
+
+`EGPTMath` exposes **alias methods** that surface the Shannon-space perspective alongside
+the normal-space names. `addInLogSpace` is identical to `multiply` — both add entropy
+vectors. `subtractInLogSpace` is identical to `divide`. `addVectors` is identical to
+`add`. These aliases exist so that code can declare its intent: "I am working in log space"
+vs "I am working in normal space."
+</cell>
+
+<cell type="js" lane="math" id="phase4" in="suite" out="suite">
+const { tf, EGPTReal, EGPTMath } = inputs.suite;
+
+console.log("PHASE 4: Pedagogical Dual Naming");
+
+tf.test("addInLogSpace alias equals multiply result", "Dual Naming", () => {
+  const H5 = EGPTReal.fromBigInt(5n), H7 = EGPTReal.fromBigInt(7n);
+  return EGPTMath.multiply(H5, H7).equals(EGPTMath.addInLogSpace(H5, H7));
+});
+
+tf.test("subtractInLogSpace alias equals divide result", "Dual Naming", () => {
+  const H35 = EGPTReal.fromBigInt(35n), H5 = EGPTReal.fromBigInt(5n);
+  return EGPTMath.divide(H35, H5).equals(EGPTMath.subtractInLogSpace(H35, H5));
+});
+
+tf.test("addVectors alias equals add result", "Dual Naming", () => {
+  const v1 = EGPTReal.fromRational(1n, 4n), v2 = EGPTReal.fromRational(1n, 4n);
+  return EGPTMath.add(v1, v2).equals(EGPTMath.addVectors(v1, v2));
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 5 — RET Iron Law Validation
+
+The **Rational Entropy Theorem (RET) Iron Law**: `H(p × q) = H(p) + H(q)`. In code this
+means `EGPTMath.multiply(H_p, H_q)` must equal `EGPTReal.fromBigInt(p * q)` for any
+integers `p`, `q`. This is the foundational correctness invariant — if it fails, the
+PPF encoding is broken.
+
+`conditionalEntropyVector(k, p)` = `H(k) - H(p)` = `H(k/p)`. When `p` exactly divides
+`k`, the result is an integer; otherwise it is a fraction. This gives a factorization test
+that runs in polynomial time (no search).
+</cell>
+
+<cell type="js" lane="math" id="phase5" in="suite" out="suite">
+const { tf, EGPTReal, EGPTMath } = inputs.suite;
+
+console.log("PHASE 5: RET Iron Law Validation");
+
+tf.test("RET Iron Law: H(6) = H(2) + H(3) via multiply", "RET Iron Law", () => {
+  return EGPTReal.fromBigInt(6n).equals(
+    EGPTMath.multiply(EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(3n))
+  );
+});
+
+tf.test("RET Iron Law: large numbers (77 = 7 × 11)", "RET Iron Law", () => {
+  return EGPTReal.fromBigInt(77n).equals(
+    EGPTMath.multiply(EGPTReal.fromBigInt(7n), EGPTReal.fromBigInt(11n))
+  );
+});
+
+tf.test("RET Iron Law: inverse — multiply then divide recovers original", "RET Iron Law", () => {
+  const H13 = EGPTReal.fromBigInt(13n), H17 = EGPTReal.fromBigInt(17n);
+  const product = EGPTMath.multiply(H13, H17);
+  return H17.equals(EGPTMath.divide(product, H13));
+});
+
+tf.test("conditionalEntropyVector: exact factor yields integer", "RET Iron Law", () => {
+  const H35 = EGPTReal.fromBigInt(35n);
+  const exact = EGPTMath.conditionalEntropyVector(H35, EGPTReal.fromBigInt(5n));
+  const nonFactor = EGPTMath.conditionalEntropyVector(H35, EGPTReal.fromBigInt(6n));
+  return exact.isInteger() && !nonFactor.isInteger();
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 6 — Statistical Functions (EGPTStat)
+
+`EGPTStat` provides exact rational statistics over arrays of `EGPTReal` values. Unlike
+floating-point statistics, these operations are **exact** — the mean and variance are
+exact rational `EGPTReal` values. The variance uses `absoluteDifference` (always
+positive) so deviation terms stay in valid PPF encoding.
+</cell>
+
+<cell type="js" lane="math" id="phase6" in="suite" out="suite">
+const { tf, EGPTReal, EGPTStat } = inputs.suite;
+
+console.log("PHASE 6: Statistical Functions (EGPTStat)");
+
+tf.test("mean() of [2, 4, 6] = 4", "Statistics", () => {
+  const vs = [EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(4n), EGPTReal.fromBigInt(6n)];
+  return EGPTStat.mean(vs).breakSymbolicToApproximateBigInt() === 4n;
+});
+
+tf.test("variance() of [1,3,5]: variance = 8/3, negative_deviations = 1", "Statistics", () => {
+  const vs = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(5n)];
+  const result = EGPTStat.variance(vs);
+  const r = result.variance._getPPFRationalParts();
+  return r.numerator === 8n && r.denominator === 3n
+      && result.metadata.negative_deviations === 1
+      && result.metadata.has_negative_deviations === true;
+});
+
+tf.test("variance() handles negative deviations without error", "Statistics", () => {
+  const vs = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(5n)];
+  try {
+    const result = EGPTStat.variance(vs);
+    return result.variance.breakSymbolicToApproximateBigInt() >= 0n
+        && result.metadata.negative_deviations === 1
+        && result.metadata.has_negative_deviations === true;
+  } catch (e) { return false; }
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 6.5 — Fractional Exponentiation and Roots
+
+`EGPTMath.pow(x, p, q)` scales the exponent vector of `x` by `p/q`. When the result is
+reducible to an integer (i.e. `x^(p/q)` is a perfect power), `equals()` returns `true`
+when compared to the integer. Irrational cases produce **scaled vectors** — held in exact
+PPF form as `(p/q) * H(base)` — which are further reducible by subsequent operations.
+</cell>
+
+<cell type="js" lane="math" id="phase65" in="suite" out="suite">
+const { tf, EGPTReal, EGPTMath } = inputs.suite;
+
+console.log("PHASE 6.5: Fractional Exponentiation and Roots");
+
+tf.test("8^(1/3) = 2 (cube root)", "Fractional Powers", () => {
+  return EGPTMath.pow(EGPTReal.fromBigInt(8n), 1n, 3n)
+                 .equals(EGPTReal.fromBigInt(2n));
+});
+
+tf.test("16^(1/4) = 2 (fourth root)", "Fractional Powers", () => {
+  return EGPTMath.pow(EGPTReal.fromBigInt(16n), 1n, 4n)
+                 .equals(EGPTReal.fromBigInt(2n));
+});
+
+tf.test("9^(1/2) = 3 (square root)", "Fractional Powers", () => {
+  return EGPTMath.pow(EGPTReal.fromBigInt(9n), 1n, 2n)
+                 .equals(EGPTReal.fromBigInt(3n));
+});
+
+tf.test("27^(2/3) = 9", "Fractional Powers", () => {
+  return EGPTMath.pow(EGPTReal.fromBigInt(27n), 2n, 3n)
+                 .equals(EGPTReal.fromBigInt(9n));
+});
+
+tf.test("32^(3/5) = 8", "Fractional Powers", () => {
+  return EGPTMath.pow(EGPTReal.fromBigInt(32n), 3n, 5n)
+                 .equals(EGPTReal.fromBigInt(8n));
+});
+
+tf.test("sqrt() consistent with pow(x, 1/2): √25", "Root Consistency", () => {
+  const H25 = EGPTReal.fromBigInt(25n);
+  return EGPTMath.sqrt(H25).equals(EGPTMath.pow(H25, 1n, 2n));
+});
+
+tf.test("Power identity: (x^a)^b = x^(a*b): (8^(1/3))^3 = 8", "Fractional Identities", () => {
+  const H8 = EGPTReal.fromBigInt(8n);
+  const inner = EGPTMath.pow(H8, 1n, 3n);       // ∛8 = H(2)
+  const method1 = EGPTMath.pow(inner, 3n, 1n);  // H(2)^3 = H(8)
+  const method2 = EGPTMath.pow(H8, 1n, 1n);
+  return method1.equals(method2) && method1.equals(EGPTReal.fromBigInt(8n));
+});
+
+tf.test("64^(1/6) = 2", "Fractional Precision", () => {
+  return EGPTMath.pow(EGPTReal.fromBigInt(64n), 1n, 6n)
+                 .equals(EGPTReal.fromBigInt(2n));
+});
+
+tf.test("Nested: √(∛27) = 27^(1/6)", "Nested Fractionals", () => {
+  const H27 = EGPTReal.fromBigInt(27n);
+  const cubeRoot = EGPTMath.pow(H27, 1n, 3n);
+  return EGPTMath.sqrt(cubeRoot).equals(EGPTMath.pow(H27, 1n, 6n));
+});
+
+tf.test("Rational base: (9/4)^(1/2) = 3/2", "Rational Fractional", () => {
+  const base = EGPTReal.fromRational(9n, 4n);
+  return EGPTMath.pow(base, 1n, 2n).equals(EGPTReal.fromRational(3n, 2n));
+});
+
+tf.test("Shannon scaling via sqrt: √4 * √9 = 6 (RET law on roots)", "Shannon Fractional", () => {
+  const product = EGPTMath.multiply(
+    EGPTMath.sqrt(EGPTReal.fromBigInt(4n)),
+    EGPTMath.sqrt(EGPTReal.fromBigInt(9n))
+  );
+  return product.equals(EGPTReal.fromBigInt(6n));
+});
+
+tf.test("Complex fractional chain: ((16^(1/4))^(1/2))^2 = 2", "Complex Fractional Chain", () => {
+  const step1 = EGPTMath.pow(EGPTReal.fromBigInt(16n), 1n, 4n);  // 2
+  const step2 = EGPTMath.sqrt(step1);                              // √2
+  const final = EGPTMath.pow(step2, 2n, 1n);                      // (√2)^2 = 2
+  return final.equals(EGPTReal.fromBigInt(2n));
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 6.6 — exp2 and log2 (EGPTranscendental)
+
+`EGPTranscendental.exp2(x)` computes `2^x` and `EGPTranscendental.log2(x)` computes
+`log₂(x)` — both exactly, over `EGPTReal` values. These are **transcendental** operations
+but implemented via exact PPF rational arithmetic. The key identity checked is
+`exp2(log2(x)) = x` and `log2(exp2(n)) = n` for integer inputs.
+
+Note: `EGPTranscendental` is a separate class from `EGPTMath` (accessed as
+`math.EGPTranscendental` from the SDK surface).
+</cell>
+
+<cell type="js" lane="math" id="phase66" in="suite" out="suite">
+const { tf, EGPTReal, EGPTMath, EGPTranscendental } = inputs.suite;
+
+console.log("PHASE 6.6: exp2 and log2 (EGPTranscendental)");
+
+tf.test("exp2(3) = 8", "Exponential Functions", () => {
+  return EGPTranscendental.exp2(EGPTReal.fromBigInt(3n))
+                          .equals(EGPTReal.fromBigInt(8n));
+});
+
+tf.test("exp2(5) = 32", "Exponential Functions", () => {
+  return EGPTranscendental.exp2(EGPTReal.fromBigInt(5n))
+                          .equals(EGPTReal.fromBigInt(32n));
+});
+
+tf.test("exp2(0) = 1", "Exponential Functions", () => {
+  return EGPTranscendental.exp2(EGPTReal.fromBigInt(0n))
+                          .equals(EGPTReal.fromBigInt(1n));
+});
+
+tf.test("exp2(10) = 1024", "Exponential Functions", () => {
+  return EGPTranscendental.exp2(EGPTReal.fromBigInt(10n))
+                          .equals(EGPTReal.fromBigInt(1024n));
+});
+
+tf.test("exp2(1/2) = √2: squaring recovers 2", "Exponential Functions", () => {
+  const sqrt2 = EGPTranscendental.exp2(EGPTReal.fromRational(1n, 2n));
+  return EGPTMath.pow(sqrt2, 2n, 1n).equals(EGPTReal.fromBigInt(2n));
+});
+
+tf.test("exp2(3/2) = 2^1 * 2^(1/2)", "Exponential Functions", () => {
+  const result = EGPTranscendental.exp2(EGPTReal.fromRational(3n, 2n));
+  const alt = EGPTMath.multiply(
+    EGPTranscendental.exp2(EGPTReal.fromBigInt(1n)),
+    EGPTranscendental.exp2(EGPTReal.fromRational(1n, 2n))
+  );
+  return result.equals(alt);
+});
+
+tf.test("log2(8) = 3", "Logarithmic Functions", () => {
+  return EGPTranscendental.log2(EGPTReal.fromBigInt(8n))
+                          .equals(EGPTReal.fromBigInt(3n));
+});
+
+tf.test("log2(16) = 4", "Logarithmic Functions", () => {
+  return EGPTranscendental.log2(EGPTReal.fromBigInt(16n))
+                          .equals(EGPTReal.fromBigInt(4n));
+});
+
+tf.test("log2(1024) = 10", "Logarithmic Functions", () => {
+  return EGPTranscendental.log2(EGPTReal.fromBigInt(1024n))
+                          .equals(EGPTReal.fromBigInt(10n));
+});
+
+tf.test("log2(2) = 1", "Logarithmic Functions", () => {
+  return EGPTranscendental.log2(EGPTReal.fromBigInt(2n))
+                          .equals(EGPTReal.fromBigInt(1n));
+});
+
+tf.test("log2(1) = 0", "Logarithmic Functions", () => {
+  return EGPTranscendental.log2(EGPTReal.fromBigInt(1n))
+                          .equals(EGPTReal.fromBigInt(0n));
+});
+
+tf.test("Inverse: exp2(log2(x)) = x for powers of 2", "Exponential-Logarithmic Identity", () => {
+  for (const v of [1n, 2n, 4n, 8n, 16n, 32n, 64n, 1024n]) {
+    const H = EGPTReal.fromBigInt(v);
+    if (!EGPTranscendental.exp2(EGPTranscendental.log2(H)).equals(H)) return false;
+  }
+  return true;
+});
+
+tf.test("Inverse: log2(exp2(n)) = n for small integers", "Exponential-Logarithmic Identity", () => {
+  for (const n of [0n, 1n, 2n, 3n, 4n, 5n, 10n]) {
+    const H = EGPTReal.fromBigInt(n);
+    if (!EGPTranscendental.log2(EGPTranscendental.exp2(H)).equals(H)) return false;
+  }
+  return true;
+});
+
+tf.test("RET preserved: exp2(2) * exp2(3) = exp2(5) = 32", "Shannon Exponential RET", () => {
+  const H4 = EGPTranscendental.exp2(EGPTReal.fromBigInt(2n));
+  const H8 = EGPTranscendental.exp2(EGPTReal.fromBigInt(3n));
+  return EGPTMath.multiply(H4, H8).equals(EGPTReal.fromBigInt(32n));
+});
+
+tf.test("Compound: exp2(exp2(2)) = exp2(4) = 16", "Compound Exponentials", () => {
+  const inner = EGPTranscendental.exp2(EGPTReal.fromBigInt(2n));  // 4
+  return EGPTranscendental.exp2(inner).equals(EGPTReal.fromBigInt(16n));
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 6.7 — Scaled Vectors: Irrational Number Support
+
+When `EGPTMath.pow(x, p, q)` cannot reduce the result to a rational (e.g. `√2`, `2^(3/4)`),
+it produces a **scaled vector**: an `EGPTReal` holding `(p/q) * H(base)`. These are exact
+representations of irrationals that can participate in further algebra.
+
+`fromScaledVector(base, p, q)` creates such a vector explicitly. `getScalarParts()` extracts
+the `{numerator, denominator}` of the scalar multiplier. `getBaseRationalParts()` extracts
+the underlying base vector's rational form.
+
+Reducible cases (where the root is itself rational) automatically normalize to the integer
+form on `equals()`.
+</cell>
+
+<cell type="js" lane="math" id="phase67" in="suite" out="suite">
+const { tf, EGPTReal, EGPTMath } = inputs.suite;
+
+console.log("PHASE 6.7: Scaled Vectors");
+
+tf.test("fromScaledVector: H(√2) has scalar 1/2 and base 2", "Scaled Vectors", () => {
+  const H2 = EGPTReal.fromBigInt(2n);
+  const Hsqrt2 = EGPTReal.fromScaledVector(H2, 1n, 2n);
+  const s = Hsqrt2.getScalarParts();
+  const b = Hsqrt2.getBaseRationalParts();
+  return s.numerator === 1n && s.denominator === 2n
+      && b.numerator === 2n && b.denominator === 1n;
+});
+
+tf.test("Reversibility: H(√2) + H(√2) = H(2) in normal space", "Scaled Vectors", () => {
+  const H2 = EGPTReal.fromBigInt(2n);
+  const Hsqrt2 = EGPTReal.fromScaledVector(H2, 1n, 2n);
+  return EGPTMath.add(Hsqrt2, Hsqrt2).equals(H2);
+});
+
+tf.test("pow(8, 1/3) reduces to H(2) — canonical form", "Scaled Vectors", () => {
+  return EGPTMath.pow(EGPTReal.fromBigInt(8n), 1n, 3n)
+                 .equals(EGPTReal.fromBigInt(2n));
+});
+
+tf.test("sqrt(4) reduces to H(2) — canonical form", "Scaled Vectors", () => {
+  return EGPTMath.sqrt(EGPTReal.fromBigInt(4n))
+                 .equals(EGPTReal.fromBigInt(2n));
+});
+
+tf.test("toMathString for scaled vector shows scaling operation", "Scaled Vectors", () => {
+  const H2 = EGPTReal.fromBigInt(2n);
+  const s = EGPTReal.fromScaledVector(H2, 3n, 4n).toMathString();
+  return s.includes("3/4") && s.includes("H(2)");
+});
+
+tf.test("Scaled vector clone preserves scalar multiplier", "Scaled Vectors", () => {
+  const H5 = EGPTReal.fromBigInt(5n);
+  const scaled = EGPTReal.fromScaledVector(H5, 7n, 11n);
+  const cloned = scaled.clone();
+  const os = scaled.getScalarParts(), cs = cloned.getScalarParts();
+  return os.numerator === cs.numerator && os.denominator === cs.denominator
+      && scaled.equals(cloned);
+});
+
+tf.test("toPPF for scaled vector includes scalar info", "Scaled Vectors", () => {
+  const H3 = EGPTReal.fromBigInt(3n);
+  const ppf = EGPTReal.fromScaledVector(H3, 5n, 7n).toPPF();
+  return ppf.scalar && ppf.scalar.numerator === 5n && ppf.scalar.denominator === 7n;
+});
+
+tf.test("Scaled vector equality across equivalent representations", "Scaled Vectors", () => {
+  const H6 = EGPTReal.fromBigInt(6n);
+  const s1 = EGPTReal.fromScaledVector(H6, 2n, 3n);
+  const s2 = EGPTReal.fromScaledVector(H6, 4n, 6n);
+  return s1.equals(s2);
+});
+
+tf.test("H(2^(3/4)) has scalar 3/4 and base 2", "Scaled Vectors", () => {
+  const result = EGPTMath.pow(EGPTReal.fromBigInt(2n), 3n, 4n);
+  const s = result.getScalarParts(), b = result.getBaseRationalParts();
+  return s.numerator === 3n && s.denominator === 4n
+      && b.numerator === 2n && b.denominator === 1n;
+});
+
+tf.test("demonstrateIrrationalRoots: sqrt_2 scalar=1/2, two_to_3/2 scalar=3/2, cuberoot_8=H(2)", "Scaled Vectors", () => {
+  const ex = EGPTMath.demonstrateIrrationalRoots();
+  const ss = ex.sqrt_2.getScalarParts();
+  const ts = ex.two_to_three_halves.getScalarParts();
+  const irrPass = ss.numerator === 1n && ss.denominator === 2n
+               && ts.numerator === 3n && ts.denominator === 2n;
+  const redPass = ex.cuberoot_8.equals(EGPTReal.fromBigInt(2n));
+  return irrPass && redPass;
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 6.8 — Scaled Vector Algebra
+
+Operations between scaled vectors follow specific rules. When both operands have the
+**same scalar multiplier** (e.g. both are `(1/2)*H(something)`), multiply/divide works by
+operating on the bases and combining the scalars. When scalars differ and are non-trivial,
+the operation is undefined and throws — this enforces discipline (you cannot silently mix
+`√2 * ∛3` without acknowledging the incompatible root spaces).
+</cell>
+
+<cell type="js" lane="math" id="phase68" in="suite" out="suite">
+const { tf, EGPTReal, EGPTMath } = inputs.suite;
+
+console.log("PHASE 6.8: Scaled Vector Algebra");
+
+tf.test("H(√2) * H(√3) = H(√6) — identical scalars", "Scaled Vector Algebra", () => {
+  const Hsqrt2 = EGPTMath.sqrt(EGPTReal.fromBigInt(2n));
+  const Hsqrt3 = EGPTMath.sqrt(EGPTReal.fromBigInt(3n));
+  return EGPTMath.multiply(Hsqrt2, Hsqrt3)
+                 .equals(EGPTMath.sqrt(EGPTReal.fromBigInt(6n)));
+});
+
+tf.test("H(2) * H(√3) = H(√12) — one scalar, one integer", "Scaled Vector Algebra", () => {
+  const H2 = EGPTReal.fromBigInt(2n);
+  const Hsqrt3 = EGPTMath.sqrt(EGPTReal.fromBigInt(3n));
+  const product = EGPTMath.multiply(H2, Hsqrt3);
+  return product.equals(EGPTMath.sqrt(EGPTReal.fromBigInt(12n)));
+});
+
+tf.test("H(√2) * H(√2) = H(2) — self-multiply eliminates root", "Scaled Vector Algebra", () => {
+  const H2 = EGPTReal.fromBigInt(2n);
+  const Hsqrt2 = EGPTMath.sqrt(H2);
+  return EGPTMath.multiply(Hsqrt2, Hsqrt2).equals(H2);
+});
+
+tf.test("(1/2)*H(2) * (-1/2)*H(2) = H(1) — opposite scalars cancel", "Scaled Vector Algebra", () => {
+  const H2 = EGPTReal.fromBigInt(2n);
+  const pos = EGPTReal.fromScaledVector(H2, 1n, 2n);
+  const neg = EGPTReal.fromScaledVector(H2, -1n, 2n);
+  return EGPTMath.multiply(pos, neg).equals(EGPTReal.fromBigInt(1n));
+});
+
+tf.test("√(1/2) * 2 = √2", "Scaled Vector Algebra", () => {
+  const Hsqrt_half = EGPTMath.sqrt(EGPTReal.fromRational(1n, 2n));
+  const product = EGPTMath.multiply(Hsqrt_half, EGPTReal.fromBigInt(2n));
+  return product.equals(EGPTMath.sqrt(EGPTReal.fromBigInt(2n)));
+});
+
+tf.test("H(√6) / H(√2) = H(√3) — identical scalars divide", "Scaled Vector Algebra", () => {
+  const Hsqrt2 = EGPTMath.sqrt(EGPTReal.fromBigInt(2n));
+  const Hsqrt3 = EGPTMath.sqrt(EGPTReal.fromBigInt(3n));
+  const Hsqrt6 = EGPTMath.sqrt(EGPTReal.fromBigInt(6n));
+  return EGPTMath.divide(Hsqrt6, Hsqrt2).equals(Hsqrt3);
+});
+
+tf.test("H(√2) * H(∛3) throws (incompatible scalars)", "Scaled Vector Algebra", () => {
+  const Hsqrt2 = EGPTMath.sqrt(EGPTReal.fromBigInt(2n));
+  const Hcbrt3 = EGPTMath.pow(EGPTReal.fromBigInt(3n), 1n, 3n);
+  try { EGPTMath.multiply(Hsqrt2, Hcbrt3); return false; }
+  catch (e) { return e.message.includes("not supported"); }
+});
+
+tf.test("H(√6) / H(∛2) throws (incompatible scalars)", "Scaled Vector Algebra", () => {
+  const Hsqrt6 = EGPTMath.sqrt(EGPTReal.fromBigInt(6n));
+  const Hcbrt2 = EGPTMath.pow(EGPTReal.fromBigInt(2n), 1n, 3n);
+  try { EGPTMath.divide(Hsqrt6, Hcbrt2); return false; }
+  catch (e) { return e.message.includes("not supported"); }
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 6.9 — EGPTStat Statistical Functions (Extended)
+
+Extended statistical tests covering `mean()` with negative numbers and fractions,
+`variance()` with signed values, `absoluteDifference()`, and
+`comprehensiveStatisticalAnalysis()` which returns a full `EGPTStatData` object including
+variance, standard deviation, min/max, and negative count.
+</cell>
+
+<cell type="js" lane="math" id="phase69" in="suite" out="suite">
+const { tf, EGPTReal, EGPTMath, EGPTStat, EGPTStatData } = inputs.suite;
+
+console.log("PHASE 6.9: EGPTStat Statistical Functions (Extended)");
+
+tf.test("mean() with positive numbers [2,4,6] = 4", "Statistical Functions", () => {
+  const vs = [EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(4n), EGPTReal.fromBigInt(6n)];
+  return EGPTStat.mean(vs).equals(EGPTReal.fromBigInt(4n));
+});
+
+tf.test("mean() with negative numbers [-2,0,4] = 2/3", "Statistical Functions", () => {
+  const vs = [EGPTReal.fromBigInt(-2n), EGPTReal.fromBigInt(0n), EGPTReal.fromBigInt(4n)];
+  return EGPTStat.mean(vs).equals(EGPTReal.fromRational(2n, 3n));
+});
+
+tf.test("mean() with fractions [1/2, 3/4, 1] = 3/4", "Statistical Functions", () => {
+  const vs = [EGPTReal.fromRational(1n,2n), EGPTReal.fromRational(3n,4n), EGPTReal.fromRational(1n,1n)];
+  return EGPTStat.mean(vs).equals(EGPTReal.fromRational(3n, 4n));
+});
+
+tf.test("mean() with scaled vectors returns EGPTReal", "Statistical Functions", () => {
+  const H2 = EGPTReal.fromBigInt(2n), H8 = EGPTReal.fromBigInt(8n);
+  const vs = [EGPTMath.sqrt(H2), EGPTReal.fromBigInt(2n), EGPTMath.sqrt(H8)];
+  const mean = EGPTStat.mean(vs);
+  return mean instanceof EGPTReal;
+});
+
+tf.test("variance() of [1,3,5]: variance=8/3, negative_deviations=1, total=3", "Statistical Functions", () => {
+  const vs = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(5n)];
+  const r = EGPTStat.variance(vs);
+  return r.variance.equals(EGPTReal.fromRational(8n, 3n))
+      && r.metadata.total_vectors === 3
+      && r.metadata.negative_deviations === 1;
+});
+
+tf.test("variance() of [-1,0,1] = 2/3", "Statistical Functions", () => {
+  const vs = [EGPTReal.fromBigInt(-1n), EGPTReal.fromBigInt(0n), EGPTReal.fromBigInt(1n)];
+  const r = EGPTStat.variance(vs);
+  return r.variance.equals(EGPTReal.fromRational(2n, 3n))
+      && r.metadata.total_vectors === 3;
+});
+
+tf.test("absoluteDifference(5, 2) = 3", "Statistical Functions", () => {
+  return EGPTStat.absoluteDifference(EGPTReal.fromBigInt(5n), EGPTReal.fromBigInt(2n))
+                 .equals(EGPTReal.fromBigInt(3n));
+});
+
+tf.test("absoluteDifference(2, 5) = 3 (commutative)", "Statistical Functions", () => {
+  return EGPTStat.absoluteDifference(EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(5n))
+                 .equals(EGPTReal.fromBigInt(3n));
+});
+
+tf.test("absoluteDifference(7/4, 3/4) = 1", "Statistical Functions", () => {
+  return EGPTStat.absoluteDifference(EGPTReal.fromRational(7n,4n), EGPTReal.fromRational(3n,4n))
+                 .equals(EGPTReal.fromBigInt(1n));
+});
+
+tf.test("comprehensiveStatisticalAnalysis([1..5]): EGPTStatData, count=5, mean=3", "Statistical Functions", () => {
+  const vs = [1n,2n,3n,4n,5n].map(n => EGPTReal.fromBigInt(n));
+  const a = EGPTStat.comprehensiveStatisticalAnalysis(vs);
+  return a instanceof EGPTStatData && a.total_count === 5
+      && a.mean.equals(EGPTReal.fromBigInt(3n));
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 6.10 — EGPTStatData Metadata Handling
+
+`EGPTStatData` is the rich result object returned by `comprehensiveStatisticalAnalysis()`.
+Beyond the scalar statistics, it tracks metadata: `total_count`, `negative_count`,
+`min_value`, `max_value`, `variance`, `std_deviation`. The `getNormalizedDeltas()` method
+returns per-element delta objects with magnitude classification — useful for outlier
+detection.
+</cell>
+
+<cell type="js" lane="math" id="phase610" in="suite" out="suite">
+const { tf, EGPTReal, EGPTMath, EGPTStat, EGPTStatData } = inputs.suite;
+
+console.log("PHASE 6.10: EGPTStatData Metadata Handling");
+
+tf.test("fromArray([1,3,5]): count=3, mean=3, min=1, max=5", "Statistical Metadata", () => {
+  const vs = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(5n)];
+  const sd = EGPTStatData.fromArray(vs);
+  return sd.total_count === 3
+      && sd.mean.equals(EGPTReal.fromBigInt(3n))
+      && sd.min_value.equals(EGPTReal.fromBigInt(1n))
+      && sd.max_value.equals(EGPTReal.fromBigInt(5n));
+});
+
+tf.test("fromArray([-2,0,3]): count=3, negative_count=1, min=-2, max=3", "Statistical Metadata", () => {
+  const vs = [EGPTReal.fromBigInt(-2n), EGPTReal.fromBigInt(0n), EGPTReal.fromBigInt(3n)];
+  const sd = EGPTStatData.fromArray(vs);
+  return sd.total_count === 3 && sd.negative_count === 1
+      && sd.min_value.equals(EGPTReal.fromBigInt(-2n))
+      && sd.max_value.equals(EGPTReal.fromBigInt(3n));
+});
+
+tf.test("fromArray with scaled vectors: count=3, is EGPTStatData", "Statistical Metadata", () => {
+  const H2 = EGPTReal.fromBigInt(2n), H4 = EGPTReal.fromBigInt(4n);
+  const vs = [EGPTMath.sqrt(H2), EGPTMath.sqrt(H4), EGPTReal.fromBigInt(3n)];
+  const sd = EGPTStatData.fromArray(vs);
+  return sd.total_count === 3 && sd instanceof EGPTStatData;
+});
+
+tf.test("getNormalizedDeltas() returns 3 entries with required fields", "Statistical Metadata", () => {
+  const vs = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(5n)];
+  const deltas = EGPTStatData.fromArray(vs).getNormalizedDeltas();
+  return deltas.length === 3
+      && 'index' in deltas[0] && 'raw_delta' in deltas[0]
+      && 'normalized_delta' in deltas[0] && 'magnitude_class' in deltas[0];
+});
+
+tf.test("Outlier gets different magnitude_class than baseline values", "Statistical Metadata", () => {
+  const vs = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(100n)];
+  const classes = EGPTStatData.fromArray(vs).getNormalizedDeltas().map(d => d.magnitude_class);
+  return [...new Set(classes)].length > 1;
+});
+
+tf.test("comprehensiveStatisticalAnalysis([5,10,15,20]): count=4, mean=50/4, has variance & std_dev", "Statistical Integration", () => {
+  const vs = [5n, 10n, 15n, 20n].map(n => EGPTReal.fromBigInt(n));
+  const a = EGPTStat.comprehensiveStatisticalAnalysis(vs);
+  return a instanceof EGPTStatData && a.total_count === 4
+      && a.mean.equals(EGPTReal.fromRational(50n, 4n))
+      && 'variance' in a && 'std_deviation' in a;
+});
+
+tf.test("comprehensiveStatisticalAnalysis with fractional roots: count=4", "Statistical Integration", () => {
+  const H8 = EGPTReal.fromBigInt(8n), H16 = EGPTReal.fromBigInt(16n);
+  const vs = [
+    EGPTMath.pow(H8, 1n, 3n),    // ∛8 → H(2)
+    EGPTMath.pow(H16, 1n, 4n),   // ⁴√16 → H(2)
+    EGPTReal.fromBigInt(2n),
+    EGPTReal.fromBigInt(3n)
+  ];
+  const a = EGPTStat.comprehensiveStatisticalAnalysis(vs);
+  return a instanceof EGPTStatData && a.total_count === 4;
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 6.11 — Complex Number Syntactic Sugar
+
+`EGPTReal.negate(x)` returns a new vector with the sign flipped. `ComplexEGPTReal` wraps
+two `EGPTReal` values (real + imaginary) and provides conjugate, scaling, magnitude-squared,
+and real/imaginary detection. The `conjugate()` method — which flips the sign of the
+imaginary part — is essential for IFFT twiddle-factor arithmetic.
+</cell>
+
+<cell type="js" lane="math" id="phase611" in="suite" out="suite">
+const { tf, EGPTReal, EGPTMath, ComplexEGPTReal } = inputs.suite;
+
+console.log("PHASE 6.11: Complex Number Syntactic Sugar");
+
+const H_ZERO = EGPTReal.fromBigInt(0n);
+
+tf.test("EGPTReal.negate(5) = -5", "Complex Sugar", () => {
+  return EGPTReal.negate(EGPTReal.fromBigInt(5n))
+                 .breakSymbolicToApproximateBigInt() === -5n;
+});
+
+tf.test("EGPTReal.negate(√2) is negative", "Complex Sugar", () => {
+  const neg = EGPTReal.negate(EGPTMath.sqrt(EGPTReal.fromBigInt(2n)));
+  return EGPTMath.compare(neg, H_ZERO) < 0;
+});
+
+tf.test("EGPTReal.negate double negation: negate(negate(5)) = 5", "Complex Sugar", () => {
+  const H5 = EGPTReal.fromBigInt(5n);
+  return EGPTReal.negate(EGPTReal.negate(H5)).breakSymbolicToApproximateBigInt() === 5n;
+});
+
+tf.test("ComplexEGPTReal.negate(): -(3+4i) = -3-4i", "Complex Sugar", () => {
+  const z = new ComplexEGPTReal(EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(4n));
+  const neg = z.negate();
+  return neg.real.breakSymbolicToApproximateBigInt() === -3n
+      && neg.imag.breakSymbolicToApproximateBigInt() === -4n;
+});
+
+tf.test("ComplexEGPTReal.conjugate(): conj(3+4i) = 3-4i", "Complex Sugar", () => {
+  const z = new ComplexEGPTReal(EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(4n));
+  const c = z.conjugate();
+  return c.real.breakSymbolicToApproximateBigInt() === 3n
+      && c.imag.breakSymbolicToApproximateBigInt() === -4n;
+});
+
+tf.test("ComplexEGPTReal.conjugate() on scaled vectors: real positive, imag negative", "Complex Sugar", () => {
+  const Hsqrt2 = EGPTMath.sqrt(EGPTReal.fromBigInt(2n));
+  const z = new ComplexEGPTReal(Hsqrt2, Hsqrt2);
+  const c = z.conjugate();
+  return EGPTMath.compare(c.real, H_ZERO) > 0
+      && EGPTMath.compare(c.imag, H_ZERO) < 0;
+});
+
+tf.test("ComplexEGPTReal.conjugate() with rational: (1/2, 1/2)* = (1/2, -1/2)", "Complex Sugar", () => {
+  const H_half = EGPTReal.fromRational(1n, 2n);
+  const z = new ComplexEGPTReal(H_half, H_half);
+  const c = z.conjugate();
+  return c.real.equals(EGPTReal.fromRational(1n, 2n))
+      && c.imag.equals(EGPTReal.fromRational(-1n, 2n));
+});
+
+tf.test("ComplexEGPTReal.conjugate() double: conj(conj(z)) = z", "Complex Sugar", () => {
+  const z = new ComplexEGPTReal(EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(-4n));
+  return z.conjugate().conjugate().equals(z);
+});
+
+tf.test("IFFT pattern: (-2-2i) × conj(0+1i) = (-2+2i)", "Complex Sugar", () => {
+  const value = new ComplexEGPTReal(EGPTReal.fromBigInt(-2n), EGPTReal.fromBigInt(-2n));
+  const twiddle = new ComplexEGPTReal(EGPTReal.fromBigInt(0n), EGPTReal.fromBigInt(1n));
+  const product = value.multiply(twiddle.conjugate());
+  const expected = new ComplexEGPTReal(EGPTReal.fromBigInt(-2n), EGPTReal.fromBigInt(2n));
+  return product.equals(expected);
+});
+
+tf.test("ComplexEGPTReal.scaleBy(5): (2+3i)*5 = (10+15i)", "Complex Sugar", () => {
+  const z = new ComplexEGPTReal(EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(3n));
+  const s = z.scaleBy(5n);
+  return s.real.breakSymbolicToApproximateBigInt() === 10n
+      && s.imag.breakSymbolicToApproximateBigInt() === 15n;
+});
+
+tf.test("ComplexEGPTReal.scaleByRational(1/2): (6+8i)/2 = (3+4i)", "Complex Sugar", () => {
+  const z = new ComplexEGPTReal(EGPTReal.fromBigInt(6n), EGPTReal.fromBigInt(8n));
+  const s = z.scaleByRational(1n, 2n);
+  return s.real.breakSymbolicToApproximateBigInt() === 3n
+      && s.imag.breakSymbolicToApproximateBigInt() === 4n;
+});
+
+tf.test("getMagnitudeSquared(): |3+4i|² = 25", "Complex Sugar", () => {
+  const z = new ComplexEGPTReal(EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(4n));
+  return z.getMagnitudeSquared().breakSymbolicToApproximateBigInt() === 25n;
+});
+
+tf.test("isReal() and isImaginary() detection", "Complex Sugar", () => {
+  const zReal = new ComplexEGPTReal(EGPTReal.fromBigInt(5n), EGPTReal.fromBigInt(0n));
+  const zImag = new ComplexEGPTReal(EGPTReal.fromBigInt(0n), EGPTReal.fromBigInt(5n));
+  const zBoth = new ComplexEGPTReal(EGPTReal.fromBigInt(5n), EGPTReal.fromBigInt(1n));
+  return zReal.isReal() && !zBoth.isReal()
+      && zImag.isImaginary() && !zBoth.isImaginary();
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 7 — Complex Numbers and Riemann Zeta Function
+
+`EGPTComplex` provides static methods for complex arithmetic (`complexAdd`, `complexMultiply`,
+`complexPower`) and the Riemann Zeta function approximation (`riemannZeta`). These operate
+over `ComplexEGPTReal` values.
+
+`complexPower(n, s)` computes `n^s` for complex exponent `s`. When `s` is purely imaginary
+(`s = 0 + 2i`), the result lies on the unit circle — `|n^(it)|² ≈ 1`. The Riemann Zeta
+`ζ(2) = π²/6 ≈ 1.645` is verified with 100-term partial sum.
+</cell>
+
+<cell type="js" lane="math" id="phase7" in="suite" out="suite">
+const { tf, EGPTReal, EGPTMath, ComplexEGPTReal, EGPTComplex } = inputs.suite;
+
+console.log("PHASE 7: Complex Numbers and Riemann Zeta Function");
+
+tf.test("ComplexEGPTReal creation and equality", "Complex Numbers", () => {
+  const H2 = EGPTReal.fromBigInt(2n), H3 = EGPTReal.fromBigInt(3n);
+  const z1 = new ComplexEGPTReal(H2, H3);
+  const z2 = new ComplexEGPTReal(H2.clone(), H3.clone());
+  const z3 = new ComplexEGPTReal(H3, H2);
+  return z1.equals(z2) && !z1.equals(z3);
+});
+
+tf.test("EGPTComplex.complexAdd: (1+2i)+(3+4i) = (4+6i)", "Complex Algebra", () => {
+  const z1 = new ComplexEGPTReal(EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(2n));
+  const z2 = new ComplexEGPTReal(EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(4n));
+  const result = EGPTComplex.complexAdd(z1, z2);
+  const expected = new ComplexEGPTReal(EGPTReal.fromBigInt(4n), EGPTReal.fromBigInt(6n));
+  return result.equals(expected);
+});
+
+tf.test("EGPTComplex.complexMultiply: (2+3i)*(4+5i) = -7+22i", "Complex Algebra", () => {
+  const z1 = new ComplexEGPTReal(EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(3n));
+  const z2 = new ComplexEGPTReal(EGPTReal.fromBigInt(4n), EGPTReal.fromBigInt(5n));
+  const result = EGPTComplex.complexMultiply(z1, z2);
+  const expected = new ComplexEGPTReal(EGPTReal.fromBigInt(-7n), EGPTReal.fromBigInt(22n));
+  return result.equals(expected);
+});
+
+tf.test("EGPTComplex.complexPower: 3^(0+2i) lies on unit circle (|result|²≈1)", "Complex Algebra", () => {
+  const H3 = EGPTReal.fromBigInt(3n);
+  const s = new ComplexEGPTReal(EGPTReal.fromBigInt(0n), EGPTReal.fromBigInt(2n));
+  const result = EGPTComplex.complexPower(H3, s);
+  const magSq = EGPTMath.add(
+    EGPTMath.pow(result.real, 2n),
+    EGPTMath.pow(result.imag, 2n)
+  );
+  const diff = EGPTMath.subtract(magSq, EGPTReal.fromBigInt(1n));
+  return Math.abs(diff.breakSymbolicToApproximateJSNumber()) < 1e-9;
+});
+
+tf.test("EGPTComplex.riemannZeta(2) ≈ π²/6 ≈ 1.645 (100 terms)", "Riemann Zeta Function", () => {
+  const s = new ComplexEGPTReal(EGPTReal.fromBigInt(2n), EGPTReal.fromBigInt(0n));
+  const result = EGPTComplex.riemannZeta(s, 100);
+  const val = result.real.breakSymbolicToApproximateJSNumber();
+  return Math.abs(val - (Math.PI ** 2) / 6) < 0.01;
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Phase 9 — TwiddleTable: Phase-Based FFT Operations
+
+`TwiddleTable(k)` pre-computes the k-th roots of unity `ω_j = e^(2πi·j/k)` as exact
+`ComplexEGPTReal` values. All FFT phase operations (`multiplyByPhase`, `powerByPhase`,
+`conjugateByPhase`) work as **integer index arithmetic modulo k** — no floating-point trig,
+no rounding, O(1) per operation.
+
+This tests four FFT correctness requirements:
+1. `ω^k = ω₀` (periodicity) for k = 4, 8, 16, 4096
+2. Phase additivity: `ω^a × ω^b = ω^((a+b) mod k)`
+3. Special values: `ω₀=(1,0)`, `ω_{k/2}=(-1,0)`, `ω_{k/4}=(0,1)`
+4. Conjugate symmetry: `ω_j* = ω_{k-j}`
+</cell>
+
+<cell type="js" lane="math" id="phase9" in="suite" out="suite">
+const { tf, EGPTReal, ComplexEGPTReal, TwiddleTable } = inputs.suite;
+
+console.log("PHASE 9: TwiddleTable (Phase-Based FFT Operations)");
+
+// A. Generation
+tf.test("TwiddleTable k=4: 4 twiddles", "Twiddle Generation", () => {
+  const t = new TwiddleTable(4);
+  return t.k === 4 && t.twiddles.size === 4;
+});
+
+tf.test("TwiddleTable k=8: 8 twiddles", "Twiddle Generation", () => {
+  const t = new TwiddleTable(8);
+  return t.k === 8 && t.twiddles.size === 8;
+});
+
+tf.test("TwiddleTable k=16: 16 twiddles", "Twiddle Generation", () => {
+  const t = new TwiddleTable(16);
+  return t.k === 16 && t.twiddles.size === 16;
+});
+
+tf.test("TwiddleTable k=4096: 4096 twiddles in under 5s", "Twiddle Generation", () => {
+  const t = new TwiddleTable(4096);
+  return t.k === 4096 && t.twiddles.size === 4096;
+});
+
+tf.test("Twiddle coordinates are EGPTReal instances", "Twiddle Generation", () => {
+  const t = new TwiddleTable(8);
+  const w1 = t.getTwiddle(1);
+  return w1.real instanceof EGPTReal && w1.imag instanceof EGPTReal;
+});
+
+// B. Phase operations
+tf.test("multiplyByPhase: ω₁ × ω₂ = ω₃ (k=8)", "Phase Operations", () => {
+  return new TwiddleTable(8).multiplyByPhase(1, 2).index === 3;
+});
+
+tf.test("multiplyByPhase: ω₂ × ω₃ = ω₅ (k=8)", "Phase Operations", () => {
+  return new TwiddleTable(8).multiplyByPhase(2, 3).index === 5;
+});
+
+tf.test("multiplyByPhase wraparound: ω₇ × ω₂ = ω₁ (k=8)", "Phase Operations", () => {
+  return new TwiddleTable(8).multiplyByPhase(7, 2).index === 1;
+});
+
+tf.test("powerByPhase: ω₁^2 = ω₂ (k=8)", "Phase Operations", () => {
+  return new TwiddleTable(8).powerByPhase(1, 2).index === 2;
+});
+
+tf.test("powerByPhase: ω₂^3 = ω₆ (k=8)", "Phase Operations", () => {
+  return new TwiddleTable(8).powerByPhase(2, 3).index === 6;
+});
+
+tf.test("conjugateByPhase: ω₁* = ω₇ (k=8)", "Phase Operations", () => {
+  return new TwiddleTable(8).conjugateByPhase(1).index === 7;
+});
+
+tf.test("conjugateByPhase: ω₃* = ω₅ (k=8)", "Phase Operations", () => {
+  return new TwiddleTable(8).conjugateByPhase(3).index === 5;
+});
+
+// C. FFT Requirements
+tf.test("FFT Req 1: ω^k = ω₀ for all j (k=4)", "FFT Requirements", () => {
+  const t = new TwiddleTable(4);
+  for (let j = 0; j < 4; j++) if (t.powerByPhase(j, 4).index !== 0) return false;
+  return true;
+});
+
+tf.test("FFT Req 1: ω^k = ω₀ for all j (k=8)", "FFT Requirements", () => {
+  const t = new TwiddleTable(8);
+  for (let j = 0; j < 8; j++) if (t.powerByPhase(j, 8).index !== 0) return false;
+  return true;
+});
+
+tf.test("FFT Req 1: ω^k = ω₀ for all j (k=16)", "FFT Requirements", () => {
+  const t = new TwiddleTable(16);
+  for (let j = 0; j < 16; j++) if (t.powerByPhase(j, 16).index !== 0) return false;
+  return true;
+});
+
+tf.test("FFT Req 1: ω^k = ω₀ sampled at k=4096", "FFT Requirements", () => {
+  const t = new TwiddleTable(4096);
+  for (const j of [0, 1, 2, 100, 1000, 2048, 4095]) {
+    if (t.powerByPhase(j, 4096).index !== 0) return false;
+  }
+  return true;
+});
+
+tf.test("FFT Req 2: Phase additivity ω^a × ω^b = ω^((a+b) mod k) (k=16)", "FFT Requirements", () => {
+  const t = new TwiddleTable(16);
+  for (const {a, b, ex} of [{a:1,b:1,ex:2},{a:3,b:4,ex:7},{a:8,b:8,ex:0},{a:15,b:1,ex:0}]) {
+    if (t.multiplyByPhase(a, b).index !== ex) return false;
+  }
+  return true;
+});
+
+tf.test("FFT Req 3: Special values ω₀=(1,0), ω₄=(-1,0), ω₂=(0,1) (k=8)", "FFT Requirements", () => {
+  const t = new TwiddleTable(8);
+  const one = EGPTReal.fromBigInt(1n), zero = EGPTReal.fromBigInt(0n), neg1 = EGPTReal.fromBigInt(-1n);
+  const w0 = t.getTwiddle(0), w4 = t.getTwiddle(4), w2 = t.getTwiddle(2);
+  return w0.real.equals(one) && w0.imag.equals(zero)
+      && w4.real.equals(neg1) && w4.imag.equals(zero)
+      && w2.real.equals(zero) && w2.imag.equals(one);
+});
+
+tf.test("FFT Req 4: Conjugate symmetry ω_j* = ω_{k-j} (k=16)", "FFT Requirements", () => {
+  const t = new TwiddleTable(16);
+  for (const j of [1, 2, 3, 5]) {
+    if (t.conjugateByPhase(j).index !== (16 - j) % 16) return false;
+  }
+  return true;
+});
+
+// D. Integration
+tf.test("getPhaseIndex finds correct index", "Phase Integration", () => {
+  const t = new TwiddleTable(8);
+  return t.getPhaseIndex(t.getTwiddle(3)) === 3;
+});
+
+tf.test("Phase operations at k=4096: mult(1000,2000)=3000, pow(100,10)=1000, conj(1000)=3096", "Phase Integration", () => {
+  const t = new TwiddleTable(4096);
+  return t.multiplyByPhase(1000, 2000).index === 3000
+      && t.powerByPhase(100, 10).index === 1000
+      && t.conjugateByPhase(1000).index === 3096;
+});
+
+tf.test("k=4096 memory: first/mid/last twiddles are ComplexEGPTReal", "Performance", () => {
+  const t = new TwiddleTable(4096);
+  return t.getTwiddle(0) instanceof ComplexEGPTReal
+      && t.getTwiddle(2048) instanceof ComplexEGPTReal
+      && t.getTwiddle(4095) instanceof ComplexEGPTReal;
+});
+
+tf.test("k=4096 O(1) operations: 3000 phase ops complete quickly", "Performance", () => {
+  const t = new TwiddleTable(4096);
+  const start = Date.now();
+  for (let i = 0; i < 1000; i++) {
+    t.multiplyByPhase(i % 4096, (i * 2) % 4096);
+    t.powerByPhase(i % 4096, 10);
+    t.conjugateByPhase(i % 4096);
+  }
+  return (Date.now() - start) < 500;
+});
+
+return { suite: inputs.suite };
+</cell>
+
+<cell type="markdown">
+## Final Summary
+
+This cell prints the complete test summary across all phases. Each category line shows
+`passed/total`; the bottom line gives the overall count and success rate; any failed tests
+are listed with their error messages.
+</cell>
+
+<cell type="js" lane="math" id="summary" in="suite">
+const { tf } = inputs.suite;
+const { total, passed, failed } = tf.printSummary();
+if (failed > 0) {
+  throw new Error(`Suite failed: ${failed}/${total} tests did not pass`);
+}
+console.log("All tests passed.");
+</cell>
+
+</frqtl-notebook>

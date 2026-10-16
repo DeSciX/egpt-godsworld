@@ -1,0 +1,148 @@
+<frqtl-notebook version="1" title="Complex Numbers in EGPT — Exact Rational Arithmetic with ComplexEGPTReal">
+
+<cell type="markdown">
+# Complex Numbers in EGPT — Exact Rational Arithmetic
+
+Classical floating-point represents complex numbers as pairs of IEEE doubles. EGPT represents them as pairs of **`EGPTReal` values** — rational numbers stored symbolically as prime-factorisation vectors. Every operation is exact: no rounding, no cancellation error, no NaN. The result of `3 + 4i` squared is `25` as a BigInt ratio, not `24.999999...`.
+
+This notebook walks through the fundamentals:
+
+1. **Constructing** complex numbers from exact integer components.
+2. **Inspecting** the symbolic representation via `toMathString()`.
+3. **Computing magnitude squared** — `|z|² = a² + b²` — using `EGPTMath.multiply` and `EGPTMath.add`, both exact.
+4. **Verifying** that the result matches the known integer value.
+
+Everything below runs through the single injected `math` capability — no URL imports, no floating-point.
+</cell>
+
+<cell type="js" lane="math" id="backend">
+// Report the active backend — derived from the SDK, never hardcoded.
+const { math, display } = caps;
+const backend = math.activeMathBackend;
+display(`Active math backend (derived): ${backend}`);
+</cell>
+
+<cell type="markdown">
+## 1. Constructing complex numbers
+
+A `ComplexEGPTReal` is a pair `(real: EGPTReal, imag: EGPTReal)`. We build each component from an exact integer via `EGPTReal.fromBigInt(n)` — the canonical integer entry point. There is no approximate coercion from JS `Number`.
+
+Here we construct:
+- `z1 = 3 + 4i` — a classic Pythagorean complex number whose magnitude is exactly 5.
+- `z2 = 5 + (-2)i` — a second number to illustrate that negative imaginary parts work identically.
+</cell>
+
+<cell type="js" lane="math" id="construct" out="z1str, z2str">
+const { math, display } = caps;
+const { EGPTReal, ComplexEGPTReal } = math;
+
+// Build z1 = 3 + 4i
+const z1 = new ComplexEGPTReal(EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(4n));
+
+// Build z2 = 5 + (-2)i
+const z2 = new ComplexEGPTReal(EGPTReal.fromBigInt(5n), EGPTReal.fromBigInt(-2n));
+
+// toMathString() renders the EGPTReal symbolic representation
+const z1str = `z1: real=${z1.real.toMathString()}, imag=${z1.imag.toMathString()}`;
+const z2str = `z2: real=${z2.real.toMathString()}, imag=${z2.imag.toMathString()}`;
+
+display(z1str);
+display(z2str);
+
+return { z1str, z2str };
+</cell>
+
+<cell type="markdown">
+## 2. The symbolic representation
+
+`toMathString()` exposes how the EGPT system stores a number internally. Small integers like `3`, `4`, `5`, `-2` appear in a compact form — but the underlying type is always an exact rational (a numerator/denominator pair of BigInts). There is no lossy float encoding happening here.
+
+Both `z1` and `z2` are confirmed to be `ComplexEGPTReal` instances, not raw JS objects.
+</cell>
+
+<cell type="js" lane="math" id="instanceof-check" out="isComplex">
+const { math, display } = caps;
+const { EGPTReal, ComplexEGPTReal } = math;
+
+// Reconstruct locally (cells are independent — no cross-cell variable sharing)
+const z1 = new ComplexEGPTReal(EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(4n));
+const z2 = new ComplexEGPTReal(EGPTReal.fromBigInt(5n), EGPTReal.fromBigInt(-2n));
+
+const isComplex = z1 instanceof ComplexEGPTReal && z2 instanceof ComplexEGPTReal;
+display(`Both are ComplexEGPTReal instances: ${isComplex}`);
+
+return { isComplex };
+</cell>
+
+<cell type="markdown">
+## 3. Magnitude squared: |z|² = a² + b²
+
+For a complex number `z = a + bi`, the magnitude squared is:
+
+```
+|z|² = a·a + b·b
+```
+
+We compute this using `EGPTMath.multiply` (exact rational multiplication) and `EGPTMath.add` (exact rational addition). For `z1 = 3 + 4i`:
+
+```
+|z1|² = 3·3 + 4·4 = 9 + 16 = 25
+```
+
+This is the Pythagorean triple `(3, 4, 5)` — the magnitude `|z1|` is exactly 5.
+</cell>
+
+<cell type="js" lane="math" id="magnitude-squared" out="magSqStr">
+const { math, display } = caps;
+const { EGPTReal, EGPTMath, ComplexEGPTReal } = math;
+
+const z1 = new ComplexEGPTReal(EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(4n));
+
+// Exact rational arithmetic — no floating-point at any step
+const realSquared = EGPTMath.multiply(z1.real, z1.real);   // 3 * 3 = 9
+const imagSquared = EGPTMath.multiply(z1.imag, z1.imag);   // 4 * 4 = 16
+const magnitudeSquared = EGPTMath.add(realSquared, imagSquared); // 9 + 16 = 25
+
+const magSqStr = magnitudeSquared.toMathString();
+display(`|z1|² = ${magSqStr}`);
+
+// Verify against expected value
+const expected = EGPTReal.fromBigInt(25n);
+const correct = magnitudeSquared.equals(expected);
+display(`Equals 25 (exact comparison via .equals()): ${correct}`);
+
+return { magSqStr };
+</cell>
+
+<cell type="markdown">
+## 4. Why `.equals()`, not `===` or `==`
+
+EGPT stores rationals as prime-factorisation vectors. Two `EGPTReal` values may have different internal representations that are mathematically equal. The only correct comparison is **`.equals()`** — a symbolic equality check on the reduced rational. Never use `==`, `===`, or string comparison (`.toMathString() ===`) to compare EGPTReal values.
+
+This is the same discipline as comparing fractions: `1/2` and `2/4` are equal but not string-identical.
+</cell>
+
+<cell type="js" lane="math" id="summary" in="z1str, z2str, isComplex, magSqStr">
+const { math, display } = caps;
+const { EGPTReal, EGPTMath, ComplexEGPTReal } = math;
+
+// Reproduce the original run(sdk) return value exactly
+const z1 = new ComplexEGPTReal(EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(4n));
+const z2 = new ComplexEGPTReal(EGPTReal.fromBigInt(5n), EGPTReal.fromBigInt(-2n));
+const magnitudeSquaredZ1 = EGPTMath.add(
+  EGPTMath.multiply(z1.real, z1.real),
+  EGPTMath.multiply(z1.imag, z1.imag)
+);
+
+const result = {
+  category: "complex-twiddle",
+  z1: { real: z1.real.toMathString(), imag: z1.imag.toMathString() },
+  z2: { real: z2.real.toMathString(), imag: z2.imag.toMathString() },
+  magnitudeSquaredZ1: magnitudeSquaredZ1.toMathString(),
+  isComplex: z1 instanceof ComplexEGPTReal && z2 instanceof ComplexEGPTReal
+};
+
+display(result);
+</cell>
+
+</frqtl-notebook>

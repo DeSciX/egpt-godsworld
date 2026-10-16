@@ -1,0 +1,471 @@
+<frqtl-notebook version="1" title="Solving Polynomial Systems — fractional roots, GCD, and shared-factor detection">
+
+<cell type="markdown">
+# Solving Polynomial Systems in EGPT Canonical Space
+
+This notebook ports `SolvePolynomialSystemTest.js` — the canonical test suite for
+`SolvePolynomialSystem.js`.
+
+The library operates entirely in **rational (PPF) arithmetic** via `EGPTReal` and
+`EGPTPolynomial`. No floating-point, no approximate GCD — every root, every remainder,
+every shared factor is detected to the last bit.
+
+Four stages are covered:
+
+| Stage | What is tested |
+|-------|---------------|
+| 1 | Single polynomial with fractional coefficients — root evaluation and exact division |
+| 2 | System of two polynomials — GCD finds the shared root |
+| 3 | Minimal-polynomial elimination — express √2 and √3 by integer-coefficient polynomials |
+| 4 | `EGPTPolynomial.gcd` / `shareCommonFactor` — the polynomial-chain API |
+
+Plus a set of **edge cases** covering zero polynomials, roots at zero, repeated roots,
+large rational denominators, negative-rational canonicalization, and algebraic laws.
+
+*(All arithmetic goes through `caps.math`. No URL imports.)*
+</cell>
+
+<cell type="markdown">
+## Setup — helpers and test harness
+
+`EGPTReal.fromBigInt` / `EGPTReal.fromRational` are the two constructors used throughout.
+The SDK also exports standalone `polyGCD` and `monicNormalize` (the Euclidean GCD walk and
+monic normalization) — these replace the local helpers from the source file.
+
+The `suite` binding is consumed by every phase cell.
+</cell>
+
+<cell type="js" lane="math" id="setup" out="suite">
+const { math } = caps;
+const { EGPTReal, EGPTPolynomial, polyGCD, monicNormalize } = math;
+
+const ZERO = EGPTReal.fromBigInt(0n);
+const ONE  = EGPTReal.fromBigInt(1n);
+
+// Convenience constructors
+const frac = (n, d) => EGPTReal.fromRational(BigInt(n), BigInt(d));
+const intN = (n)    => EGPTReal.fromBigInt(BigInt(n));
+const isZero = (en) => en.equals(ZERO);
+
+// Minimal test harness
+let passed = 0;
+let failed = 0;
+const failures = [];
+
+function test(name, fn) {
+    try {
+        fn();
+        passed++;
+        console.log('  ok  — ' + name);
+    } catch (err) {
+        failed++;
+        failures.push({ name, err });
+        console.log('  FAIL — ' + name);
+        console.log('        ' + err.message);
+    }
+}
+
+function assert(cond, msg) {
+    if (!cond) throw new Error(msg || 'assertion failed');
+}
+
+function assertEqPoly(actual, expected, msg) {
+    if (!EGPTPolynomial.equals(actual, expected)) {
+        const show = (p) => '[' + p.map(c => c.breakSymbolicToString()).join(', ') + ']';
+        throw new Error((msg || 'polynomial mismatch') + '\n    actual   = ' + show(actual) + '\n    expected = ' + show(expected));
+    }
+}
+
+function assertZero(en, msg) {
+    if (!isZero(en)) throw new Error((msg || 'expected zero') + ': got ' + en.breakSymbolicToString());
+}
+
+// `polyGCD` and `monicNormalize` come from the SDK — no local re-implementation needed.
+// They are identical to the local helpers in the source file.
+
+return { suite: { test, assert, assertEqPoly, assertZero, frac, intN, ZERO, ONE, isZero, polyGCD, monicNormalize, getResults: () => ({ passed, failed, failures }) } };
+</cell>
+
+<cell type="markdown">
+## Stage 1 — Single polynomial with fractional coefficients
+
+Consider `f(x) = x² − (7/6)x + 1/3`. In coefficient-vector form (constant term first):
+
+```
+f = [1/3, −7/6, 1]
+```
+
+Its roots are `x = 1/2` and `x = 2/3` — both rational, discoverable by exact evaluation and exact polynomial division with zero remainder.
+</cell>
+
+<cell type="js" lane="math" id="stage1" in="suite" out="s1">
+const { math } = caps;
+const { EGPTPolynomial } = math;
+const { test, assert, assertEqPoly, assertZero, frac, intN, ZERO, ONE, isZero } = inputs.suite;
+
+console.log('\n[Stage 1] single polynomial, fractional coefficients');
+
+// f(x) = x² − (7/6)x + 1/3   (coefficients stored constant-term first)
+const f = [ frac(1, 3), frac(-7, 6), ONE ];
+
+test('f(1/2) is exactly zero', () => {
+    assertZero(EGPTPolynomial.evaluateAt(f, frac(1, 2)), 'f(1/2)');
+});
+
+test('f(2/3) is exactly zero', () => {
+    assertZero(EGPTPolynomial.evaluateAt(f, frac(2, 3)), 'f(2/3)');
+});
+
+test('f / (x − 1/2) has zero remainder and leaves the other root', () => {
+    const { quotient, remainder } = EGPTPolynomial.divide(f, [frac(-1, 2), ONE]);
+    assert(remainder.every(isZero), 'non-zero remainder');
+    assertZero(EGPTPolynomial.evaluateAt(quotient, frac(2, 3)), 'quotient(2/3)');
+});
+
+test('f / (x − 1/2) quotient is exactly x − 2/3', () => {
+    const { quotient } = EGPTPolynomial.divide(f, [frac(-1, 2), ONE]);
+    assertEqPoly(quotient, [frac(-2, 3), ONE], 'quotient should be x − 2/3');
+});
+
+test('f(1) equals the sum of coefficients (= 1/3 − 7/6 + 1 = 1/6)', () => {
+    const v = EGPTPolynomial.evaluateAt(f, ONE);
+    assert(v.equals(frac(1, 6)), 'got ' + v.breakSymbolicToString() + ', expected 1/6');
+});
+
+test('f(0) equals the constant term 1/3', () => {
+    const v = EGPTPolynomial.evaluateAt(f, ZERO);
+    assert(v.equals(frac(1, 3)), 'got ' + v.breakSymbolicToString() + ', expected 1/3');
+});
+
+return { s1: inputs.suite.getResults() };
+</cell>
+
+<cell type="markdown">
+## Stage 2 — System of polynomials: polynomial GCD finds the shared root
+
+Two polynomials sharing exactly one root:
+
+```
+f1(x) = x² − (7/6)x + 1/3     roots: 1/2, 2/3
+f2(x) = x² − (5/6)x + 1/6     roots: 1/2, 1/3
+```
+
+The Euclidean algorithm on polynomial remainder sequences (`polyGCD`) isolates the common
+factor `(x − 1/2)` in exact rational arithmetic — no numeric threshold, no tolerance.
+
+Additional GCD identities are checked: `gcd(f, f) = f`, coprime polynomials, divisor-of
+relationships, and a three-polynomial chained GCD.
+</cell>
+
+<cell type="js" lane="math" id="stage2" in="suite" out="s2">
+const { math } = caps;
+const { EGPTPolynomial } = math;
+const { test, assert, assertEqPoly, assertZero, frac, intN, ONE, isZero, polyGCD, monicNormalize } = inputs.suite;
+
+console.log('\n[Stage 2] system of polynomials via polynomial GCD');
+
+const f1 = [ frac(1, 3), frac(-7, 6), ONE ];    // roots 1/2, 2/3
+const f2 = [ frac(1, 6), frac(-5, 6), ONE ];    // roots 1/2, 1/3
+
+test('gcd(f1, f2) is monic x − 1/2', () => {
+    const g = monicNormalize(polyGCD(f1, f2));
+    assertEqPoly(g, [frac(-1, 2), ONE], 'gcd should be x − 1/2');
+});
+
+test('gcd vanishes at the shared root 1/2', () => {
+    const g = monicNormalize(polyGCD(f1, f2));
+    assertZero(EGPTPolynomial.evaluateAt(g, frac(1, 2)));
+});
+
+test('gcd(f, f) = f (monic)', () => {
+    const g = monicNormalize(polyGCD(f1, f1));
+    assertEqPoly(g, f1, 'gcd(f1, f1) should equal f1');
+});
+
+test('coprime polynomials have constant gcd (degree 0, nonzero)', () => {
+    // (x − 1) and (x − 2) share no root
+    const a = [intN(-1), ONE];
+    const b = [intN(-2), ONE];
+    const g = polyGCD(a, b);
+    assert(EGPTPolynomial.degree(g) === 0, 'coprime gcd should be degree 0, got ' + EGPTPolynomial.degree(g));
+    assert(!isZero(g[0]), 'coprime gcd constant must be nonzero');
+    const gm = monicNormalize(g);
+    assertEqPoly(gm, [ONE], 'monic coprime gcd should be [1]');
+});
+
+test('when f2 divides f1, gcd(f1, f2) = f2 (monic)', () => {
+    // f1 = (x−1)(x−2) = x² − 3x + 2,  f2 = (x−1)
+    const a = [intN(2), intN(-3), ONE];
+    const b = [intN(-1), ONE];
+    const g = monicNormalize(polyGCD(a, b));
+    assertEqPoly(g, b, 'gcd should equal the divisor factor');
+});
+
+test('two shared roots produce a degree-2 gcd', () => {
+    // f1 = (x−1)(x−2)(x−3),  f2 = (x−1)(x−2)(x−4)
+    // Shared: (x−1)(x−2) = x² − 3x + 2
+    const p1 = [intN(-6), intN(11), intN(-6), ONE];
+    const p2 = [intN(-8), intN(14), intN(-7), ONE];
+    const g = monicNormalize(polyGCD(p1, p2));
+    assertEqPoly(g, [intN(2), intN(-3), ONE], 'gcd should be x² − 3x + 2');
+});
+
+test('three-polynomial system: chained gcd finds the common root', () => {
+    // All share (x − 1): (x−1)(x−2), (x−1)(x−3), (x−1)(x−5)
+    const a = [intN(2), intN(-3), ONE];
+    const b = [intN(3), intN(-4), ONE];
+    const c = [intN(5), intN(-6), ONE];
+    const g = monicNormalize(polyGCD(polyGCD(a, b), c));
+    assertEqPoly(g, [intN(-1), ONE], 'chained gcd should be x − 1');
+});
+
+return { s2: inputs.suite.getResults() };
+</cell>
+
+<cell type="markdown">
+## Stage 3 — Minimal-polynomial elimination for irrationals
+
+To work with `x² − √k · x − 1 = 0` (which has irrational coefficients), we eliminate `√k`
+by conjugation. Multiplying `(x² − 1 − √k · x)(x² − 1 + √k · x)` gives:
+
+```
+p(x) = (x² − 1)² − k · x²
+```
+
+This is a degree-4 polynomial in `x` with **integer coefficients only** — the irrationality
+is gone. For `k = 2`: `x⁴ − 4x² + 1`. For `k = 3`: `x⁴ − 5x² + 1`.
+
+All arithmetic uses `EGPTPolynomial.multiply` and `EGPTPolynomial.subtract` on integer `EGPTReal` coefficients.
+</cell>
+
+<cell type="js" lane="math" id="stage3" in="suite" out="s3">
+const { math } = caps;
+const { EGPTPolynomial } = math;
+const { test, assertEqPoly, intN, ZERO, ONE } = inputs.suite;
+
+console.log('\n[Stage 3] minimal-polynomial elimination of irrationals');
+
+function eliminateSquareRoot(kBigInt) {
+    // For g(x) = x² − √k · x − 1 with α² = k, the elimination yields
+    //   p(x) = (x² − 1)² − k·x²
+    // which is a polynomial with integer coefficients in x alone.
+    const u  = [intN(-1), ZERO, ONE];                    // x² − 1
+    const u2 = EGPTPolynomial.multiply(u, u);            // (x² − 1)²
+    const kxSq = [ZERO, ZERO, EGPTReal.fromBigInt(kBigInt)];
+    return EGPTPolynomial.subtract(u2, kxSq);
+}
+
+// EGPTReal must be in scope for eliminateSquareRoot
+const { EGPTReal } = math;
+
+test('√2 elimination yields x⁴ − 4x² + 1', () => {
+    const p = eliminateSquareRoot(2n);
+    assertEqPoly(p, [ONE, ZERO, intN(-4), ZERO, ONE], 'minimal poly for √2 case');
+});
+
+test('√3 elimination yields x⁴ − 5x² + 1', () => {
+    const p = eliminateSquareRoot(3n);
+    assertEqPoly(p, [ONE, ZERO, intN(-5), ZERO, ONE], 'minimal poly for √3 case');
+});
+
+test('minimal polynomial has no fractional coefficients (structural)', () => {
+    const p = eliminateSquareRoot(2n);
+    // Every coefficient must equal its integer rebuild — confirms no hidden fractions.
+    const rebuilt = [intN(1), intN(0), intN(-4), intN(0), intN(1)];
+    assertEqPoly(p, rebuilt, 'integer rebuild must match');
+});
+
+return { s3: inputs.suite.getResults() };
+</cell>
+
+<cell type="markdown">
+## Edge cases — structural integrity of canonical-space operations
+
+These tests cover the boundary conditions flagged during design:
+
+- Subtraction `a − a` collapses to the zero polynomial
+- `evaluateAt(p, 0)` returns the constant term
+- A polynomial with a root at zero (`x`) evaluates to zero at zero and to `c` at `c`
+- Repeated roots: `(x − 2)²` vanishes at 2 and divides cleanly by `(x − 2)`
+- Large rational denominators (denominator = 10¹⁸) — no floating-point loss
+- Negative-rational canonicalization: `fromRational(-1, 2)` equals `fromRational(1, -2)`
+- Distributive law: `a·(b + c) = a·b + a·c`
+- Multiply by the zero polynomial collapses to `[0]`
+- Addition commutes: `a + b = b + a`
+- Degree is consistent after arithmetic
+</cell>
+
+<cell type="js" lane="math" id="edge-cases" in="suite" out="ec">
+const { math } = caps;
+const { EGPTReal, EGPTPolynomial } = math;
+const { test, assert, assertEqPoly, assertZero, frac, intN, ZERO, ONE, isZero } = inputs.suite;
+
+console.log('\n[Edge cases] structural integrity of canonical-space ops');
+
+test('a − a collapses to the zero polynomial', () => {
+    const a = [frac(1, 3), frac(-7, 6), ONE];
+    const r = EGPTPolynomial.subtract(a, a);
+    assert(r.every(isZero), 'subtract should be all-zero, got ' + r.map(x => x.breakSymbolicToString()));
+});
+
+test('evaluate at 0 returns the constant term (even for higher-degree poly)', () => {
+    const p = [intN(7), intN(-3), intN(5), intN(-9)];    // 7 − 3x + 5x² − 9x³
+    const v = EGPTPolynomial.evaluateAt(p, ZERO);
+    assert(v.equals(intN(7)), 'got ' + v.breakSymbolicToString() + ', expected 7');
+});
+
+test('root at zero: x vanishes at 0 and equals c at c', () => {
+    const x = [ZERO, ONE];                                // polynomial = x
+    assertZero(EGPTPolynomial.evaluateAt(x, ZERO));
+    const c = EGPTPolynomial.evaluateAt(x, frac(5, 7));
+    assert(c.equals(frac(5, 7)), 'got ' + c.breakSymbolicToString() + ', expected 5/7');
+});
+
+test('repeated root: (x − 2)² vanishes at 2 and divides cleanly by (x − 2)', () => {
+    // (x − 2)² = x² − 4x + 4
+    const p = [intN(4), intN(-4), ONE];
+    assertZero(EGPTPolynomial.evaluateAt(p, intN(2)), '(x−2)² at x=2');
+    const { quotient, remainder } = EGPTPolynomial.divide(p, [intN(-2), ONE]);
+    assert(remainder.every(isZero), 'remainder should be zero');
+    assertEqPoly(quotient, [intN(-2), ONE], 'quotient should be (x − 2)');
+});
+
+test('large rational denominator: x − 1/10^18 vanishes at 1/10^18', () => {
+    const tiny = EGPTReal.fromRational(1n, 10n ** 18n);
+    const p = [EGPTReal.fromRational(-1n, 10n ** 18n), ONE];
+    assertZero(EGPTPolynomial.evaluateAt(p, tiny), 'large-denom root');
+    // At 2 * tiny the value should be exactly tiny — not floating-point zero.
+    const two_tiny = EGPTReal.fromRational(2n, 10n ** 18n);
+    const v = EGPTPolynomial.evaluateAt(p, two_tiny);
+    assert(v.equals(tiny), 'got ' + v.breakSymbolicToString() + ', expected ' + tiny.breakSymbolicToString());
+});
+
+test('negative rational canonicalization: -1/2 equals 1/-2', () => {
+    const a = EGPTReal.fromRational(-1n, 2n);
+    const b = EGPTReal.fromRational(1n, -2n);
+    assert(a.equals(b), 'fromRational(-1,2) should equal fromRational(1,-2): ' + a.breakSymbolicToString() + ' vs ' + b.breakSymbolicToString());
+});
+
+test('distributivity: a·(b + c) = a·b + a·c', () => {
+    const a = [ONE, ONE];                      // x + 1
+    const b = [intN(2), ONE];                  // x + 2
+    const c = [intN(3), ONE];                  // x + 3
+    const lhs = EGPTPolynomial.multiply(a, EGPTPolynomial.add(b, c));
+    const rhs = EGPTPolynomial.add(
+        EGPTPolynomial.multiply(a, b),
+        EGPTPolynomial.multiply(a, c)
+    );
+    assertEqPoly(lhs, rhs, 'distributive law broken');
+});
+
+test('multiply by zero polynomial collapses to [0]', () => {
+    const a = [frac(1, 3), frac(-7, 6), ONE];
+    const z = [ZERO];
+    const r = EGPTPolynomial.multiply(a, z);
+    assert(r.every(isZero), 'zero-poly multiply should be all zero');
+});
+
+test('add commutes: a + b = b + a', () => {
+    const a = [frac(1, 3), frac(-7, 6), ONE];
+    const b = [frac(1, 6), frac(-5, 6), ONE];
+    assertEqPoly(EGPTPolynomial.add(a, b), EGPTPolynomial.add(b, a));
+});
+
+test('degree is consistent after arithmetic', () => {
+    const a = [intN(1), intN(2), intN(3)];     // degree 2
+    const b = [intN(4), intN(5)];              // degree 1
+    const prod = EGPTPolynomial.multiply(a, b);
+    assert(EGPTPolynomial.degree(prod) === 3, 'expected degree 3, got ' + EGPTPolynomial.degree(prod));
+    const diff = EGPTPolynomial.subtract(a, a);
+    assert(EGPTPolynomial.degree(diff) === 0, 'expected degree 0 (zero poly), got ' + EGPTPolynomial.degree(diff));
+});
+
+return { ec: inputs.suite.getResults() };
+</cell>
+
+<cell type="markdown">
+## Stage 4 — Polynomial-chain shared-factor detection
+
+`EGPTPolynomial.gcd` and `EGPTPolynomial.shareCommonFactor` expose the GCD walk as a
+first-class class method rather than a standalone function. This stage verifies the API
+directly.
+
+Note: the Vandermonde / Toeplitz / Sylvester matrix-form demonstrations that appeared in an
+earlier architecture have been retired. The polynomial-chain primitives (`gcd`,
+`shareCommonFactor`, `multiply`, `evaluateAt`) now cover every operation those matrix forms
+once demonstrated.
+</cell>
+
+<cell type="js" lane="math" id="stage4" in="suite" out="s4">
+const { math } = caps;
+const { EGPTPolynomial } = math;
+const { test, assert, assertEqPoly, frac, intN, ONE, monicNormalize } = inputs.suite;
+
+console.log('\n[Stage 4] polynomial-chain shared-factor detection');
+
+test('gcd of coprime (x−1, x−2) has degree 0 — no shared factor', () => {
+    const a = [intN(-1), ONE];    // x − 1
+    const b = [intN(-2), ONE];    // x − 2
+    const g = EGPTPolynomial.gcd(a, b);
+    assert(EGPTPolynomial.degree(g) === 0, 'coprime gcd must be degree 0, got ' + EGPTPolynomial.degree(g));
+    assert(!EGPTPolynomial.shareCommonFactor(a, b),
+           'shareCommonFactor should be false for coprime polynomials');
+});
+
+test('gcd of (x−1) and (x−1)(x−2) is (x − 1)', () => {
+    const a = [intN(-1), ONE];                          // x − 1
+    const b = [intN(2), intN(-3), ONE];                 // (x−1)(x−2)
+    assert(EGPTPolynomial.shareCommonFactor(a, b),
+           'shareCommonFactor should be true when there is a common factor');
+    const g = monicNormalize(EGPTPolynomial.gcd(a, b));
+    assertEqPoly(g, [intN(-1), ONE], 'common factor should be (x − 1)');
+});
+
+test('gcd of the stage-2 system (f1, f2) is (x − 1/2)', () => {
+    const f1 = [ frac(1, 3), frac(-7, 6), ONE ];
+    const f2 = [ frac(1, 6), frac(-5, 6), ONE ];
+    assert(EGPTPolynomial.shareCommonFactor(f1, f2),
+           'f1 and f2 share the root x = 1/2');
+    const g = monicNormalize(EGPTPolynomial.gcd(f1, f2));
+    assertEqPoly(g, [frac(-1, 2), ONE], 'gcd should be x − 1/2');
+});
+
+test('two quadratics with one shared root: gcd has positive degree', () => {
+    // f1 = (x−1)(x−2),  f2 = (x−1)(x−3) → one shared root
+    const f1 = [intN(2), intN(-3), ONE];
+    const f2 = [intN(3), intN(-4), ONE];
+    assert(EGPTPolynomial.shareCommonFactor(f1, f2), 'shared-root predicate');
+    // Self: gcd(f, f) = f (positive degree)
+    assert(EGPTPolynomial.shareCommonFactor(f1, f1),
+           'self-gcd: f shares a factor with itself');
+});
+
+return { s4: inputs.suite.getResults() };
+</cell>
+
+<cell type="markdown">
+## Summary
+
+Final tally across all stages and edge cases.
+</cell>
+
+<cell type="js" lane="math" id="summary" in="s4">
+const snap = inputs.s4;
+const { passed, failed, failures } = snap;
+const total = passed + failed;
+
+console.log('');
+console.log('='.repeat(60));
+console.log('Results: ' + passed + ' passed, ' + failed + ' failed  (total: ' + total + ')');
+if (failures.length > 0) {
+    console.log('\nFailures:');
+    for (const { name, err } of failures) {
+        console.log('  - ' + name + ': ' + err.message);
+    }
+}
+console.log('='.repeat(60));
+
+if (failed > 0) throw new Error('[SolvePolynomialSystemTest] ' + failed + ' test(s) failed');
+</cell>
+
+</frqtl-notebook>

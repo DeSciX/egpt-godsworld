@@ -1,0 +1,201 @@
+<frqtl-notebook version="1" title="Polynomial Arithmetic in EGPT Canonical Space">
+
+<cell type="markdown">
+# Polynomial Arithmetic in EGPT Canonical Space
+
+A polynomial over the EGPT number system is just a list of `EGPTReal` coefficients — `[a₀, a₁, a₂, …]` represents `a₀ + a₁x + a₂x²+ …`. All arithmetic stays in exact rational space: no floats, no decimal approximations, no rounding. Coefficients are compared with `.equals()`, never with `==` or `.toString()`.
+
+`EGPTPolynomial` is the static class that provides these operations. Every cell below reaches it through the injected `math` builtin — no imports, no URLs.
+
+The three fundamental operations demonstrated here are:
+
+1. **Addition** — coefficient-wise, extended to match the longer polynomial's degree.
+2. **Multiplication** — convolution (each pair of coefficients multiplied and accumulated at the sum-of-degree position).
+3. **Division** — long division returning an exact `{ quotient, remainder }` pair that satisfies `dividend = divisor × quotient + remainder`.
+</cell>
+
+<cell type="markdown">
+## Setup — construct the two base polynomials
+
+We work with two simple linear polynomials:
+
+- **poly1** = `1 + 2x`
+- **poly2** = `3 + 4x`
+
+Each coefficient is created from an integer via `EGPTReal.fromBigInt(n)`. This places the value in exact rational form (`numerator/denominator` internally) where the denominator is 1.
+</cell>
+
+<cell type="js" lane="math" id="setup" out="poly1, poly2">
+const { math, display } = caps;
+const { EGPTReal } = math;
+
+// poly1 = 1 + 2x  →  coefficients [1, 2] (index = power of x)
+const poly1 = [EGPTReal.fromBigInt(1n), EGPTReal.fromBigInt(2n)];
+
+// poly2 = 3 + 4x  →  coefficients [3, 4]
+const poly2 = [EGPTReal.fromBigInt(3n), EGPTReal.fromBigInt(4n)];
+
+display(`poly1 = ${poly1.map(c => c.toMathString()).join(' + ') /* [1, 2] */}`);
+display(`poly2 = ${poly2.map(c => c.toMathString()).join(' + ') /* [3, 4] */}`);
+display('Coefficients are EGPTReal — exact rationals, no floating-point.');
+
+return { poly1, poly2 };
+</cell>
+
+<cell type="markdown">
+## Addition — `EGPTPolynomial.add(p1, p2)`
+
+Adding two polynomials sums their coefficients position by position. For positions where one polynomial is shorter, the missing coefficient is treated as zero.
+
+Expected result: `(1 + 2x) + (3 + 4x) = 4 + 6x` → coefficients `[4, 6]`.
+</cell>
+
+<cell type="js" lane="math" id="addition" in="poly1, poly2" out="sum">
+const { math, display } = caps;
+const { EGPTPolynomial } = math;
+const { poly1, poly2 } = inputs;
+
+const sum = EGPTPolynomial.add(poly1, poly2);
+
+// Verify: coefficient 0 must be "4", coefficient 1 must be "6"
+if (sum[0].toMathString() !== '4' || sum[1].toMathString() !== '6') {
+  throw new Error('Polynomial addition failed: got ' + sum.map(c => c.toMathString()));
+}
+
+display('poly1 + poly2 = [' + sum.map(c => c.toMathString()).join(', ') + ']');
+display('  = ' + sum[0].toMathString() + ' + ' + sum[1].toMathString() + 'x  ✓');
+
+return { sum };
+</cell>
+
+<cell type="markdown">
+## Multiplication — `EGPTPolynomial.multiply(p1, p2)`
+
+Polynomial multiplication is convolution: the coefficient at degree `k` in the product is the sum of all `a[i] × b[j]` where `i + j = k`.
+
+For `(1 + 2x)(3 + 4x)`:
+
+```
+  degree 0:  1 × 3 = 3
+  degree 1:  1 × 4 + 2 × 3 = 4 + 6 = 10
+  degree 2:  2 × 4 = 8
+```
+
+Expected result: `3 + 10x + 8x²` → coefficients `[3, 10, 8]`.
+</cell>
+
+<cell type="js" lane="math" id="multiplication" in="poly1, poly2" out="product">
+const { math, display } = caps;
+const { EGPTPolynomial } = math;
+const { poly1, poly2 } = inputs;
+
+const product = EGPTPolynomial.multiply(poly1, poly2);
+
+// Verify: [3, 10, 8]
+if (
+  product[0].toMathString() !== '3' ||
+  product[1].toMathString() !== '10' ||
+  product[2].toMathString() !== '8'
+) {
+  throw new Error('Polynomial multiplication failed: got ' + product.map(c => c.toMathString()));
+}
+
+display('poly1 × poly2 = [' + product.map(c => c.toMathString()).join(', ') + ']');
+display('  = ' + product[0].toMathString()
+      + ' + ' + product[1].toMathString() + 'x'
+      + ' + ' + product[2].toMathString() + 'x²  ✓');
+
+return { product };
+</cell>
+
+<cell type="markdown">
+## Division — `EGPTPolynomial.divide(dividend, divisor)`
+
+Polynomial long division works exactly as integer long division, but at each step we divide the leading coefficient of the current remainder by the leading coefficient of the divisor. The result is always an exact rational, so no approximation ever occurs.
+
+`divide()` returns `{ quotient, remainder }` satisfying `dividend = divisor × quotient + remainder`.
+
+We divide the product `3 + 10x + 8x²` back by `poly1 = 1 + 2x`. Since `poly1` is one of the original factors, the quotient should recover `poly2 = 3 + 4x` exactly, with zero remainder.
+</cell>
+
+<cell type="js" lane="math" id="division" in="product, poly1" out="quotient, remainder">
+const { math, display } = caps;
+const { EGPTReal, EGPTPolynomial } = math;
+const { product, poly1 } = inputs;
+
+// dividend = 3 + 10x + 8x²  (the product from the previous cell)
+// divisor  = 1 + 2x           (poly1)
+const dividend = product;
+const divisor  = poly1;
+
+const { quotient, remainder } = EGPTPolynomial.divide(dividend, divisor);
+
+// Verify quotient = [3, 4]
+if (quotient[0].toMathString() !== '3' || quotient[1].toMathString() !== '4') {
+  throw new Error('Polynomial division quotient failed: got ' + quotient.map(c => c.toMathString()));
+}
+
+const zero = EGPTReal.fromBigInt(0n);
+const remIsZero = remainder.every(c => c.equals(zero));
+
+display('dividend ÷ divisor:');
+display('  quotient  = [' + quotient.map(c => c.toMathString()).join(', ') + ']  →  '
+      + quotient[0].toMathString() + ' + ' + quotient[1].toMathString() + 'x');
+display('  remainder = [' + remainder.map(c => c.toMathString()).join(', ') + ']  →  '
+      + (remIsZero ? 'zero (exact division)  ✓' : 'non-zero'));
+display('');
+display('The quotient recovers poly2 exactly — division is the inverse of multiplication in EGPT canonical space.');
+
+return { quotient, remainder };
+</cell>
+
+<cell type="markdown">
+## Summary — all four results
+
+The final cell collects the results and confirms they match the expected values from the source example.
+
+| Operation | Expression | Result (coefficients) |
+|---|---|---|
+| Addition | `(1+2x) + (3+4x)` | `[4, 6]` = `4 + 6x` |
+| Multiplication | `(1+2x) × (3+4x)` | `[3, 10, 8]` = `3 + 10x + 8x²` |
+| Division (quotient) | `(3+10x+8x²) ÷ (1+2x)` | `[3, 4]` = `3 + 4x` |
+| Division (remainder) | — | `[0]` (exact) |
+</cell>
+
+<cell type="js" lane="math" id="summary" in="sum, product, quotient, remainder">
+const { math, display } = caps;
+const { EGPTReal } = math;
+const { sum, product, quotient, remainder } = inputs;
+
+const zero = EGPTReal.fromBigInt(0n);
+const remIsZero = remainder.every(c => c.equals(zero));
+
+const result = {
+  category: 'polynomials',
+  sum:       sum.map(c => c.toMathString()),
+  product:   product.map(c => c.toMathString()),
+  quotient:  quotient.map(c => c.toMathString()),
+  remainder: remainder.map(c => c.toMathString())
+};
+
+const allPass =
+  result.sum[0]     === '4'  && result.sum[1]     === '6'  &&
+  result.product[0] === '3'  && result.product[1] === '10' && result.product[2] === '8' &&
+  result.quotient[0]=== '3'  && result.quotient[1]=== '4'  &&
+  remIsZero;
+
+display(result);
+
+const el = document.createElement('div');
+el.style.cssText =
+  'font:600 0.95rem/1.5 system-ui,sans-serif;padding:10px 14px;border-radius:6px;margin:4px 0;' +
+  (allPass
+    ? 'background:#0f2417;border:1px solid #1f5a36;color:#7ee2a8;'
+    : 'background:#2a0c0c;border:1px solid #5a1f1f;color:#ff8a8a;');
+el.textContent = allPass
+  ? 'ALL CHECKS PASS — polynomial add / multiply / divide verified in exact rational space.'
+  : 'ONE OR MORE CHECKS FAILED — see individual cells for details.';
+display(el);
+</cell>
+
+</frqtl-notebook>

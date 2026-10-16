@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "libs": {
+    "d3-array": {
+      "entry": "d3-array/src/index.js"
+    },
+    "internmap": {
+      "entry": "internmap/src/index.js"
+    }
+  }
+}

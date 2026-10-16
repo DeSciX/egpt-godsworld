@@ -1,0 +1,129 @@
+<frqtl-notebook version="1" title="E — Entropy-Log Bijection (log₂ N ≡ H(Uniform(N)))">
+
+<cell type="markdown">
+# E — Entropy-Log Bijection
+
+The Entropy-Log Bijection in Lean (EGPT-Evidence): [RotaEntropy.lean](https://github.com/DeSciX/EGPT/blob/main/08_LEAN/EGPT/InformationTheory/EntropyNumber/RotaEntropy.lean).
+
+The hub of the canonical EGPTMath chain:
+
+> **log₂ N  ≡  H(Uniform(N))**
+
+The binary logarithm of a natural number IS the Shannon entropy of a uniform distribution on N outcomes. This is not a metaphor — it is formally proven in EGPT's Lean chain (`RotaUniformTheorem` + `entropy_of_fair_coin_is_one_bit`, `RET.lean`).
+
+Three statements, with honest provenance:
+
+- **E1** `log₂ N ≡ H(Uniform(N))` — pedagogical (both sides transcendental). Lean-backed.
+- **E2** `H(N) ≡ Σ_{p|N} v_p(N)·H(p)` — entropy is additive over prime atoms (LFTA in entropy form). Lean-backed.
+- **E3** `N ≡ ∏_p p^{v_p(N)}` — the exponentiated form of E2, **bit-exact** over BigInt. This is the runnable witness.
+
+Every downstream theorem (T/W/N/M four-views, OrderFinder) is a *projection* of E2. Run the cells below to witness E3 bit-exactly.
+
+*(Ported from `lib/egpt/js/model/theorems/E_EntropyLogBijection.js`. Cells reach `PrimeAtomPolynomial` through the injected `math` builtin — no imports.)*
+</cell>
+
+<cell type="markdown">
+## E1 — log₂ N ≡ H(Uniform(N))  (cited, not asserted)
+
+E1 and E2 are **print-only citations of Lean theorems** — both sides are transcendental reals and cannot be asserted inside exact EGPTReal arithmetic. The operational meaning: the information content of specifying one of N equally-likely outcomes is log₂(N) bits, and that is the shortest binary description (ParticlePath) length that resolves a 1-of-N selection.
+
+Lean theorems cited: `RotaUniformTheorem`, `entropy_of_fair_coin_is_one_bit` (EGPT/Entropy/RET.lean), `H_canonical_ln` (EGPT/Entropy/H.lean), `equivParticleFuturePDFToReal` (EntropyNumber/Basic.lean).
+</cell>
+
+<cell type="js" lane="math" id="e1-cite">
+const { display } = caps;
+display('E1 stated and cited — no runtime assertion (transcendental on both sides).');
+display('  log₂ N ≡ H(Uniform(N))    [Lean: RotaUniformTheorem + entropy_of_fair_coin_is_one_bit]');
+</cell>
+
+<cell type="markdown">
+## E2 — H(N) ≡ Σ v_p(N)·H(p)  (entropy additive over atoms)
+
+Shannon entropy is **additive** over the prime-atom decomposition of N — the LFTA written in entropy form. The primes are the irreducible information atoms; the decomposition is unique. This is why `PrimeAtomPolynomial` can read N's multiplicative structure by reading its additive exponent vector.
+
+Lean: `EGPT_Fundamental_Theorem_of_Arithmetic_via_Entropy_Bits` (EGPT/NumberTheory/Analysis.lean).
+</cell>
+
+<cell type="js" lane="math" id="e2-cite">
+const { display } = caps;
+display('E2 stated and cited — no runtime assertion (transcendental on both sides).');
+display('  H(N) ≡ Σ_{p|N} v_p(N)·H(p)    [Lean: EGPT_Fundamental_Theorem_of_Arithmetic_via_Entropy_Bits]');
+</cell>
+
+<cell type="markdown">
+## E3 — N ≡ ∏_p p^{v_p(N)}  (bit-exact witness)
+
+Both sides of E3 are integers, so we assert it **bit-exactly** on BigInt. Factorise N into its LFTA exponent vector via `PrimeAtomPolynomial.factorize`, reconstruct N by multiplying atoms raised to their exponents, and check the product equals N. We also check the sparsity bound Ω(N) ≤ bitLength(N) (every atom contributes ≥ log₂(2) = 1 bit).
+
+The cell produces `e3ok` (all cases passed) for the closing cell to confirm.
+</cell>
+
+<cell type="js" lane="math" id="e3-witness" out="e3ok">
+const { math, display } = caps;
+const { PrimeAtomPolynomial } = math;
+
+// Local check helper: in a notebook cell, a failed claim THROWS (no process.exit).
+let anyFailed = false;
+function check(label, cond) {
+  display((cond ? '  ✓ ' : '  ✗ ') + label);
+  if (!cond) { anyFailed = true; throw new Error('E3 FAILED: ' + label); }
+}
+
+// Reconstruct N from its LFTA exponent vector via ∏ p^{v_p}.
+function reconstruct(factors) {
+  let N = 1n;
+  for (const { prime, exponent } of factors) {
+    for (let i = 0n; i < exponent; i++) N *= prime;
+  }
+  return N;
+}
+
+const TEST_CASES = [
+  { N: 12n,   note: 'small semiprime-with-power (v_2=2, v_3=1)' },
+  { N: 21n,   note: 'small semiprime (v_3=1, v_7=1)' },
+  { N: 35n,   note: 'small semiprime (v_5=1, v_7=1)' },
+  { N: 391n,  note: 'medium semiprime 17·23' },
+  { N: 1024n, note: 'pure power of 2 (tight sparsity)' },
+  { N: 2310n, note: 'primorial 2·3·5·7·11 (five atoms)' },
+  { N: 997n,  note: 'large prime (Ω=1)' }
+];
+
+for (const { N, note } of TEST_CASES) {
+  const factors = PrimeAtomPolynomial.factorize(N);
+  const omega   = PrimeAtomPolynomial.bigOmega(N);
+  const bits    = BigInt(PrimeAtomPolynomial.bitLength(N));
+  const recon   = reconstruct(factors);
+  const vstr    = factors.map(f => `(${f.prime}^${f.exponent})`).join(' · ') || '1';
+  display(`N=${N}  ${note}`);
+  display(`  v⃗(N) = ${vstr}   log₂ form = ${PrimeAtomPolynomial.logspaceSum(N)}`);
+  display(`  reconstruct ∏ p^{v_p} = ${recon}    Ω=${omega}  bitLen=${bits}`);
+  check(`E3 bit-exact: ${N} ≡ ∏ p^{v_p}`, recon === N);
+  check(`sparsity: Ω(${N})=${omega} ≤ bitLen=${bits}`, omega <= bits);
+}
+
+display('— sparsity tight at N = 2^k (Ω = k = bitLen − 1) —');
+for (let k = 1n; k <= 20n; k++) {
+  const N = 1n << k;
+  const omega = PrimeAtomPolynomial.bigOmega(N);
+  const bits  = BigInt(PrimeAtomPolynomial.bitLength(N));
+  check(`Ω(2^${k})=${omega} and bitLen=${bits}`, omega === k && bits === k + 1n);
+}
+
+return { e3ok: !anyFailed };
+</cell>
+
+<cell type="markdown">
+## QED
+
+The hub is log₂ = H. Every spoke is a projection. E1 and E2 are Lean-backed citations (transcendental on both sides); E3 is their exponentiated form, lives entirely in BigInt, and is the canonical-space witness that the chain is consistent.
+</cell>
+
+<cell type="js" lane="math" id="e-qed" in="e3ok">
+const { display } = caps;
+const ok = inputs.e3ok;
+display(ok
+  ? 'QED — E3 verified bit-exactly for all test N. log₂ N is the hub; every canonical theorem is a projection.'
+  : 'E3 did not pass — see the witness cell above.');
+</cell>
+
+</frqtl-notebook>

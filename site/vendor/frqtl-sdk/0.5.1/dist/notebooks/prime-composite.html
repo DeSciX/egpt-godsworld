@@ -1,0 +1,266 @@
+<frqtl-notebook version="1" title="Prime Structure as Arithmetic Identity — PrimeAtomPolynomial &amp; EGPTPrimeComposite">
+
+<cell type="markdown">
+# Prime Structure as Arithmetic Identity
+
+Every natural number `N` is uniquely determined by a vector of non-negative integer exponents — one per prime — with almost all of them zero. The Fundamental Theorem of Arithmetic is normally stated as a factoring result, but in EGPT it is a *bijection*: `N ↔ its prime-exponent vector`. Two numbers are the same if and only if their vectors are identical.
+
+This notebook makes that bijection tangible through two SDK classes:
+
+| Class | Role |
+|---|---|
+| `PrimeAtomPolynomial` | Exposes the factorization vector (the LFTA bijection) as an ordered list of `{ prime, exponent }` atoms. |
+| `EGPTPrimeComposite` | Extends `EGPTReal` to carry the full prime provenance of a *rational* through multiplication and division — without ever reducing. |
+
+All computation in this notebook flows through a single injected capability, `math`, with no URL imports.
+</cell>
+
+<cell type="js" lane="math" id="backend">
+// Report the active backend — derived from the SDK, never hardcoded.
+const { math, display } = caps;
+const backend = math.activeMathBackend;
+display(`Active math backend (derived): ${backend}`);
+</cell>
+
+<cell type="markdown">
+## 1. Factorizing an integer into its prime-atom polynomial
+
+`PrimeAtomPolynomial.factorize(N)` implements trial division and returns the prime-atom polynomial as a sorted list of `{ prime: bigint, exponent: bigint }` pairs. The result is the LFTA (Logarithmic Fundamental Theorem of Arithmetic) representation: `log₂ N = Σ v_p(N) · log₂ p`.
+
+We start with `N = 12 = 2² × 3¹`. The atom list should have exactly two entries, in ascending prime order.
+</cell>
+
+<cell type="js" lane="math" id="factorize-12" out="factors12">
+// Factorize 12 via the prime-atom polynomial bijection.
+// PrimeAtomPolynomial.factorize(N) → [{ prime: bigint, exponent: bigint }, …]
+const { math, display } = caps;
+const { PrimeAtomPolynomial } = math;
+
+const N = 12n;
+const factors = PrimeAtomPolynomial.factorize(N);
+
+// Verify the bijection for 12 = 2^2 * 3^1
+if (factors.length !== 2) throw new Error(`Expected 2 prime atoms, got ${factors.length}`);
+if (factors[0].prime !== 2n || factors[0].exponent !== 2n)
+  throw new Error(`Expected first atom 2^2, got ${factors[0].prime}^${factors[0].exponent}`);
+if (factors[1].prime !== 3n || factors[1].exponent !== 1n)
+  throw new Error(`Expected second atom 3^1, got ${factors[1].prime}^${factors[1].exponent}`);
+
+const factorizeStr = factors.map(f => `${f.prime}^${f.exponent}`).join(' × ');
+display(`PrimeAtomPolynomial.factorize(${N}) = [ ${factorizeStr} ]`);
+display(`  → 12 = ${factors.map(f => `${f.prime}^${f.exponent}`).join(' × ')} ✓`);
+
+return { factors12: factors.map(f => ({ prime: f.prime, exponent: f.exponent })) };
+</cell>
+
+<cell type="markdown">
+## 2. The prime-atom polynomial for a larger number
+
+The same call generalizes. `N = 360 = 2³ × 3² × 5¹`. The atom polynomial has three terms with exponents `[3, 2, 1]`. Notice how all three prime atoms are listed in order — the polynomial is *sparse*: only the atoms with nonzero exponent appear.
+</cell>
+
+<cell type="js" lane="math" id="factorize-360" out="factors360">
+const { math, display } = caps;
+const { PrimeAtomPolynomial } = math;
+
+const N = 360n;
+const factors = PrimeAtomPolynomial.factorize(N);
+
+const lines = [
+  `PrimeAtomPolynomial.factorize(${N}):`,
+  ...factors.map(f => `  prime ${f.prime}, exponent ${f.exponent}`)
+];
+display(lines.join('\n'));
+
+// Also compute and display the LFTA log-space sum: log₂(360) = 3·log₂(2) + 2·log₂(3) + 1·log₂(5)
+// We verify the sum approximates the true log₂(360) = 8.49...
+const log2N_approx = factors.reduce((acc, f) => {
+  return acc + Number(f.exponent) * Math.log2(Number(f.prime));
+}, 0);
+const log2N_exact = Math.log2(Number(N));
+display(`LFTA check: Σ v_p·log₂(p) = ${log2N_approx.toFixed(6)}  vs  log₂(${N}) = ${log2N_exact.toFixed(6)}`);
+
+return { factors360: factors.map(f => ({ prime: f.prime, exponent: f.exponent })) };
+</cell>
+
+<cell type="markdown">
+## 3. Auxiliary combinatorics from the prime-atom view
+
+Once you hold the prime-atom polynomial `{ p → v_p(N) }`, several classical number-theory quantities become simple:
+
+- **`omega(N)`** — the number of *distinct* prime atoms (nonzero exponents).
+- **`bigOmega(N)`** — the *total* exponent count, `Σ v_p(N)`, i.e. counting with multiplicity.
+- **`totient(N)`** — Euler's φ(N) = N · ∏_{p | N} (1 − 1/p), computed directly from the factorization vector.
+- **`divisorsOf(N)`** — all positive divisors, enumerated from the exponent vector without brute-force trial.
+
+These are all O(log N) or O(d(N)) operations once the factorization is in hand — no looping up to N.
+</cell>
+
+<cell type="js" lane="math" id="combinatorics" in="factors360">
+const { math, display } = caps;
+const { PrimeAtomPolynomial } = math;
+
+const N = 360n;
+const omega    = PrimeAtomPolynomial.omega(N);
+const bigOmega = PrimeAtomPolynomial.bigOmega(N);
+const totient  = PrimeAtomPolynomial.totient(N);
+const divisors = PrimeAtomPolynomial.divisorsOf(N);
+
+const lines = [
+  `N = ${N}`,
+  `  omega(N)    = ${omega}     (distinct prime atoms: 2, 3, 5)`,
+  `  bigOmega(N) = ${bigOmega}     (total atoms counting multiplicity: 3+2+1)`,
+  `  totient(N)  = ${totient}    (numbers 1..360 coprime to 360)`,
+  `  divisors    = [${divisors.slice(0, 10).join(', ')}, … (${divisors.length} total)]`
+];
+display(lines.join('\n'));
+
+// Spot-check: totient(360) = 96
+if (totient !== 96n) throw new Error(`Expected totient 96, got ${totient}`);
+// Spot-check: 360 has 24 divisors (from (3+1)(2+1)(1+1))
+if (divisors.length !== 24) throw new Error(`Expected 24 divisors, got ${divisors.length}`);
+display(`All checks passed ✓`);
+</cell>
+
+<cell type="markdown">
+## 4. From integer factorization to rational prime provenance
+
+Standard `EGPTReal` reduces every rational to lowest terms in its constructor. That is correct for arithmetic, but it *discards provenance*: multiplying `3 × (1/3)` produces `1`, losing the information that a `3` appeared in both the numerator and denominator.
+
+`EGPTPrimeComposite` preserves that provenance. It extends `EGPTReal` so it is valid wherever an `EGPTReal` is expected, but it stores every prime factor of every multiplication step as an explicit `{ prime, location }` record. Reduction never happens inside the type — the prime structure is the point.
+
+The construction route for a rational is:
+1. Build an `EGPTReal` with `EGPTReal.fromRational(numerator, denominator)`.
+2. Wrap it: `EGPTPrimeComposite.fromEGPTReal(real)` — trial-divides the un-reduced numerator and denominator and populates the record list.
+
+We demonstrate with `12/5`. Its prime atoms are `2², 3¹` in the numerator and `5¹` in the denominator.
+</cell>
+
+<cell type="js" lane="math" id="composite-from-real" out="comp12over5">
+// Build EGPTReal(12/5) then wrap into EGPTPrimeComposite.
+const { math, display } = caps;
+const { EGPTReal, EGPTPrimeComposite } = math;
+
+const num = EGPTReal.fromRational(12n, 5n);
+const comp = EGPTPrimeComposite.fromEGPTReal(num);
+
+const primesNum = comp.getPrimesInNumerator();
+const primesDen = comp.getPrimesInDenominator();
+
+// Verify prime provenance — same assertions as the original run(sdk)
+if (primesNum.get(2n) !== 2n) throw new Error(`Expected 2^2 in numerator, got ${primesNum.get(2n)}`);
+if (primesNum.get(3n) !== 1n) throw new Error(`Expected 3^1 in numerator, got ${primesNum.get(3n)}`);
+if (primesDen.get(5n) !== 1n) throw new Error(`Expected 5^1 in denominator, got ${primesDen.get(5n)}`);
+
+const numStr = Array.from(primesNum.entries()).map(([p, e]) => `${p}^${e}`).join(' × ');
+const denStr = Array.from(primesDen.entries()).map(([p, e]) => `${p}^${e}`).join(' × ');
+
+display(`EGPTReal(12/5) → EGPTPrimeComposite`);
+display(`  Numerator primes:   ${numStr || '(none)'}`);
+display(`  Denominator primes: ${denStr || '(none)'}`);
+display(`  Sign:               ${comp.getSign()}`);
+display(`  Record count:       ${comp.records.length}`);
+display(`All provenance checks passed ✓`);
+
+return { comp12over5: { numStr, denStr } };
+</cell>
+
+<cell type="markdown">
+## 5. Multiplication preserves, not discards, prime structure
+
+The core discipline of `EGPTPrimeComposite` is that multiplication **concatenates** the prime-record lists — no cancellation. Multiplying `(12/5) × (7/12)` normally reduces to `7/5`, discarding the shared factor of `12`. The composite type keeps all four record lists (2², 3¹ from the first numerator; 5¹ from the first denominator; 7¹ from the second numerator; 2², 3¹ from the second denominator).
+
+The *value* of the result is still `7/5` (the composite inherits from `EGPTReal` and reports the correct rational). But `getPrimesInNumerator()` exposes the net exponents: the `2^2` and `3^1` that appeared in both numerator and denominator show up with *zero net exponent*, visible in the underlying `primes` map.
+</cell>
+
+<cell type="js" lane="math" id="multiply-preserves">
+const { math, display } = caps;
+const { EGPTReal, EGPTPrimeComposite } = math;
+
+// a = 12/5,  b = 7/12
+const a = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromRational(12n, 5n));
+const b = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromRational(7n, 12n));
+
+const product = a.multiply(b);   // records from a and b are concatenated
+
+// Net exponents after multiplication:
+//   Numerator: 2^2 * 3^1 from a-num, 7^1 from b-num
+//   Denominator: 5^1 from a-den, 2^2 * 3^1 from b-den
+// Net: 2^(2-2)=0, 3^(1-1)=0, 7^1 in num, 5^1 in den → value = 7/5 ✓
+//
+// NOTE: _getPPFRationalParts() returns the un-reduced internal form (84/60)
+// because EGPTPrimeComposite uses skip_reduce: true to preserve prime structure.
+// Use .equals() to check value equivalence — that is the canonical comparison method.
+
+const netNum = product.getPrimesInNumerator();
+const netDen = product.getPrimesInDenominator();
+
+const expected = EGPTReal.fromRational(7n, 5n);
+const valueOk = product.equals(expected);
+
+const lines = [
+  `(12/5) × (7/12):`,
+  `  Total prime records:    ${product.records.length}  (4 from a + 4 from b, never discarded)`,
+  `  Net numerator primes:   ${Array.from(netNum.entries()).map(([p,e]) => `${p}^${e}`).join(', ') || '(all cancelled)'}`,
+  `  Net denominator primes: ${Array.from(netDen.entries()).map(([p,e]) => `${p}^${e}`).join(', ')}`,
+  `  Value equals 7/5:       ${valueOk}`
+];
+display(lines.join('\n'));
+
+if (!valueOk) throw new Error(`Expected value equal to 7/5 but .equals() returned false`);
+if (!netNum.has(7n)) throw new Error('Expected 7^1 in net numerator');
+if (!netDen.has(5n)) throw new Error('Expected 5^1 in net denominator');
+display(`Multiplication preserves record count and rational value ✓`);
+</cell>
+
+<cell type="markdown">
+## 6. Division flips provenance
+
+Division in `EGPTPrimeComposite` is multiplication by the reciprocal: the divisor's records have their `location` field *flipped* (`numerator ↔ denominator`) before concatenation.
+
+Dividing `12/5` by itself must yield value `1`. The prime records for `12` cancel exactly — but only the *net* exponent goes to zero; the raw records list still holds both the numerator copies and the flipped denominator copies.
+</cell>
+
+<cell type="js" lane="math" id="divide-flips">
+const { math, display } = caps;
+const { EGPTReal, EGPTPrimeComposite } = math;
+
+const a = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromRational(12n, 5n));
+const quotient = a.divide(a);   // (12/5) / (12/5) = 1
+
+// NOTE: _getPPFRationalParts() returns un-reduced internal form (e.g. 60/60)
+// because EGPTPrimeComposite uses skip_reduce: true. Use .equals() for value checks.
+const netNum = quotient.getPrimesInNumerator();
+const netDen = quotient.getPrimesInDenominator();
+
+const expectedOne = EGPTReal.fromRational(1n, 1n);
+const valueOk = quotient.equals(expectedOne);
+
+display(`(12/5) ÷ (12/5):`);
+display(`  Raw record count:       ${quotient.records.length}  (records from a and flipped-a, all kept)`);
+display(`  Net numerator primes:   ${Array.from(netNum.entries()).map(([p,e]) => `${p}^${e}`).join(', ') || '(none — all cancelled to zero)'}`);
+display(`  Net denominator primes: ${Array.from(netDen.entries()).map(([p,e]) => `${p}^${e}`).join(', ') || '(none)'}`);
+display(`  Value equals 1:         ${valueOk}`);
+
+if (!valueOk) throw new Error(`Expected value equal to 1 but .equals() returned false`);
+display(`Division preserves records, net exponents correctly zero ✓`);
+</cell>
+
+<cell type="markdown">
+## Summary
+
+This notebook demonstrated two interoperable views of the same EGPT bijection:
+
+| Tool | What it does |
+|---|---|
+| `PrimeAtomPolynomial.factorize(N)` | Returns the ordered prime-atom list — the LFTA bijection made explicit. |
+| `PrimeAtomPolynomial.omega / bigOmega / totient / divisorsOf` | Classical number theory, O(log N) once the factorization vector is in hand. |
+| `EGPTPrimeComposite.fromEGPTReal(r)` | Wraps any `EGPTReal` rational, trial-dividing its un-reduced numerator and denominator into provenance records. |
+| `comp.multiply(other)` | Concatenates record lists — no cancellation, no reduction. Value is correct; provenance is intact. |
+| `comp.divide(other)` | Flips the divisor's record locations before concatenation. |
+| `comp.getPrimesInNumerator()` / `.getPrimesInDenominator()` | Net-exponent views. |
+
+The computations in cells 1–6 are the exact assertions the original `prime-composite.js` demo verifies, expanded with narrative and auxiliary combinatorics for a newcomer.
+</cell>
+
+</frqtl-notebook>

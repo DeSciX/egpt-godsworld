@@ -1,0 +1,427 @@
+/* Copyright 2023-2026 by Essam Abadir */
+
+// Run: node --test "scripts/**/*.test.mjs"
+
+/**
+ * roles.test.mjs — the three roles' owner (site/app-assets/maxi-roles.js) and the generated plugin agents.
+ *
+ * Gates:
+ *   1. a well-formed hand-off parses for each role; every malformed one THROWS naming what is wrong
+ *      (no block, two blocks, loose JSON, a hand not in HANDS, a call without PREDICTION, a verdict
+ *      outside approve|revise, a revise without its change, a done with a body);
+ *   2. hand names are HANDS' keys: the parser accepts every key and refuses a name that is not one;
+ *   3. each role's turn carries only what that role may see (the Owl: outline + prediction, nothing
+ *      of the plan; the Builder: no clip path or bytes in the text; the Designer: the outline);
+ *   4. THE STAGE: stageOf reads the inventory by INVENTORY_KEYS (a missing key is red); the Designer and the
+ *      Builder's first turn carry it in words; a plan for a scene not on the stage must name a loading hand
+ *      (negative controls: the same plan on the stage passes; with loadScene it passes);
+ *   5. plugin/agents/maxi-<role>.md equal the generator's output, carry the persona verbatim, and a
+ *      one-character drift is red; each agent's tools are exactly what its own HOW THIS AGENT RUNS text asks
+ *      (TOOL_NEEDS: every role writes its answer file, the Owl gets no Bash and no kb/ search; a missing or an
+ *      extra tool is red);
+ *   6. THE WORLD FRAME (maxi-roles.js WORLD_FRAME) is one owner: the persona carries it once, as the generated
+ *      section between WORLD_FRAME_MARKERS (current with renderWorldFrameMarkdown; a hand-typed copy or a
+ *      changed constant is red), so the Designer's and the Builder's agents carry it once through the embedded
+ *      persona and their first turns never; the Owl's first turn carries it once, its agent never; the skill
+ *      once; no other tracked file types a copy;
+ *   7. LOOK, NOT ASK: the rule's words live in the persona's BUILDING FROM AN OUTLINE once; the Designer's preface
+ *      points at it by maxi-roles.js LOOK_RULE and restates none of it.
+ */
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import {
+    ROLES, ROLE_ORDER, parsePlan, parseBuilderReply, parseVerdict, designerTurn, builderTurn, owlTurn, PARSERS, SEEN_ACCOUNT,
+    stageOf, emptyStage, stageWords, extentWords, planOnStage, LOADING_HANDS, PLAN_REFUSED_KEYS, loadArgsOf
+} from '../../site/app-assets/maxi-roles.js';
+import { HANDS, INVENTORY_KEYS, inventoryOf } from '../../site/app-assets/maxi-hands.js';
+import { fakeRunner, sdkCameraControl } from './fake-runner.mjs';
+import { renderAll, agentPath, PERSONA, TOOL_NEEDS, toolsFor } from '../gen-plugin-agents.mjs';
+import { SECTIONS, spliceBlock, renderPersona } from '../gen-hands-section.mjs';
+import * as rolesModule from '../../site/app-assets/maxi-roles.js';
+import { execFileSync } from 'node:child_process';
+
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const fence = (tag, body) => '```' + tag + '\n' + body + '\n```';
+const PLAN = { scene: 'cl1a-mirror', registryMode: null, changes: [{ object: 'mirror', param: 'orientationDeg', value: 30, why: 'the outline asks 30 degrees' }], hands: ['sceneSource', 'openSketch', 'see'], prediction: 'the beam leaves the mirror at 60 degrees' };
+
+/** An inventory as the hand returns it (maxi-hands.js inventoryOf). */
+const INV_2D = { tick: 40, scene: '1A · Mirror', id: 'cl1a-mirror', mode: null, modes: [], renderer: 'p5', dimensions: 2, canvas: [600, 400], camera: null, viewer: null,
+    objects: [{ name: 'sphere emitter 0', kind: 'SphereEmitter', authority: 'center', center: [90, 200, 0] }, { name: 'mirror', kind: 'Wall', authority: 'rect', center: [370, 200, 0], rect: [360, 80, 20, 240] }] };
+const INV_3D = { tick: 12, scene: '1A · Mirror (3D)', id: 'cl1a-mirror-3d', mode: null, modes: [], renderer: 'three', dimensions: 3, canvas: [600, 400, 600], camera: { azimuth: 45, elevation: 45, distance: 900, roll: 0, target: null }, viewer: { toward: '+z', away: '-z' },
+    objects: [{ name: 'mirror', kind: 'Wall', authority: 'rect', center: [370, 200, 0], rect: [360, 80, -80, 20, 240, 160] }] };
+const STAGE = stageOf(INV_2D);
+
+test('roles: three, in order, each with its own KB list, preface and parser', () => {
+    assert.deepEqual(ROLE_ORDER, ['designer', 'builder', 'owl']);
+    assert.deepEqual(ROLE_ORDER.map((r) => ROLES[r].metaphor), ['orchestrator', 'implementer', 'verifier']);
+    assert.deepEqual([...ROLES.designer.knowledgebase_names], ['GodsWorld']);
+    // measured on PROD 2026-10-14: [] and an absent list both retrieve GodsWorld; General retrieves nothing, carries no persona
+    assert.deepEqual([...ROLES.owl.knowledgebase_names], ['General'], 'the Owl asks with General — never [], which retrieves the memories');
+    assert.equal(ROLES.owl.persona, false);
+    assert.ok(ROLES.builder.knowledgebase_names.includes('GodsWorld') && ROLES.builder.persona, 'the Builder needs the persona (its HANDS section), which rides with GodsWorld');
+    for (const r of ROLE_ORDER) assert.equal(typeof PARSERS[r], 'function');
+    assert.match(ROLES.designer.preface, /BUILDING FROM AN OUTLINE/, 'the Designer preface points at the persona procedure');
+});
+
+test('designer: a plan parses with its words for Tony; malformed plans throw', () => {
+    const ok = parsePlan('Tony, I will start from the mirror.\n\n' + fence('json:plan', JSON.stringify(PLAN)), STAGE);
+    assert.deepEqual(ok.plan, PLAN);
+    assert.equal(ok.words, 'Tony, I will start from the mirror.');
+    const noMode = Object.assign({}, PLAN); delete noMode.registryMode;
+    assert.equal(parsePlan(fence('json:plan', JSON.stringify(noMode)), STAGE).plan.registryMode, null, 'an absent registryMode is null (the scene\'s default)');
+    assert.throws(() => parsePlan('no block at all', STAGE), /exactly ONE json:plan block, found 0/);
+    assert.throws(() => parsePlan(fence('json:plan', JSON.stringify(PLAN)) + fence('json:plan', JSON.stringify(PLAN)), STAGE), /found 2/);
+    assert.throws(() => parsePlan(fence('json:plan', "{scene: 'x'}"), STAGE), /not strict JSON/);
+    assert.throws(() => parsePlan(fence('json:plan', JSON.stringify(Object.assign({}, PLAN, { hands: ['teleport'] }))), STAGE), /names no such hand: teleport/);
+    assert.throws(() => parsePlan(fence('json:plan', JSON.stringify(Object.assign({}, PLAN, { prediction: '' }))), STAGE), /`prediction`/);
+    assert.throws(() => parsePlan(fence('json:plan', JSON.stringify(Object.assign({}, PLAN, { changes: [{ object: 'mirror' }] }))), STAGE), /changes\[0\]/);
+    assert.throws(() => parsePlan(fence('json:plan', JSON.stringify(Object.assign({}, PLAN, { registryMode: 3 }))), STAGE), /`registryMode` \(null, or a declared registry mode string\)/);
+    assert.throws(() => parsePlan(fence('json:plan', JSON.stringify(PLAN))), /parsePlan\(reply, stage\) needs the stage/);
+});
+
+test('the stage: read by INVENTORY_KEYS, shown in words, and a plan for another scene must load it (negative controls)', () => {
+    assert.deepEqual(STAGE, { label: '1A · Mirror', id: 'cl1a-mirror', mode: null, modes: [], renderer: 'p5', dimensions: 2, canvas: [600, 400], camera: null, viewer: null,
+        objects: [{ name: 'sphere emitter 0', kind: 'SphereEmitter', center: [90, 200, 0], rect: null }, { name: 'mirror', kind: 'Wall', center: [370, 200, 0], rect: [360, 80, 20, 240] }] });
+    for (const k of INVENTORY_KEYS) {
+        const cut = Object.assign({}, INV_2D); delete cut[k];
+        assert.throws(() => stageOf(cut), new RegExp('lacks ' + k + ' \\(maxi-hands\\.js INVENTORY_KEYS\\)'), 'an inventory without ' + k + ' is no stage');
+    }
+    assert.throws(() => stageOf(Object.assign({}, INV_2D, { canvas: [600] })), /canvas must have one size per dimension \(2\)/);
+    assert.throws(() => stageOf(Object.assign({}, INV_2D, { dimensions: '3d' })), /dimensions must be 2 or 3 \(maxi-hands\.js worldShape\), got "3d"/);
+    assert.throws(() => stageOf(Object.assign({}, INV_2D, { dimensions: 3 })), /one size per dimension \(3\)/, 'dimensions and canvas that disagree are a body bug');
+    assert.throws(() => stageOf(Object.assign({}, INV_2D, { modes: null })), /modes must be the declared registry modes/);
+    const s3 = stageOf(INV_3D);
+    assert.equal(s3.dimensions, 3);
+    // the 3D mirror (run-3d-platform, mm3d2): the stage line SAYS 3D and lists no registry modes
+    const w3 = stageWords(s3);
+    assert.equal(w3, 'THE STAGE (loaded in the lab now, on Tony\'s screen): "1A · Mirror (3D)" — scene id cl1a-mirror-3d, no registry modes declared (loadScene takes its id only); 3D (x, y, z): a world 600 x 400 x 600 with depth (renderer three); the camera looks from azimuth 45°, elevation 45°; toward the viewer is +z, away is -z (a part whose centre moves +z comes nearer on screen; read off the camera, not off any part\'s name); declared objects: mirror (Wall): spans x 360..380, y 80..320, z -80..80; centre [370, 200, 0].');
+    assert.doesNotMatch(w3, /\bmode\b|modes declared:|\(loaded:/, 'the 3D stage names no loaded mode and lists no declared modes');
+    assert.match(stageWords(STAGE), /; 2D \(x, y\): a world 600 x 400 \(renderer p5\)/);
+    assert.match(stageWords(stageOf(Object.assign({}, INV_2D, { id: null, scene: 'sketch (Maxi)' }))), /a sketch booted by openSketch \(no scene id\); 2D \(x, y\): a world 600 x 400/);
+    assert.match(stageWords(stageOf(Object.assign({}, INV_2D, { id: 'dse-tunnel-rebuild', mode: '2d', modes: ['2d', '3d'] }))),
+        /scene id dse-tunnel-rebuild, registry modes declared: 2d, 3d \(loaded: 2d\); 2D \(x, y\)/, 'a scene that DECLARES modes lists them');
+    assert.equal(stageWords(emptyStage('inventory: no scene is loaded')), 'THE STAGE: no scene is loaded in the lab (the lab says: inventory: no scene is loaded).');
+    // the load rule
+    const PLAN3D = { scene: 'cl1a-mirror-3d', registryMode: null, changes: [], hands: ['dragTo'], prediction: 'the slab slides toward the viewer' };
+    const block = (p) => fence('json:plan', JSON.stringify(p));
+    assert.throws(() => parsePlan(block(PLAN3D), STAGE), /the plan is for "cl1a-mirror-3d", which is not on the stage \("cl1a-mirror"\), and its hands \[dragTo\] never load it — name loadScene or openSketch/);
+    assert.equal(parsePlan(block(PLAN3D), s3).plan.scene, 'cl1a-mirror-3d', 'negative control: the same plan with its scene on the stage passes');
+    assert.deepEqual(parsePlan(block(Object.assign({}, PLAN3D, { hands: ['loadScene', 'dragTo'] })), STAGE).plan.hands, ['loadScene', 'dragTo'], 'negative control: with loadScene it passes');
+    assert.deepEqual([...LOADING_HANDS], ['loadScene', 'openSketch']);
+    for (const h of LOADING_HANDS) assert.ok(Object.prototype.hasOwnProperty.call(HANDS, h), h + ' is a hand');
+    const tunnel2d = stageOf(Object.assign({}, INV_2D, { id: 'dse-tunnel-rebuild', mode: '2d', modes: ['2d', '3d'] }));
+    const want3d = { scene: 'dse-tunnel-rebuild', registryMode: '3d', changes: [], hands: ['see'], prediction: 'p' };
+    assert.equal(planOnStage(want3d, tunnel2d), false, 'another DECLARED registry mode of the same scene is not on the stage');
+    assert.throws(() => parsePlan(block(want3d), tunnel2d), /"dse-tunnel-rebuild" registryMode "3d", which is not on the stage \("dse-tunnel-rebuild" mode "2d"\)/);
+    assert.equal(planOnStage(Object.assign({}, want3d, { registryMode: null }), tunnel2d), true, 'no registryMode named: the stage\'s mode stands');
+    // the defect (run-3d-platform mm3d2): a plan for the 3D mirror ON the 3D mirror is on the stage — ids compared, dimensionality never planned
+    assert.equal(planOnStage(PLAN3D, s3), true);
+    assert.deepEqual(parsePlan(block(Object.assign({}, PLAN3D, { hands: ['inventory', 'moveObject'] })), s3).plan.hands, ['inventory', 'moveObject'], 'mm3d2\'s plan shape, without the planned mode, passes on the 3D stage');
+    // a registryMode for the scene on the stage that it does not declare is refused by name (it would be refused at loadScene anyway)
+    assert.throws(() => parsePlan(block(Object.assign({}, PLAN3D, { registryMode: '3d', hands: ['loadScene', 'dragTo'] })), s3),
+        /registryMode "3d" for "cl1a-mirror-3d", which is on the stage and declares no registry modes \(registryMode is null\)/);
+    // a STALE plan (the old shape) is refused BY NAME — never silently ignored; same plan without it passes (negative control)
+    for (const [k, v] of [['mode', '3d'], ['mode', null], ['dimensions', 3]]) {
+        assert.throws(() => parsePlan(block(Object.assign({}, PLAN3D, { [k]: v })), s3), new RegExp('`' + k + '` is not a plan field.*\\(got "' + k + '": '), 'a plan carrying ' + k + ' is refused by name');
+    }
+    assert.deepEqual(Object.keys(PLAN_REFUSED_KEYS), ['mode', 'dimensions']);
+    assert.deepEqual(loadArgsOf(PLAN3D), { id: 'cl1a-mirror-3d' }, 'the load a plan needs carries no mode when the registry declares none');
+    assert.deepEqual(loadArgsOf(want3d), { id: 'dse-tunnel-rebuild', mode: '3d' });
+    assert.throws(() => parsePlan(block(PLAN3D), emptyStage('no scene')), /which is not on the stage \(nothing is loaded\)/);
+});
+
+test('the 3D stage says which way is toward the viewer (off the camera) and every part\'s full extent; a mirrored camera flips it; the Owl is told none of it', () => {
+    // the run-3d-platform-2 misreads: "toward the viewer" with no grounding, and the slab read as z -240..80 / -160..0 — the stage now states both
+    const w3 = stageWords(stageOf(INV_3D));
+    assert.match(w3, /the camera looks from azimuth 45°, elevation 45°; toward the viewer is \+z, away is -z/);
+    assert.match(w3, /mirror \(Wall\): spans x 360\.\.380, y 80\.\.320, z -80\.\.80; centre \[370, 200, 0\]/);
+    // end to end from the ONE owner: an inventory read off the SDK's own camera geometry, at the default pose and at the mirrored one
+    const wall = () => ({ name: 'mirror', _schemaKind: 'Wall', rect: { left: 360, top: 80, z: -80, w: 20, h: 240, d: 160 } });
+    const scAt = (azimuth) => ({ label: '1A · Mirror (3D)', id: 'cl1a-mirror-3d', mode: null, modes: [], renderer: 'three', tick: () => 1, recipeContext: { world: { w: 600, h: 400, d: 600 } },
+        runner: fakeRunner([wall()], { cameraControl: sdkCameraControl({ azimuth: azimuth, elevation: 45, distance: 900 }, 600, 400) }) });
+    assert.match(stageWords(stageOf(inventoryOf(scAt(45)))), /azimuth 45°, elevation 45°; toward the viewer is \+z, away is -z/);
+    assert.match(stageWords(stageOf(inventoryOf(scAt(225)))), /azimuth 225°, elevation 45°; toward the viewer is -z, away is \+z/, 'the planted mirrored pose flips the words');
+    assert.match(stageWords(stageOf(Object.assign({}, INV_3D, { camera: { azimuth: 90, elevation: 20 }, viewer: { toward: null, away: null } }))),
+        /azimuth 90°, elevation 20°, across z: neither z direction is toward the viewer/);
+    // extents: a centre-placed part gives its centre; a 2D rect spans x and y only; fractions are rounded, not hidden
+    assert.equal(extentWords({ name: 'sphere emitter 0', kind: 'SphereEmitter', center: [90, 200, 0], rect: null }, 3), 'sphere emitter 0 (SphereEmitter): centre [90, 200, 0]');
+    assert.equal(extentWords({ name: 'mirror', kind: 'Wall', center: [370, 200, 0], rect: [360, 80, 20, 240] }, 2), 'mirror (Wall): spans x 360..380, y 80..320; centre [370, 200]');
+    assert.equal(extentWords({ name: 'w', kind: 'Wall', center: null, rect: [0, 0, 1.5, 10, 10, 2.25] }, 3), 'w (Wall): spans x 0..10, y 0..10, z 1.5..3.75');
+    assert.match(stageWords(STAGE), /declared objects: sphere emitter 0 \(SphereEmitter\): centre \[90, 200\]; mirror \(Wall\): spans x 360\.\.380, y 80\.\.320; centre \[370, 200\]\.$/);
+    assert.doesNotMatch(stageWords(STAGE), /toward the viewer|azimuth/, 'a 2D stage has no depth and no viewer axis');
+    // negative controls: a 3D inventory without a derived viewer, or with a malformed one, is a body bug; 2D carries none
+    for (const bad of [null, {}, { toward: '+z', away: '+z' }, { toward: 'near', away: 'far' }, { toward: '-z' }]) {
+        assert.throws(() => stageOf(Object.assign({}, INV_3D, { viewer: bad })), /viewer must be \{toward:"\+z"\|"-z", away: the other\}/, JSON.stringify(bad) + ' stayed green');
+    }
+    assert.throws(() => stageOf(Object.assign({}, INV_3D, { camera: null })), /camera must be the 3D pose/);
+    assert.throws(() => stageOf(Object.assign({}, INV_2D, { viewer: { toward: '+z', away: '-z' } })), /viewer must be null in a 2D world/);
+    assert.throws(() => stageOf(Object.assign({}, INV_3D, { objects: [{ name: 'mirror', kind: 'Wall', rect: [360, 80, 20, 240] }] })), /rect must be \[left, top, z, w, h, d\] in a 3D world/);
+    // the Designer and the Builder are told what the words mean; the Builder's first turn carries them
+    assert.match(ROLES.designer.preface, /TOWARD THE VIEWER .*\sread off the camera, never off an object's name/s);
+    assert.match(ROLES.designer.preface, /a part is out of a band only when its WHOLE span is/);
+    assert.match(ROLES.builder.preface, /a `to` for "toward the viewer" moves the centre along it \(toward \+z: a larger z;\s+'?\s*toward -z: a smaller z\)/);
+    const b1 = builderTurn({ plan: Object.assign({}, PLAN, { scene: 'cl1a-mirror-3d' }), stage: stageOf(INV_3D) });
+    assert.ok(b1.includes('toward the viewer is +z, away is -z') && b1.includes('spans x 360..380, y 80..320, z -80..80'), 'the Builder\'s first turn carries the viewer axis and the extent');
+    assert.ok(designerTurn({ outline: 'slide the mirror toward the viewer, out of the beam', stage: stageOf(INV_3D) }).includes('toward the viewer is +z'), 'the Designer\'s turn carries it');
+    // the Owl: its preface and its turn carry no stage, no camera, no viewer axis, no extent (isolation unchanged)
+    const o = owlTurn({ outline: 'slide the mirror toward the viewer, out of the beam', prediction: 'the slab moves to centre z 180' });
+    assert.doesNotMatch(o.replace('slide the mirror toward the viewer, out of the beam', ''), /THE STAGE|toward the viewer|azimuth|spans [xyz] |\+z|-z/);
+    assert.doesNotMatch(ROLES.owl.preface, /viewer|azimuth|spans|camera/);
+});
+
+test('builder: every HANDS key is a hand; a call needs its PREDICTION; done takes {}', () => {
+    for (const h of Object.keys(HANDS)) {
+        const r = parseBuilderReply('PREDICTION: something\n' + fence('json:call:' + h, '{}'));
+        assert.equal(r.kind, 'call'); assert.equal(r.hand, h); assert.equal(r.prediction, 'something');
+    }
+    const multi = parseBuilderReply('I read the sketch.\nPREDICTION: the clip shows these things:\n- the beam at y 200\n- the stream up-left\n\n' + fence('json:call:see', '{}'));
+    assert.equal(multi.prediction, 'the clip shows these things:\n- the beam at y 200\n- the stream up-left', 'a multi-line prediction is kept whole (mmlocal1: the Owl got only its first line)');
+    assert.throws(() => parseBuilderReply('PREDICTION:   \n' + fence('json:call:see', '{}')), /without a `PREDICTION: …` line/);
+    assert.throws(() => parseBuilderReply('PREDICTION: x\n' + fence('json:call:teleport', '{}')), /names no hand/);
+    assert.throws(() => parseBuilderReply(fence('json:call:see', '{}')), /without a `PREDICTION: …` line/);
+    assert.throws(() => parseBuilderReply('PREDICTION: x\n' + fence('json:call:see', '{everyTicks: 5}')), /not strict JSON/);
+    assert.throws(() => parseBuilderReply('PREDICTION: x\n' + fence('json:call:see', '[]')), /ONE JSON object/);
+    assert.throws(() => parseBuilderReply('I am done, it looks right.'), /found 0/);
+    assert.throws(() => parseBuilderReply('PREDICTION: x\n' + fence('json:call:see', '{}') + fence('json:done', '{}')), /found 2/);
+    assert.equal(parseBuilderReply('The clip shows it.\n' + fence('json:done', '{}')).kind, 'done');
+    assert.throws(() => parseBuilderReply(fence('json:done', '{"clip": 2}')), /json:done takes the body \{\}/);
+});
+
+const SEEN = '"seen":{"contact":"mirror, middle third","after":"up and to the left","passes":"no"},';
+test('owl: approve and revise parse with the account; a missing verdict, account, change or a third word throws', () => {
+    const a = parseVerdict('I see the beam turn upward.\n' + fence('json:verdict', '{' + SEEN + '"verdict":"approve","reasons":["the mirror sits at 30 degrees"],"change":null}'));
+    assert.equal(a.verdict, 'approve'); assert.equal(a.change, null);
+    assert.deepEqual(a.seen, { contact: 'mirror, middle third', after: 'up and to the left', passes: 'no' });
+    const r = parseVerdict(fence('json:verdict', '{' + SEEN + '"verdict":"revise","reasons":["the mirror is at 45 degrees"],"change":"set the mirror to 30 degrees"}'));
+    assert.equal(r.change, 'set the mirror to 30 degrees');
+    assert.throws(() => parseVerdict(fence('json:verdict', '{' + SEEN + '"reasons":["the beam meets the top tip"],"change":"lower the contact"}')), /`verdict` "approve" or "revise" \(got undefined\)/, 'a verdict block with NO verdict key is refused');
+    assert.throws(() => parseVerdict(fence('json:verdict', '{' + SEEN + '"verdict":"revise","reasons":["x"]}')), /`change`/);
+    assert.throws(() => parseVerdict(fence('json:verdict', '{' + SEEN + '"verdict":"maybe","reasons":["x"],"change":null}')), /"approve" or "revise"/);
+    assert.throws(() => parseVerdict(fence('json:verdict', '{' + SEEN + '"verdict":"approve","reasons":[],"change":null}')), /`reasons`/);
+    assert.throws(() => parseVerdict(fence('json:verdict', '{"verdict":"approve","reasons":["x"],"change":null}')), /`seen`/, 'no account, no verdict (vfyplat1)');
+    assert.throws(() => parseVerdict(fence('json:verdict', '{"seen":{"contact":"mirror, top third","after":"up"},"verdict":"approve","reasons":["x"],"change":null}')), /`seen\.passes`/);
+});
+
+test('turns: each role sees only its own inputs', () => {
+    const d = designerTurn({ outline: 'a laser hitting a mirror at 30 degrees', stage: STAGE });
+    assert.ok(d.startsWith(ROLES.designer.preface + '\n\n' + stageWords(STAGE) + '\n\nTONY\'S OUTLINE: a laser hitting a mirror at 30 degrees'), 'preface, then THE STAGE, then the outline');
+    const later = designerTurn({ outline: 'x', first: false, stage: STAGE });
+    assert.equal(later, stageWords(STAGE) + '\n\nTONY\'S OUTLINE: x', 'a later Designer turn carries no second preface, and the stage again');
+    assert.throws(() => designerTurn({ outline: 'x' }), /designerTurn needs the stage/);
+    const b1 = builderTurn({ plan: PLAN, stage: STAGE });
+    assert.match(b1, /"orientationDeg"/);
+    assert.ok(b1.includes(stageWords(STAGE)) && !/not on the stage/.test(b1), 'the Builder sees the stage; the plan\'s scene is on it, so no load line');
+    const b1load = builderTurn({ plan: Object.assign({}, PLAN, { scene: 'cl1a-mirror-3d' }), stage: STAGE });
+    assert.match(b1load, /The plan's scene is not on the stage: your first hand loads it — loadScene \{"id":"cl1a-mirror-3d"\} \(or openSketch/);
+    // the prefaces: 2D/3D is the loaded scene's; loadScene takes an id (a mode only when declared); every 3D `to` is a CENTRE and a prediction names it
+    assert.match(ROLES.designer.preface, /2D or 3D is a FACT OF THE LOADED SCENE/);
+    assert.match(ROLES.designer.preface, /"registryMode": null/);
+    assert.doesNotMatch(ROLES.designer.preface, /"mode":|\("2d" or "3d"\)/, 'the Designer is never shown a 2d/3d mode to plan');
+    assert.match(ROLES.builder.preface, /loadScene\{id\} of the plan's scene — with a `mode` ONLY when the plan names a registryMode/);
+    assert.match(ROLES.builder.preface, /2D or 3D is a fact of the LOADED scene/);
+    assert.match(ROLES.builder.preface, /Every `to` is a CENTRE \[x, y, z\], never a face/);
+    assert.match(ROLES.builder.preface, /your PREDICTION states the CENTRE it will drive to/);
+    assert.match(ROLES.builder.preface, /centred at z 0/, 'the rect-z-is-the-near-face worked example (the mirror slab, z -80 depth 160)');
+    assert.throws(() => builderTurn({ plan: PLAN }), /builderTurn\.plan needs the stage/);
+    const b2 = builderTurn({ results: [{ hand: 'see', ok: true, result: { clip: '/tmp/x/clip.mp4', frames: ['/tmp/x/f0.png'], base64Length: 9, seconds: 5.1 } }], footageAttached: true, omit: ['clip', 'frames'] });
+    assert.ok(!/clip\.mp4|f0\.png|base64Length/.test(b2), 'clip path and frames ride as media, never in the text');
+    assert.match(b2, /attached as video/);
+    const b3 = builderTurn({ results: [{ hand: 'openSketch', ok: false, error: 'SyntaxError: Unexpected token' }], footageAttached: false });
+    assert.doesNotMatch(b3, /attached as video/);
+    assert.throws(() => builderTurn({ results: [{ hand: 'see', ok: true, result: {} }] }), /footageAttached/);
+    assert.match(b3, /REFUSED, verbatim:\nSyntaxError: Unexpected token/);
+    assert.throws(() => builderTurn({ results: [], footageAttached: false }), /non-empty array/);
+    assert.throws(() => builderTurn({ results: [{ hand: 'see', ok: 'yes' }], footageAttached: false }), /ok:true/);
+    const rv = builderTurn({ revise: { verdict: 'revise', reasons: ['mirror at 45'], change: 'set 30' } });
+    assert.match(rv, /- mirror at 45\nThe one change it asks for: set 30/);
+    const o = owlTurn({ outline: 'a laser hitting a mirror at 30 degrees', prediction: 'the beam leaves at 60 degrees' });
+    assert.ok(!/orientationDeg|cl1a-mirror|PLAN|sceneSource|THE STAGE/.test(o), 'the Owl sees nothing of the plan, the stage or the build');
+    assert.match(o, /THE OUTLINE: a laser.*\n\nTHE BUILDER'S PREDICTION: the beam leaves at 60 degrees/s);
+    for (const k of Object.keys(SEEN_ACCOUNT)) assert.ok(o.includes('- ' + k + ': ' + SEEN_ACCOUNT[k]), 'the Owl is asked its account item ' + k);
+});
+
+test('plugin agents: generated, current, persona verbatim; a drift is red', () => {
+    const persona = fs.readFileSync(path.join(REPO, PERSONA), 'utf8').replace(/\s+$/, '');
+    const files = renderAll(REPO);
+    assert.deepEqual(files.map((f) => f.id), ['designer', 'builder', 'owl', 'skill']);
+    for (const f of files.filter((x) => x.id === 'skill')) {
+        assert.equal(fs.readFileSync(path.join(REPO, f.path), 'utf8'), f.text, f.path + ' roles table is stale — run node scripts/gen-plugin-agents.mjs --write');
+        for (const id of ROLE_ORDER) assert.ok(f.text.includes(ROLES[id].knowledgebase_names.map((k) => '`' + k + '`').join(', ')), 'the skill table states ROLES.' + id + '.knowledgebase_names');
+    }
+    for (const f of files.filter((x) => x.id !== 'skill')) {
+        const disk = fs.readFileSync(path.join(REPO, f.path), 'utf8');
+        assert.equal(disk, f.text, f.path + ' is stale — run node scripts/gen-plugin-agents.mjs --write');
+        if (ROLES[f.id].persona) assert.ok(disk.includes(persona) && disk.includes('(verbatim below)'), f.path + ' must carry the persona verbatim');
+        else assert.ok(!disk.includes('WHY YOU ARE') && !disk.includes('verbatim below'), f.path + ' runs without the persona on the platform, so locally too — and its header must not promise one');
+        assert.match(disk, new RegExp('^---\\nname: maxi-' + f.id + '\\n'));
+    }
+    // negative control: the same comparison on a one-character drift
+    const drifted = files[0].text.replace('WHY YOU ARE', 'WHY YOU  ARE');
+    assert.notEqual(drifted, files[0].text);
+    assert.equal(agentPath('owl'), 'plugin/agents/maxi-owl.md');
+});
+
+/** The tools line and the HOW THIS AGENT RUNS section of an agent file. */
+function agentTools(text, where) {
+    const m = /^---\n[\s\S]*?^tools: (.*)$[\s\S]*?^---$/m.exec(text);
+    assert.ok(m, where + ' has no tools line in its frontmatter');
+    const b = text.indexOf('# HOW THIS AGENT RUNS');
+    assert.ok(b !== -1, where + ' has no HOW THIS AGENT RUNS section');
+    const e = text.indexOf('\n# ', b + 1);
+    return { tools: m[1].split(',').map((t) => t.trim()).filter(Boolean), how: text.slice(b, e === -1 ? undefined : e) };
+}
+
+/** Red when an agent's listed tools are not exactly the tools its turn text requires. */
+function assertToolsAsTurnRequires(text, where) {
+    const a = agentTools(text, where);
+    const need = TOOL_NEEDS.filter((n) => n.when.test(a.how));
+    const missing = need.filter((n) => a.tools.indexOf(n.tool) === -1).map((n) => n.tool + ' (its turn ' + n.why + ')');
+    const extra = a.tools.filter((t) => !need.some((n) => n.tool === t));
+    assert.deepEqual(missing, [], where + ' lacks a tool its turn requires: ' + missing.join(', '));
+    assert.deepEqual(extra, [], where + ' lists a tool no line of its turn requires: ' + extra.join(', '));
+    return a.tools;
+}
+
+test('plugin agents: each agent\'s tools are exactly what its turn requires; a missing Write or an Owl with Bash is red', () => {
+    const got = {};
+    for (const id of ROLE_ORDER) {
+        const p = agentPath(id);
+        got[id] = assertToolsAsTurnRequires(fs.readFileSync(path.join(REPO, p), 'utf8'), p);
+    }
+    assert.deepEqual(got, {
+        designer: ['Read', 'Write', 'Grep', 'Glob'],
+        builder: ['Bash', 'Read', 'Write', 'Grep', 'Glob'],
+        owl: ['Read', 'Write']
+    });
+    // negative control 1: the Designer without Write (the shape the local trial hit) is red
+    const designer = fs.readFileSync(path.join(REPO, agentPath('designer')), 'utf8');
+    assert.throws(() => assertToolsAsTurnRequires(designer.replace(/^tools: .*$/m, 'tools: Read, Grep, Glob'), 'planted'), /lacks a tool its turn requires: Write/);
+    // negative control 2: the Owl given Bash (its isolation broken) is red
+    const owl = fs.readFileSync(path.join(REPO, agentPath('owl')), 'utf8');
+    assert.throws(() => assertToolsAsTurnRequires(owl.replace(/^tools: .*$/m, 'tools: Bash, Read, Write'), 'planted'), /lists a tool no line of its turn requires: Bash/);
+    // negative control 3: the generator refuses a turn text that asks no answer file
+    assert.throws(() => toolsFor('Read the turn file.'), /lacks Write \(no line matching \/Write your reply to the answer file\/[^)]*\) — refusing to generate/);
+    assert.throws(() => toolsFor('Write your reply to the answer file.'), /lacks Read \(no line matching \/Read the turn file\//);
+});
+
+/** How many times `needle` occurs in `hay` (non-overlapping). */
+const count = (hay, needle) => hay.split(needle).length - 1;
+
+/** The persona's WORLD FRAME section as the generator owns it. */
+const FRAME_SECTION = SECTIONS.find((x) => x.markers === rolesModule.WORLD_FRAME_MARKERS);
+
+/** Red when `text` (a persona) does not carry the WORLD FRAME section exactly as renderWorldFrameMarkdown() renders it. */
+function assertFrameSectionCurrent(text) {
+    const s = spliceBlock(text, FRAME_SECTION, PERSONA);   // throws: no markers, doubled, out of order
+    assert.equal(s.current.trimEnd(), rolesModule.renderWorldFrameMarkdown().trimEnd(),
+        PERSONA + ' WORLD FRAME section is stale — run node scripts/gen-hands-section.mjs --write ' + PERSONA);
+    assert.deepEqual(renderPersona(text, PERSONA).stale, [], PERSONA + ' carries a stale generated section');
+}
+
+test('the persona\'s WORLD FRAME section: generated from WORLD_FRAME between its markers, current; a hand-typed or stale copy is red', () => {
+    const W = rolesModule.WORLD_FRAME;
+    const text = fs.readFileSync(path.join(REPO, PERSONA), 'utf8');
+    assert.ok(FRAME_SECTION, 'scripts/gen-hands-section.mjs SECTIONS renders the WORLD FRAME section from maxi-roles.js WORLD_FRAME_MARKERS');
+    assertFrameSectionCurrent(text);
+    assert.equal(count(text, W), 1, PERSONA + ' carries WORLD_FRAME exactly once');
+    const b = text.indexOf(rolesModule.WORLD_FRAME_MARKERS.begin);
+    assert.ok(text.indexOf(W) > b && text.indexOf(W) < text.indexOf(rolesModule.WORLD_FRAME_MARKERS.end), 'the one copy sits between the markers');
+    // negative control 1: the section typed by hand (the frame's words with no markers) is red
+    const typed = text.replace(rolesModule.WORLD_FRAME_MARKERS.begin + '\n', '').replace('\n' + rolesModule.WORLD_FRAME_MARKERS.end, '');
+    assert.equal(count(typed, W), 1, 'the planted fault keeps the words');
+    assert.throws(() => assertFrameSectionCurrent(typed), /does not carry exactly one WORLD FRAME block/);
+    // negative control 2: the constant changed without regenerating — the section on disk no longer matches
+    const drifted = text.replace(W, W.replace('Minecraft', 'Minecraft (the game)'));
+    assert.throws(() => assertFrameSectionCurrent(drifted), /WORLD FRAME section is stale/);
+    // negative control 3: a doubled section is refused, never spliced into the first
+    const m = rolesModule.renderWorldFrameMarkdown();
+    assert.throws(() => assertFrameSectionCurrent(text + '\n' + m), /exactly one WORLD FRAME block/);
+});
+
+test('the world frame: one owner — the persona and the Owl\'s first turn carry it, the Designer\'s and the Builder\'s turns never, never typed twice', () => {
+    const W = rolesModule.WORLD_FRAME;
+    assert.equal(typeof W, 'string', 'maxi-roles.js exports WORLD_FRAME, the one text every role is told about the world');
+    assert.ok(W.trim() === W && W.length > 0 && !W.includes('\n\n'), 'WORLD_FRAME is one paragraph');
+    for (const fact of [/Minecraft/, /block/, /container/i, /fundamental dimension/, /no units?|unitless/i, /ticks/, /level-0/, /force equations?/]) {
+        assert.match(W, fact, 'WORLD_FRAME states ' + fact);
+    }
+    const turns = {
+        designer: designerTurn({ outline: 'a laser hitting a mirror at 30 degrees', stage: STAGE }),
+        builder: builderTurn({ plan: PLAN, stage: STAGE }),
+        owl: owlTurn({ outline: 'a laser hitting a mirror at 30 degrees', prediction: 'the beam leaves at 60 degrees' })
+    };
+    // a role under the persona gets the frame there; a role without it gets it in its first turn — exactly one path each
+    const WANT_TURN = { designer: 0, builder: 0, owl: 1 };
+    for (const id of ROLE_ORDER) {
+        assert.equal(WANT_TURN[id], ROLES[id].persona ? 0 : 1, 'the turn carries the frame exactly when the persona does not (' + id + ')');
+        assert.equal(count(turns[id], W), WANT_TURN[id], 'the ' + id + '\'s first turn carries WORLD_FRAME ' + WANT_TURN[id] + ' time(s)');
+        assert.equal(count(ROLES[id].preface, W), WANT_TURN[id], 'ROLES.' + id + '.preface carries WORLD_FRAME ' + WANT_TURN[id] + ' time(s)');
+    }
+    assert.equal(count(designerTurn({ outline: 'x', first: false, stage: STAGE }), W), 0, 'a later Designer turn carries no frame');
+    assert.equal(count(fs.readFileSync(path.join(REPO, PERSONA), 'utf8'), W), 1, 'the persona carries it once');
+    // the generated files: the persona-bearing agents once (the embedded persona), the Owl's agent never, the skill once
+    const files = renderAll(REPO);
+    const WANT_FILE = { designer: 1, builder: 1, owl: 0, skill: 1 };
+    for (const f of files) {
+        const want = WANT_FILE[f.id];
+        assert.equal(count(f.text, W), want, f.path + ' carries WORLD_FRAME ' + want + ' time(s)');
+        assert.equal(count(fs.readFileSync(path.join(REPO, f.path), 'utf8'), W), want, f.path + ' on disk carries WORLD_FRAME ' + want + ' time(s)');
+        if (f.id !== 'skill') { assert.equal(want, ROLES[f.id].persona ? 1 : 0, f.path + ': the agent carries the frame exactly when it embeds the persona'); }
+    }
+    // no hand-typed copy: no clause of the frame occurs outside its owner, the generated persona section and the generated files
+    const probes = W.split(/(?<=[.:;])\s+/).filter((c) => c.length > 40);
+    assert.ok(probes.length >= 4, 'the probes are the frame\'s distinctive clauses');
+    const allowed = new Set(['site/app-assets/maxi-roles.js', PERSONA].concat(files.map((f) => f.path)));
+    const tracked = execFileSync('git', ['ls-files'], { cwd: REPO, encoding: 'utf8' }).split('\n').filter(Boolean)
+        .filter((p) => /\.(m?js|md|json|txt|html)$/.test(p) && !p.startsWith('site/vendor/'));
+    const copies = tracked.filter((p) => !allowed.has(p) && fs.existsSync(path.join(REPO, p)) && probes.some((c) => fs.readFileSync(path.join(REPO, p), 'utf8').includes(c)));
+    assert.deepEqual(copies, [], 'WORLD_FRAME wording typed outside its owner: ' + copies.join(', ') + ' — import WORLD_FRAME or generate from it');
+});
+
+/** Words that carry no claim, and a plural/3rd-person -s, are dropped so a reworded clause still matches. */
+const FILLER = new Set(['the', 'a', 'an', 'that', 'this', 'of', 'in', 'on', 'to', 'and', 'or', 'by', 'it', 'its', 'is', 'are', 'your', 'you', 'so', 'once', 'when', 'have', 'has', 'been']);
+const contentWords = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ')
+    .filter((w) => w && !FILLER.has(w)).map((w) => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w));
+/**
+ * Every run of RUN consecutive content words of the rule (its parenthesised example split off first) that also
+ * occurs in `text`: case, punctuation and filler words ignored, so a capitalised or reworded clause is caught.
+ */
+const RUN = 4;
+function restated(rule, text) {
+    const r = contentWords(rule.replace(/\([^)]*\)/g, ' '));
+    const t = ' ' + contentWords(text).join(' ') + ' ';
+    const out = [];
+    for (let i = 0; i + RUN <= r.length; i++) { const run = r.slice(i, i + RUN).join(' '); if (t.includes(' ' + run + ' ') && out.indexOf(run) === -1) { out.push(run); } }
+    return out;
+}
+
+test('LOOK, NOT ASK: the rule lives once in the persona\'s BUILDING FROM AN OUTLINE; the Designer\'s preface points at it and restates none of it', () => {
+    const L = rolesModule.LOOK_RULE;
+    const text = fs.readFileSync(path.join(REPO, PERSONA), 'utf8');
+    const lines = text.split('\n');
+    const ruleAt = lines.findIndex((l) => l.startsWith(L + '. '));
+    assert.ok(ruleAt !== -1, PERSONA + ' carries a line opening "' + L + '. "');
+    assert.equal(lines.filter((l) => l.startsWith(L + '. ')).length, 1, 'the rule is stated once');
+    const sec = lines.indexOf('BUILDING FROM AN OUTLINE');
+    const next = lines.findIndex((l, i) => i > sec && /^[A-Z][A-Z ,'’—()-]+$/.test(l) && l.length > 8);
+    assert.ok(sec !== -1 && ruleAt > sec && ruleAt < next, 'the rule sits in BUILDING FROM AN OUTLINE (the planning section)');
+    const rule = lines[ruleAt];
+    assert.match(rule, /never by a question back to the person/);
+    assert.match(rule, /states that reading in one line/);
+    // the Designer's preface names it and points at the section; it repeats none of the rule's own clauses
+    const pre = ROLES.designer.preface;
+    assert.ok(pre.includes(L) && pre.includes('BUILDING FROM AN OUTLINE'), 'the Designer preface points at the rule by name');
+    const repeats = restated(rule.slice(L.length + 2), pre);
+    assert.deepEqual(repeats, [], 'the Designer preface restates the persona\'s rule: ' + repeats.join(' | '));
+    // negative controls: a verbatim clause in capitals, and the rule's own core sentence, are red
+    assert.notDeepEqual(restated(rule.slice(L.length + 2), pre + '\nWHICH SCENE, WHICH ANGLE, WHICH OBJECT, HOW MUCH — IS RESOLVED BY LOOKING'), []);
+    assert.notDeepEqual(restated(rule.slice(L.length + 2), pre + '\nYour plan states that reading in one line.'), []);
+    for (const id of ['builder', 'owl']) assert.ok(!ROLES[id].preface.includes(L), 'only the Designer plans, so only it is pointed at the rule (' + id + ')');
+    // negative control: the pointer without the rule in the persona is red
+    assert.equal(text.replace(rule + '\n', '').split('\n').findIndex((l) => l.startsWith(L + '. ')), -1);
+});

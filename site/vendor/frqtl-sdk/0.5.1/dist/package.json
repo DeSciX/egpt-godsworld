@@ -1,0 +1,27 @@
+{
+  "name": "@descix/frqtl-sdk",
+  "version": "0.5.1",
+  "description": "FRQTL SDK — Discrete fractal physics and game engine distribution.",
+  "author": "Essam Abadir",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eabadir/fraqtl.git",
+    "directory": "sdk/frqtl-sdk"
+  },
+  "keywords": [
+    "physics",
+    "engine",
+    "simulation",
+    "fractal",
+    "cellular-automata",
+    "particle",
+    "quantum",
+    "wave-particle-duality",
+    "emergent",
+    "discrete-physics",
+    "egpt",
+    "frqtl",
+    "descix"
+  ]
+}

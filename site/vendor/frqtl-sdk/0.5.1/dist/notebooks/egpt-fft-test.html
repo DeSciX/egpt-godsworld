@@ -1,0 +1,202 @@
+<frqtl-notebook version="1" title="EGPTFFT — SDK Parity Tests (forward / inverse round-trip)">
+
+<cell type="markdown">
+# EGPTFFT — SDK Parity Tests
+
+`EGPTFFT` is a thin pedagogical wrapper over `EGPTPolynomial`'s canonical transform
+primitives. It makes the polynomial-transform interpretation of an FFT explicit: there
+is no floating-point, no Cooley-Tukey butterfly, and no complex exponential. Instead:
+
+| Method | What it computes |
+|--------|-----------------|
+| `EGPTFFT.forward(coeffs, N)` | Evaluates `P(x) = c₀ + c₁x + …` at the N uniform rational nodes `k/N` via Horner's method. Each result is an exact `EGPTReal` rational. |
+| `EGPTFFT.inverse(values, N)` | Recovers the original coefficient vector from those N samples via Newton divided-differences — bit-exact. |
+
+The round-trip identity `inverse(forward(c, N), N) === c` holds to the last bit because
+both operations live entirely in Shannon/PPF (rational) space.
+
+This notebook runs the three canonical parity tests from `sdk/egpt-math-sdk/src/editor/tests/EGPTFFTTest.js`:
+
+1. **Agreement test** — `EGPTFFT.forward` matches `EGPTPolynomial.forwardTransform` for a mixed-rational input.
+2. **Integer round-trip** — `inverse(forward(c, 4), 4) === c` for integer coefficients.
+3. **Rational round-trip** — `inverse(forward(c, 5), 5) === c` for fractional coefficients.
+
+All three tests use explicit `N` values (matching the source) to exercise the N-override
+path in `EGPTFFT.forward` / `.inverse`.
+</cell>
+
+<cell type="markdown">
+## Setup — test harness and value constructors
+
+A minimal harness (`test` / `assert` / `assertPolyEquals`) mirrors the original source.
+`passed` / `failed` counts accumulate across all phase cells via the shared `suite` binding.
+</cell>
+
+<cell type="js" lane="math" id="fft-setup" out="suite">
+const { math } = caps;
+const { EGPTReal, EGPTPolynomial } = math;
+
+// Convenient EGPTReal constructors used across all phase cells.
+const intN = (n) => EGPTReal.fromBigInt(BigInt(n));
+const frac = (n, d) => EGPTReal.fromRational(BigInt(n), BigInt(d));
+
+let passed = 0;
+let failed = 0;
+const failures = [];
+
+function test(name, fn) {
+    try {
+        fn();
+        console.log('  ok  — ' + name);
+        passed++;
+    } catch (err) {
+        console.log('  FAIL — ' + name + ' (' + err.message + ')');
+        failed++;
+        failures.push(name);
+    }
+}
+
+function assert(condition, message) {
+    if (!condition) throw new Error(message || 'assertion failed');
+}
+
+function assertPolyEquals(actual, expected, message) {
+    if (!EGPTPolynomial.equals(actual, expected)) throw new Error(message || 'polynomial mismatch');
+}
+
+return {
+    suite: {
+        test,
+        assert,
+        assertPolyEquals,
+        intN,
+        frac,
+        getResults: () => ({ passed, failed, failures })
+    }
+};
+</cell>
+
+<cell type="markdown">
+## Phase 1 — forward agrees with EGPTPolynomial.forwardTransform
+
+`EGPTFFT.forward(coeffs, N)` is defined as `EGPTPolynomial.forwardTransform(coeffs, N)`.
+This test verifies that identity directly for a three-element mixed-rational input with N = 3.
+
+Input: `[ 1/3, -7/6, 1 ]`  — one integer, two fractions.
+</cell>
+
+<cell type="js" lane="math" id="fft-phase1" in="suite" out="ph1">
+const { math } = caps;
+const { EGPTFFT, EGPTPolynomial } = math;
+const { test, assertPolyEquals, frac, intN, getResults } = inputs.suite;
+
+console.log('[Phase 1] EGPTFFT.forward matches EGPTPolynomial.forwardTransform');
+
+test('EGPTFFT.forward matches EGPTPolynomial.forwardTransform', () => {
+    const coeffs = [
+        frac(1, 3),
+        frac(-7, 6),
+        intN(1)
+    ];
+    assertPolyEquals(
+        EGPTFFT.forward(coeffs, 3),
+        EGPTPolynomial.forwardTransform(coeffs, 3),
+        'forward(c, 3) should equal forwardTransform(c, 3)'
+    );
+});
+
+return { ph1: getResults() };
+</cell>
+
+<cell type="markdown">
+## Phase 2 — inverse(forward(c)) round-trips integer coefficients
+
+For integer input `[ 2, -3, 0, 5 ]` with N = 4, applying `forward` then `inverse`
+must recover the original vector exactly.
+
+The N = 4 override exercises the case where the number of transform sample-points is
+equal to the number of coefficients — this is the "square Vandermonde" case where the
+forward matrix is invertible by construction.
+</cell>
+
+<cell type="js" lane="math" id="fft-phase2" in="suite" out="ph2">
+const { math } = caps;
+const { EGPTFFT } = math;
+const { test, assertPolyEquals, intN, getResults } = inputs.suite;
+
+console.log('[Phase 2] inverse(forward(c)) round trips integer coefficients');
+
+test('EGPTFFT inverse(forward(c)) round trips integer coefficients', () => {
+    const coeffs = [
+        intN(2),
+        intN(-3),
+        intN(0),
+        intN(5)
+    ];
+    assertPolyEquals(
+        EGPTFFT.inverse(EGPTFFT.forward(coeffs, 4), 4),
+        coeffs,
+        'round trip should recover [ 2, -3, 0, 5 ] exactly'
+    );
+});
+
+return { ph2: getResults() };
+</cell>
+
+<cell type="markdown">
+## Phase 3 — inverse(forward(c)) round-trips rational coefficients
+
+For fractional input `[ 1/2, -3/4, 5/7 ]` with N = 5, the forward transform produces
+five rational-valued samples at nodes `0/5, 1/5, 2/5, 3/5, 4/5`. The inverse must
+recover the original three coefficients exactly from those five over-determined samples.
+
+N = 5 > len(coeffs) = 3 exercises the "over-sampled" path: Newton divided-differences
+reconstruct the unique degree-2 polynomial fitting all five points.
+</cell>
+
+<cell type="js" lane="math" id="fft-phase3" in="suite" out="ph3">
+const { math } = caps;
+const { EGPTFFT } = math;
+const { test, assertPolyEquals, frac, getResults } = inputs.suite;
+
+console.log('[Phase 3] inverse(forward(c)) round trips rational coefficients');
+
+test('EGPTFFT inverse(forward(c)) round trips rational coefficients', () => {
+    const coeffs = [
+        frac(1, 2),
+        frac(-3, 4),
+        frac(5, 7)
+    ];
+    assertPolyEquals(
+        EGPTFFT.inverse(EGPTFFT.forward(coeffs, 5), 5),
+        coeffs,
+        'round trip should recover [ 1/2, -3/4, 5/7 ] exactly'
+    );
+});
+
+return { ph3: getResults() };
+</cell>
+
+<cell type="markdown">
+## Summary
+
+Final tally across all three parity tests.
+</cell>
+
+<cell type="js" lane="math" id="fft-summary" in="ph3">
+const { passed, failed, failures } = inputs.ph3;
+const total = passed + failed;
+
+console.log('');
+console.log('='.repeat(60));
+console.log('EGPTFFTTest TOTAL: ' + passed + '/' + total + ' passed');
+if (failures.length > 0) {
+    console.log('Failed tests:');
+    failures.forEach((f) => console.log('  - ' + f));
+}
+console.log('='.repeat(60));
+
+if (failed > 0) throw new Error('EGPTFFTTest failed: ' + failed);
+</cell>
+
+</frqtl-notebook>

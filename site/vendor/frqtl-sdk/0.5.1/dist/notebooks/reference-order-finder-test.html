@@ -1,0 +1,196 @@
+<frqtl-notebook version="1" title="OrderFinder — Deterministic Period Detection Test Suite">
+
+<cell type="markdown">
+# OrderFinder — Deterministic Period Detection
+
+`OrderFinder` finds the multiplicative order of `a` in ℤ_N* — the smallest positive integer `r` such that:
+
+> a^r ≡ 1 (mod N)
+
+This is the **order-finding** step at the heart of Shor's algorithm and factorization via period detection. The EGPT implementation is fully deterministic: it uses the Lean-verified LFTA (Fundamental Theorem of Arithmetic via Information) path rather than quantum sampling or probabilistic peak detection.
+
+## The algorithm in four steps
+
+1. **Factor N** via `PrimeAtomPolynomial.factorize` — the LFTA polynomial samples
+2. **Compute φ(N)** (Euler's totient) via `PrimeAtomPolynomial.totient` — a closed-form LFTA identity
+3. **Enumerate divisors** of φ(N) in increasing order (Lagrange guarantees every order divides φ(N))
+4. **Return the smallest r** with a^r ≡ 1 (mod N)
+
+No peak detection, no tolerance threshold, no backtracking. Every step is an identity on the LFTA polynomial that Lean proves sorry-free.
+
+## API surface
+
+```
+OrderFinder.findOrder(a, N)         → number | null
+OrderFinder.verifyOrder(a, N, r)    → boolean
+OrderFinder.calculateSampleSize(N)  → number   (legacy, retained for compatibility)
+```
+
+This notebook ports the canonical 10-case suite from `examples/reference/OrderFinderTest.js`, verifying both the returned order value and the independent round-trip check `a^r ≡ 1 (mod N)`.
+</cell>
+
+<cell type="markdown">
+## Setup — test harness
+
+A minimal `test` / `assert` / `expectOrder` harness. Each phase cell receives `suite` from this setup cell and appends its results.
+</cell>
+
+<cell type="js" lane="math" id="of-setup" out="suite">
+const { OrderFinder } = caps.math;
+
+const results = [];
+
+function assert(cond, msg) {
+  if (!cond) throw new Error(msg || 'assertion failed');
+}
+
+function test(name, fn, bucket) {
+  try {
+    fn();
+    bucket.push({ name, ok: true });
+  } catch (err) {
+    bucket.push({ name, ok: false, error: err.message });
+  }
+}
+
+function expectOrder(a, N, expected, bucket) {
+  test(`order(${a} mod ${N}) = ${expected}`, () => {
+    const r = OrderFinder.findOrder(a, N);
+    assert(r === expected, `expected ${expected}, got ${r}`);
+    assert(OrderFinder.verifyOrder(a, N, r),
+      `verify failed: ${a}^${r} !≡ 1 (mod ${N})`);
+  }, bucket);
+}
+
+return { suite: { results, assert, test, expectOrder } };
+</cell>
+
+<cell type="markdown">
+## Phase 1 — The 10 canonical PPF order-finding cases
+
+These are the exact 10 cases ported from `PPF_Order_Finding_Proof.js`. Each assertion checks:
+
+- The returned order equals the known expected value
+- Independent round-trip verification: `a^r ≡ 1 (mod N)` holds
+
+| Test | a | N | Expected order r |
+|------|---|---|-----------------|
+| 1 | 3 | 8 | 2 |
+| 2 | 7 | 15 | 4 |
+| 3 | 2 | 7 | 3 |
+| 4 | 3 | 10 | 4 (since 3⁴ = 81 ≡ 1 mod 10) |
+| 5 | 2 | 15 | 4 |
+| 6 | 4 | 15 | 2 |
+| 7 | 2 | 21 | 6 |
+| 8 | 5 | 21 | 6 |
+| 9 | 3 | 35 | 12 |
+| 10 | 6 | 35 | 2 |
+</cell>
+
+<cell type="js" lane="math" id="of-phase1" in="suite" out="phase1">
+const { display } = caps;
+const { results, expectOrder } = inputs.suite;
+
+const bucket = [];
+
+expectOrder(3n,  8n,  2, bucket);
+expectOrder(7n, 15n,  4, bucket);
+expectOrder(2n,  7n,  3, bucket);
+expectOrder(3n, 10n,  4, bucket);
+expectOrder(2n, 15n,  4, bucket);
+expectOrder(4n, 15n,  2, bucket);
+expectOrder(2n, 21n,  6, bucket);
+expectOrder(5n, 21n,  6, bucket);
+expectOrder(3n, 35n, 12, bucket);
+expectOrder(6n, 35n,  2, bucket);
+
+for (const r of bucket) {
+  display((r.ok ? '  ok  — ' : '  FAIL — ') + r.name + (r.ok ? '' : '\n         ' + r.error));
+  results.push(r);
+}
+
+const p = bucket.filter(r => r.ok).length;
+const f = bucket.filter(r => !r.ok).length;
+display(`\nPhase 1: ${p}/${bucket.length} passed` + (f > 0 ? ` (${f} FAILED)` : ''));
+
+return { phase1: bucket };
+</cell>
+
+<cell type="markdown">
+## Phase 2 — Structural checks
+
+Three properties of the `OrderFinder` API beyond the core 10 cases:
+
+1. **`calculateSampleSize`** — legacy helper returns a power-of-2 value ≥ 16 (retained for compatibility with the transform era; the LFTA path does not consume a sample window)
+2. **Coprimality guard** — `findOrder(4, 8)` must throw because gcd(4, 8) = 4 ≠ 1 (4 is not in ℤ_8*)
+3. **`verifyOrder` correctly rejects** a wrong candidate order — `r = 1` is not the order of 3 mod 8, but `r = 2` is
+</cell>
+
+<cell type="js" lane="math" id="of-phase2" in="suite" out="phase2">
+const { display } = caps;
+const { results, assert, test } = inputs.suite;
+const { OrderFinder } = caps.math;
+
+const bucket = [];
+
+test('calculateSampleSize(N=8) is a power of 2, >= 16', () => {
+  const s = OrderFinder.calculateSampleSize(8n);
+  assert(s >= 16 && (s & (s - 1)) === 0,
+    `sampleSize ${s} should be >= 16 and a power of 2`);
+}, bucket);
+
+test('coprimality check: findOrder(4, 8) throws', () => {
+  let threw = false;
+  try { OrderFinder.findOrder(4n, 8n); } catch { threw = true; }
+  assert(threw, 'expected non-coprime input to throw');
+}, bucket);
+
+test('verifyOrder rejects wrong r=1, accepts correct r=2 for order(3 mod 8)', () => {
+  assert(!OrderFinder.verifyOrder(3n, 8n, 1),
+    'verify should reject r=1 for order(3, 8)=2');
+  assert(OrderFinder.verifyOrder(3n, 8n, 2),
+    'verify should accept r=2 for order(3, 8)=2');
+}, bucket);
+
+for (const r of bucket) {
+  display((r.ok ? '  ok  — ' : '  FAIL — ') + r.name + (r.ok ? '' : '\n         ' + r.error));
+  results.push(r);
+}
+
+const p = bucket.filter(r => r.ok).length;
+const f = bucket.filter(r => !r.ok).length;
+display(`\nPhase 2: ${p}/${bucket.length} passed` + (f > 0 ? ` (${f} FAILED)` : ''));
+
+return { phase2: bucket };
+</cell>
+
+<cell type="markdown">
+## Summary
+
+Aggregated results across both phases. A non-zero failure count throws so the IDE surfaces the run as failed.
+</cell>
+
+<cell type="js" lane="math" id="of-summary" in="suite, phase1, phase2">
+const { display } = caps;
+const { results } = inputs.suite;
+
+const total = results.length;
+const passed = results.filter(r => r.ok).length;
+const failed = results.filter(r => !r.ok).length;
+
+display('='.repeat(60));
+display(`TOTAL: ${passed}/${total} passed`);
+if (failed > 0) {
+  display(`FAILED (${failed}):`);
+  for (const r of results.filter(r => !r.ok)) {
+    display(`  - ${r.name}: ${r.error}`);
+  }
+}
+display('='.repeat(60));
+
+if (failed > 0) {
+  throw new Error(`[OrderFinderTest] ${failed} test(s) failed`);
+}
+</cell>
+
+</frqtl-notebook>

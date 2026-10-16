@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maxi's Lab — scene</title>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: #05070a; overflow: hidden; }
+  #canvas-wrapper { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; outline: none; }
+  #canvas-wrapper canvas { max-width: 100%; max-height: 100%; }
+</style>
+</head>
+<body>
+<!-- ONE scene per document. app.html frames this page once per scene and replaces the frame to
+     load another; app-assets/maxi-scene.js boots the sketch the lab hands it through the SDK's
+     bootRecipe and publishes window.MaxiScene for the lab's hands. -->
+<div id="canvas-wrapper" tabindex="0"></div>
+<script type="module" src="app-assets/maxi-scene.js"></script>
+</body>
+</html>

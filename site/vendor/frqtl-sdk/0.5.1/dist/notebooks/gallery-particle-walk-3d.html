@@ -1,0 +1,53 @@
+<frqtl-notebook version="1" title="Particle Walk 3D — the beam fans out in three axes">
+
+<cell type="markdown">
+# Particle Walk 3D
+
+**A radial beam fans out in TWO transverse axes at once — proof the engine's per-axis speed limit is genuinely 3D, not a 2D model with a cosmetic z column bolted on.**
+
+A single `QuantumEmitter` fires quanta rightward (`vx=1`). With `activeAxes:{x,y,z}` all live, the wave-walk coin-flip fires its transverse yo-yo kick on BOTH y AND z independently, every tick — two independent transverse coins, not one. The beam spreads in both directions as it propagates; with only two axes the z column would stay zero throughout. This is the realm-observable proof of Engine Invariant 1 (the ±1px/tick speed limit is independent PER AXIS) in three dimensions.
+
+*New to FRQTL? Start with **Hello, FRQTL** (`getting-started-hello-frqtl`) for the `caps.frqtl` setup-module + declarative-canvas basics this notebook assumes.*
+</cell>
+
+<cell type="markdown">
+The experiment assembly — one `QuantumEmitter`, full 3D `activeAxes` — as a thin adapter over the canonical factory (see below):
+</cell>
+
+<cell type="module" name="./setups/particle-walk-3d.js">
+/* setupParticleWalk3D — THIN ADAPTER over the canonical setup factory
+ * (WS gym-controls-as-sugar Bite 0 ADDENDUM, CEO 2026-07-03: three notebooks
+ * proving full 3D compliance + the object-architecture contract switching
+ * end-to-end through the notebook path). Same Bite-0 mechanism as every other
+ * de-forked notebook: the canonical factory is imported by BARE SPECIFIER
+ * (a relative path here would 404 — see lib/shim/notebook/frqtl-setups-importmap.js);
+ * this cell only bridges the notebook builder's `(frqtl, universe, options)` call
+ * shape to the factory's `(universe, options)` shape — ZERO physics here. The
+ * SAME canonical `lib/frqtl/objects/setup/setupParticleWalk3D.js` also drives the
+ * standalone `lib/frqtl/experiments/particle-walk-3d/` page — one experiment
+ * identity, no divergence possible.
+ */
+import { setupParticleWalk3D as _setupParticleWalk3D } from '@frqtl/setups/particle-walk-3d';
+
+export function setupParticleWalk3D(frqtl, universe, options) {
+    return _setupParticleWalk3D(universe, options);
+}
+</cell>
+
+<cell type="markdown">
+Declare a canvas that runs it. `render3d="true"` requests the three.js 3D renderer + perspective camera for this canvas (the notebook-realm mirror of an experiment page booting the three display — see `lib/components/notebook-pane/realm-frqtl.js`). Click **Run** (or **Run All**):
+</cell>
+
+<cell type="canvas" id="c-walk3d-canvas" setup="./setups/particle-walk-3d.js#setupParticleWalk3D" stage="480x480" seed="42" render3d="true"></cell>
+
+<cell type="markdown">
+## What you are seeing
+
+A cone of quanta streams rightward from the emitter, visibly spreading in BOTH the vertical (y) and depth (z) directions as it travels — the perspective camera makes the z-spread readable as true depth, not a flattened 2D projection. No wave equation, no cone-angle formula: the spread is the accumulated per-tick, per-axis coin-flip of Engine Invariant 6 (the transverse oscillation).
+
+**Compare to the 2D version** (`gallery-wave-interference`, `particle-walk`): those experiments only ever exercise the x/y plane. This notebook is the SAME canonical setup factory the standalone `particle-walk-3d` experiment page drives — the render intent (`render3d`) is the only thing this notebook adds; the physics is identical.
+
+The simulation runs live in your browser on the compiled FRQTL (WASM) engine.
+</cell>
+
+</frqtl-notebook>

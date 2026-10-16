@@ -1,0 +1,206 @@
+<frqtl-notebook version="1" title="Exact-Arithmetic Statistics with EGPTStat — Mean, Variance, and Deviation Analysis">
+
+<cell type="markdown">
+# Exact-Arithmetic Statistics with EGPTStat
+
+Standard statistical libraries operate on floating-point numbers. Accumulated rounding error is invisible — it hides inside the mantissa and silently distorts results when values are very large, very small, or precisely rational.
+
+`EGPTStat` computes **mean, variance, and deviation in exact rational arithmetic** end-to-end, using the PPF (Prime-Probability Field) representation carried by every `EGPTReal`. No rounding occurs inside any statistical operation. The result you read back from `.toMathString()` is the *exact* rational answer.
+
+This notebook works through a small integer sample — `[3, 6, 9, 12]` — so you can verify the results by hand and see what exact-arithmetic statistics look like at the API boundary. Every cell reaches its compute through the injected `math` builtin; no URL import is used.
+</cell>
+
+<cell type="markdown">
+## 1. The active math backend
+
+`math.activeMathBackend` is a **derived** field — it reads whatever `MathBackendRegistry.active()` reports at runtime. Never hardcoded.
+</cell>
+
+<cell type="js" lane="math" id="backend">
+const { math, display } = caps;
+const backend = math.activeMathBackend;
+display(`Active math backend (derived): ${backend}`);
+</cell>
+
+<cell type="markdown">
+## 2. Constructing the sample
+
+The source example uses a four-element integer sample: `[3, 6, 9, 12]`.
+
+Each value is lifted into exact rational form via `EGPTReal.fromBigInt(n)`. From this point, every operation stays in the PPF basis — no floating-point intermediate values exist.
+</cell>
+
+<cell type="js" lane="math" id="sample" out="sample">
+const { math, display } = caps;
+const { EGPTReal } = math;
+
+const sample = [
+  EGPTReal.fromBigInt(3n),
+  EGPTReal.fromBigInt(6n),
+  EGPTReal.fromBigInt(9n),
+  EGPTReal.fromBigInt(12n)
+];
+
+display(`Sample (${sample.length} values): [${sample.map(v => v.toMathString()).join(', ')}]`);
+return { sample };
+</cell>
+
+<cell type="markdown">
+## 3. Computing the mean
+
+`EGPTStat.mean(sample)` computes the arithmetic mean in **normal space**: it sums all values via `EGPTMath.add`, then divides by the count via `EGPTMath.normalDivide`.
+
+For `[3, 6, 9, 12]`, the exact mean is `30/4 = 15/2 = 7.5`. The `.toMathString()` representation surfaces the exact rational.
+</cell>
+
+<cell type="js" lane="math" id="mean" in="sample" out="mean">
+const { math, display } = caps;
+const { EGPTStat } = math;
+const { sample } = inputs;
+
+const mean = EGPTStat.mean(sample);
+const meanStr = mean.toMathString();
+
+display(`Mean of [3, 6, 9, 12] = ${meanStr}`);
+display(`(Expected exact rational: 15/2)`);
+return { mean };
+</cell>
+
+<cell type="markdown">
+## 4. Computing the variance
+
+`EGPTStat.variance(sample)` computes the population variance `Σ(xᵢ − μ)² / N` in normal space.
+
+Two design choices are worth understanding:
+
+- **Absolute difference:** Because PPF encoding can struggle with negative intermediate values, `EGPTStat.absoluteDifference(x, μ)` is used for each deviation — it returns `|x − μ|` by checking the sign first and subtracting the smaller from the larger.
+- **Normal-space squaring:** Each squared deviation uses `EGPTMath.normalMultiply` (rational multiply), not the Shannon-space product. Variance is a normal-space quantity.
+
+For `[3, 6, 9, 12]` with mean `15/2`:
+- Deviations: `|3 − 7.5| = 4.5`, `|6 − 7.5| = 1.5`, `|9 − 7.5| = 1.5`, `|12 − 7.5| = 4.5`
+- Squared deviations: `81/4`, `9/4`, `9/4`, `81/4`
+- Sum: `180/4 = 45`
+- Variance: `45/4`
+
+The `variance()` call also returns **metadata** describing how many values fell below the mean (negative deviations). This is diagnostic information — it confirms the algorithm correctly identified which values were below the mean even though it computed unsigned absolute differences.
+</cell>
+
+<cell type="js" lane="math" id="variance" in="sample, mean" out="varianceResult">
+const { math, display } = caps;
+const { EGPTStat } = math;
+const { sample, mean } = inputs;
+
+const varianceResult = EGPTStat.variance(sample);
+const varianceStr = varianceResult.variance.toMathString();
+const meta = varianceResult.metadata;
+
+display(`Variance of [3, 6, 9, 12] = ${varianceStr}`);
+display(`(Expected exact rational: 45/4)`);
+display(`Metadata:`);
+display(`  total_vectors: ${meta.total_vectors}`);
+display(`  negative_deviations: ${meta.negative_deviations}  (values that fell below the mean)`);
+display(`  has_negative_deviations: ${meta.has_negative_deviations}`);
+return { varianceResult };
+</cell>
+
+<cell type="markdown">
+## 5. Absolute difference — the PPF-safe subtraction primitive
+
+`EGPTStat.absoluteDifference(a, b)` is the building block that makes variance possible in PPF space. It uses `EGPTMath.compare(a, b)` to determine order, then calls `EGPTMath.subtract(larger, smaller)` — never producing a negative intermediate.
+
+Here we compute it directly for a pair of values from our sample to illustrate the pattern.
+</cell>
+
+<cell type="js" lane="math" id="absdiff" in="sample">
+const { math, display } = caps;
+const { EGPTStat } = math;
+const { sample } = inputs;
+
+// |12 - 3| = 9
+const diff = EGPTStat.absoluteDifference(sample[3], sample[0]);
+display(`|12 − 3| = ${diff.toMathString()}`);
+display(`(Expected: 9/1)`);
+</cell>
+
+<cell type="markdown">
+## 6. Replicating the original demo output
+
+The source `stats.js` example returns exactly:
+
+```json
+{
+  "category": "stats",
+  "mean": "<mean as math string>",
+  "variance": "<variance as math string>",
+  "metadata": { ... }
+}
+```
+
+This cell reproduces that return value verbatim so any downstream consumer sees the same result as the original `run(sdk)`.
+</cell>
+
+<cell type="js" lane="math" id="demo-output" in="sample" out="demoOutput">
+const { math, display } = caps;
+const { EGPTReal, EGPTStat } = math;
+
+// Replicate the original stats.js run(sdk) exactly
+const sample = [
+  EGPTReal.fromBigInt(3n),
+  EGPTReal.fromBigInt(6n),
+  EGPTReal.fromBigInt(9n),
+  EGPTReal.fromBigInt(12n)
+];
+
+const mean = EGPTStat.mean(sample);
+const varianceResult = EGPTStat.variance(sample);
+
+const demoOutput = {
+  category: "stats",
+  mean: mean.toMathString(),
+  variance: varianceResult.variance.toMathString(),
+  metadata: varianceResult.metadata
+};
+
+display(demoOutput);
+return { demoOutput };
+</cell>
+
+<cell type="markdown">
+## 7. Verify correctness
+
+The cell below asserts the two expected exact rational results. A PASS confirms that `EGPTStat.mean` and `EGPTStat.variance` both produce bit-exact rational answers matching hand calculation. A FAIL would indicate a regression in the statistical layer.
+</cell>
+
+<cell type="js" lane="math" id="verify" in="demoOutput">
+const { display } = caps;
+const { demoOutput } = inputs;
+
+const EXPECTED_MEAN     = '15/2';
+const EXPECTED_VARIANCE = '45/4';
+
+const meanOk     = demoOutput.mean     === EXPECTED_MEAN;
+const varianceOk = demoOutput.variance === EXPECTED_VARIANCE;
+const allOk      = meanOk && varianceOk;
+
+const el = document.createElement('div');
+el.style.cssText =
+  'font:600 0.95rem/1.5 system-ui,sans-serif;padding:10px 14px;border-radius:6px;margin:4px 0;' +
+  (allOk
+    ? 'background:#0f2417;border:1px solid #1f5a36;color:#7ee2a8;'
+    : 'background:#2a0c0c;border:1px solid #5a1f1f;color:#ff8a8a;');
+
+if (allOk) {
+  el.textContent =
+    `PASS — mean=${demoOutput.mean} (expected ${EXPECTED_MEAN}); ` +
+    `variance=${demoOutput.variance} (expected ${EXPECTED_VARIANCE}). ` +
+    `Exact-arithmetic statistics verified.`;
+} else {
+  const failures = [];
+  if (!meanOk)     failures.push(`mean: got "${demoOutput.mean}", expected "${EXPECTED_MEAN}"`);
+  if (!varianceOk) failures.push(`variance: got "${demoOutput.variance}", expected "${EXPECTED_VARIANCE}"`);
+  el.textContent = `FAIL — ${failures.join('; ')}`;
+}
+display(el);
+</cell>
+
+</frqtl-notebook>

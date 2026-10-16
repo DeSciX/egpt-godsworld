@@ -1,0 +1,166 @@
+<frqtl-notebook version="1" title="EGPT Arithmetic Basics — Exact Rational Operations on EGPTReal">
+
+<cell type="markdown">
+# EGPT Arithmetic Basics
+
+The EGPT math library operates on **exact rational numbers** — no floating-point rounding, no approximation. Every value is a `EGPTReal`, which internally stores a numerator and denominator as BigInts and keeps the fraction in fully reduced form at all times.
+
+This notebook walks through the four fundamental arithmetic operations (`add`, `subtract`, `multiply`, `normalDivide`) on two rational constants:
+
+- `a = 3/2`
+- `b = 5/4`
+
+Every computation below goes through the `math` builtin — the live FRQTL math SDK the IDE resolved. The active math backend is reported by the SDK itself, never asserted.
+</cell>
+
+<cell type="js" lane="math" id="backend">
+// Confirm the active backend before any arithmetic.
+// activeMathBackend is a DERIVED field from MathBackendRegistry.active().id.
+// It reads 'js-reference' by default and 'wasm-math' when the shim selects it.
+const { math, display } = caps;
+display(`Active math backend (derived from SDK): ${math.activeMathBackend}`);
+</cell>
+
+<cell type="markdown">
+## 1. Constructing exact rationals
+
+`EGPTReal.fromRational(numerator, denominator)` accepts BigInt arguments and returns an `EGPTReal` whose internal representation is the fully reduced fraction `numerator / denominator`.
+
+Calling `.toMathString()` on an `EGPTReal` returns a human-readable string like `"3/2"` for a rational value, or a log-space representation for values constructed in information space.
+</cell>
+
+<cell type="js" lane="math" id="construct" out="a, b">
+// Construct two exact rational values.
+// fromRational(numerator: BigInt, denominator: BigInt) → EGPTReal
+const { math } = caps;
+const { EGPTReal } = math;
+
+const a = EGPTReal.fromRational(3n, 2n);   // 3/2 = 1.5 exactly
+const b = EGPTReal.fromRational(5n, 4n);   // 5/4 = 1.25 exactly
+
+console.log('a =', a.toMathString());
+console.log('b =', b.toMathString());
+
+return { a, b };
+</cell>
+
+<cell type="markdown">
+## 2. Addition
+
+`EGPTMath.add(a, b)` returns a new `EGPTReal` equal to `a + b`, computed by finding the common denominator and summing numerators — all in exact integer arithmetic.
+
+Expected: `3/2 + 5/4 = 6/4 + 5/4 = 11/4`
+</cell>
+
+<cell type="js" lane="math" id="addition" in="a, b" out="sum">
+const { math } = caps;
+const { EGPTMath } = math;
+const { a, b } = inputs;   // consumed cross-cell bindings arrive on `inputs`, never as bare globals
+
+const sum = EGPTMath.add(a, b);
+
+console.log(`${a.toMathString()} + ${b.toMathString()} = ${sum.toMathString()}`);
+
+return { sum };
+</cell>
+
+<cell type="markdown">
+## 3. Subtraction
+
+`EGPTMath.subtract(a, b)` returns `a - b` with the same exact integer discipline.
+
+Expected: `3/2 - 5/4 = 6/4 - 5/4 = 1/4`
+</cell>
+
+<cell type="js" lane="math" id="subtraction" in="a, b" out="diff">
+const { math } = caps;
+const { EGPTMath } = math;
+const { a, b } = inputs;   // consumed cross-cell bindings arrive on `inputs`, never as bare globals
+
+const diff = EGPTMath.subtract(a, b);
+
+console.log(`${a.toMathString()} - ${b.toMathString()} = ${diff.toMathString()}`);
+
+return { diff };
+</cell>
+
+<cell type="markdown">
+## 4. Multiplication
+
+`EGPTMath.multiply(a, b)` returns `a × b`. For rational numbers this is simply `(num_a × num_b) / (den_a × den_b)`, then fully reduced.
+
+Expected: `3/2 × 5/4 = 15/8`
+</cell>
+
+<cell type="js" lane="math" id="multiplication" in="a, b" out="product">
+const { math } = caps;
+const { EGPTMath } = math;
+const { a, b } = inputs;   // consumed cross-cell bindings arrive on `inputs`, never as bare globals
+
+const product = EGPTMath.multiply(a, b);
+
+console.log(`${a.toMathString()} × ${b.toMathString()} = ${product.toMathString()}`);
+
+return { product };
+</cell>
+
+<cell type="markdown">
+## 5. Division
+
+`EGPTMath.normalDivide(a, b)` returns `a / b` as an exact rational — it inverts `b` and multiplies, staying entirely in integer arithmetic.
+
+Expected: `(3/2) ÷ (5/4) = (3/2) × (4/5) = 12/10 = 6/5`
+</cell>
+
+<cell type="js" lane="math" id="division" in="a, b" out="quotient">
+const { math } = caps;
+const { EGPTMath } = math;
+const { a, b } = inputs;   // consumed cross-cell bindings arrive on `inputs`, never as bare globals
+
+const quotient = EGPTMath.normalDivide(a, b);
+
+console.log(`${a.toMathString()} ÷ ${b.toMathString()} = ${quotient.toMathString()}`);
+
+return { quotient };
+</cell>
+
+<cell type="markdown">
+## 6. Summary — all four operations together
+
+The final cell mirrors the original demo's combined `checks` array, verifying that all four results are what exact rational arithmetic requires. No floating-point approximation is involved at any step.
+</cell>
+
+<cell type="js" lane="math" id="summary" in="a, b, sum, diff, product, quotient">
+// Reproduce the original demo's combined output.
+// All four results must match exact rational expectations.
+const { math } = caps;
+const { EGPTMath } = math;
+const { sum, diff, product, quotient } = inputs;   // consumed cross-cell bindings arrive on `inputs`, never as bare globals
+
+const checks = [
+  sum.toMathString(),
+  diff.toMathString(),
+  product.toMathString(),
+  quotient.toMathString()
+];
+
+const expected = ['11/4', '1/4', '15/8', '6/5'];
+
+let allPass = true;
+checks.forEach((result, i) => {
+  const pass = result === expected[i];
+  if (!pass) allPass = false;
+  console.log(`${pass ? 'PASS' : 'FAIL'}  checks[${i}]: got "${result}", expected "${expected[i]}"`);
+});
+
+console.log('');
+console.log(allPass
+  ? `All 4 arithmetic checks PASSED — exact rational semantics confirmed on '${math.activeMathBackend}' math backend.`
+  : `One or more arithmetic checks FAILED — inspect the results above.`);
+
+if (!allPass) {
+  throw new Error('Arithmetic checks failed — see console output above.');
+}
+</cell>
+
+</frqtl-notebook>
