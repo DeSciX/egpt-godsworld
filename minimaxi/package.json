@@ -3,6 +3,7 @@
   "private": true,
   "description": "MiniMaxi: Maxi's body in node — the lab page driven through the published @descix/frqtl-sdk eyes.",
   "type": "module",
+  "license": "SEE LICENSE IN LICENSE.md",
   "dependencies": {
     "@descix/frqtl-sdk": "0.5.1",
     "playwright": "1.61.0"
