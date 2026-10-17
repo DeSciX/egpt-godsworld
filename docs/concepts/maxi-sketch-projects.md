@@ -268,7 +268,7 @@ The block between `<!-- HANDS:BEGIN … -->` and `<!-- HANDS:END -->` in `assets
 - **The `openSketch` example** is the published form.
   - `scripts/test/hands.test.mjs` checks its import specifiers against the package's exported specifier table, `FRQTL_WEB_SPECIFIERS` (P0c; G3b). They are never typed from a brief.
   - Its world config uses `SphereEmitter.worldCfg` from the parts barrel (P0b, vendorable at P0c; G2a).
-  - The package names are settled (G3a): `@descix/frqtl-web` (browser, `/parts`) and `@descix/frqtl-node`; `@descix/frqtl-sdk` ends at 0.5.1, and the first `0.6.0-p0.N` pre-release on `next` already carries the new names (record: eabadir/fraqtl ce2ac5d3, private).
+  - The package names are settled (G3a): `@descix/frqtl-web` (browser, `/parts`) and `@descix/frqtl-node`; `@descix/frqtl-sdk` ends at 0.5.1, and the first `0.6.0-p0.N` pre-release on `next` already carries the new names.
 - **`HANDS_PREAMBLE`** gains one paragraph, "YOUR SKETCH IS CODE YOU EDIT WITH YOUR HANDS". It says:
   - `parts` is the one region your hands rewrite;
   - a move lands there when the move ends;

@@ -7,7 +7,7 @@
  * demonstration) goes to Maxi as `media[]` on ONE call of the platform's question command,
  * `ask_question_to_app`, made by the page itself through the shell's command door
  * `window.DeSciX.call(command, params)` (site/DeSciXAppSDK.js: it THROWS standalone). The chat
- * pane's attachment door is not used: measured 2026-10-14 (record: godsworld-dev docs/records/2026-10-15-egpt-godsworld-records-moved.md),
+ * pane's attachment door is not used: measured 2026-10-14,
  * a clip staged there reaches the model as the text "[attached video/mp4 — …]", while the same clip
  * on the question's `media[]` was described with media_tokens 300.
  *
