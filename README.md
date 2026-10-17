@@ -7,8 +7,8 @@ godsworld.ai forwards there.
 
 ```
 site/                      the only directory uploaded as the site
-  index.html               front page — generated from the shared front-page template
-                           (egpt-courantgroup ee3fdb4) and the egpt-godsworld content block in
+  index.html               front page — generated from the shared EGPT front-page template
+                           and the egpt-godsworld content block in
                            EGPT-Evidence site-src/frontpage/; a query-string load forwards to app.html
   share.json, images/share/  the share card: title, description, favicon, 180 icon, 1200×630 image
   images/*                 front-page images
