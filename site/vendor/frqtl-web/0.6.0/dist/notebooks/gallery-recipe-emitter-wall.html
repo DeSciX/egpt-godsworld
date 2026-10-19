@@ -1,0 +1,106 @@
+<frqtl-notebook version="1" title="Recipe — Emitter meets a Mirror Wall">
+
+<cell type="markdown">
+# Recipe — Emitter meets a Mirror Wall
+
+**A notebook `canvas` cell that runs a `buildExperiment(exp)` RECIPE.** Unlike the
+setup-factory galleries (`fn(frqtl, universe, options)`), this canvas declares
+`shape="recipe"`: the module installs a `buildExperiment(exp)` recipe (the same
+`exp.createCanvas()/addObject()` sketch form STUDIO saves and the Walk-through rungs run),
+and the shim builds a sizeless `RecipeContext` and calls `exp.build(buildExperiment)` for it.
+
+A spherical source of oppositely-charged quanta on the left sprays a disk of walks; a
+reflective **Wall** on the right bounces every arrival back on its axis of incidence.
+No wave equation — the mirror is a single-occupancy collision behavior.
+</cell>
+
+<cell type="markdown">
+The recipe — a `buildExperiment(exp)` module. It creates the WORLD first — canvas and
+universe in one call, `exp.createCanvas(480, 480, …)`, the only place its size is
+written — then adds a `SphereEmitter` and a bounce/reflect `Wall`, exactly as a saved
+STUDIO project or a Walk-through rung would (parts never init the world). The sketch form —
+an ES module whose default export is `buildExperiment(exp)`, importing its parts from
+`@descix/frqtl-web/parts` — is the canonical recipe form. STUDIO writes a hand (a drag, an Inspector edit)
+back into a sketch's `export const parts` block with the parts writer, `exp.toSketch()`; this recipe adds its
+parts in code, so it is the sketch form without a parts block:
+</cell>
+
+<cell type="module" name="./setups/recipe-emitter-wall.js">
+/* buildExperiment(exp) — a mini emitter + mirror-wall RECIPE.
+ *
+ * The RecipeContext (`exp`) form, in the canonical two-step order every Walk-through
+ * rung and every saved STUDIO project uses — WORLD FIRST, THEN PARTS:
+ *
+ *     exp.createCanvas(W, H, SphereEmitter.worldCfg(SRC));          // 1. the world (and its canvas)
+ *     exp.addObject('SphereEmitter', SRC);                           // 2. the part
+ *
+ * `universe.init()` is a universe-GLOBAL reset (it clears every frame and fixes the
+ * base dimension, wavelengthScale and active axes), so it belongs to the SKETCH and
+ * runs ONCE, before any part is constructed. A PART never inits the world: both
+ * ObjectFactory's SphereEmitter builder and the SphereEmitter part say so in as many
+ * words, and the first engine registration a part makes throws
+ * `EGPTUniverse.init() must be called before any simulation methods` on a world that
+ * has not been init'd.
+ *
+ * ONE bag (`SRC`) feeds BOTH steps, so the world and the emitter can never disagree:
+ * `SphereEmitter.worldCfg(bag)` is the ONE authority for the λ_eff chain
+ * (fundamentalWaveLength → wavelengthScale → λ_eff = (capacity/mass) ×
+ * wavelengthScale) and for the 2D/3D axis selection — cite it, never a copied
+ * constant.
+ *
+ * SU1: zero new physics — the SphereEmitter + Wall are already-goldened behaviors
+ * (canonical-bench S* + LO1 Bounce/Reflect); the recipe only composes them.
+ */
+import { SphereEmitter } from '@descix/frqtl-web/parts';
+
+export default function buildExperiment(exp) {
+    var W = 480, H = 480;   // THE WORLD this recipe states (its co-init call below)
+    var cy = Math.round(H / 2);
+
+    // A spherical source of oppositely-charged dim-2 leaves (the interference braiding
+    // comes from the random ± charge). In 2D the ball-rejected sampler collapses to an
+    // even disk of launch directions. This SAME bag is the world step's input.
+    var SRC = {
+        preset: 'spherical', is2D: true, center: [Math.round(W * 0.15), cy],
+        chargeMode: 'random', fundamentalDimension: 2, wavelength: 32,
+        burstSize: 24, emitEveryTicks: 1
+    };
+
+    // 1. THE WORLD the emitter implies, and its canvas, in one call.
+    exp.createCanvas(W, H, SphereEmitter.worldCfg(SRC));
+
+    // 2. THE PARTS.
+    exp.addObject('SphereEmitter', SRC);
+
+    // A reflective wall — Bounce/Reflect inverts each arrival on its axis of incidence
+    // (a real mirror, canonical-bench LO1). Drag/rotate it in STUDIO to steer.
+    exp.addObject('Wall', {
+        rect: [Math.round(W * 0.6), Math.round(H * 0.2), 20, Math.round(H * 0.6)],
+        collisionBehavior: 'bounce', bounceDirection: 'reflect',
+        name: 'mirror', color: [170, 190, 230]
+    });
+}
+</cell>
+
+<cell type="markdown">
+Declare a `shape="recipe"` canvas that runs it. `setup="<module>"` +
+`seed` — no `stage`: the recipe states its own world; the shim synthesizes a
+`RecipeContext` builder and runs it in the realm. Click **Run** (or **Run All**):
+</cell>
+
+<cell type="canvas" id="c-recipe-canvas" setup="./setups/recipe-emitter-wall.js" shape="recipe" seed="42"></cell>
+
+<cell type="markdown">
+## What you are seeing
+
+The source on the left sprays a disk of charged quanta; those that reach the wall on
+the right reflect off it. The bright/dark structure in the beam is the emergent
+interference of the oppositely-charged walks — no wave function anywhere.
+
+**Edit the recipe:** open the `./setups/recipe-emitter-wall.js` tab, change the
+`wavelength`, `burstSize`, or the wall's `collisionBehavior` (`bounce` → `absorb` /
+`detect`), then re-Run. Because this is the `buildExperiment(exp)` recipe form, the
+same source round-trips through STUDIO Save and the Walk-through rungs.
+</cell>
+
+</frqtl-notebook>

@@ -1,0 +1,40 @@
+/* Copyright 2023-2026 by Essam Abadir */
+/* maxi-intro.css — the run-once walk-through over Maxi's Lab (app-assets/maxi-intro.js builds the DOM). */
+
+#intro[hidden], .intro-backdrop[hidden], .intro-ring[hidden], .intro-step[hidden], .intro-error[hidden] { display: none; }
+#intro { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding: 56px 12px 12px; box-sizing: border-box; overflow: auto; -webkit-overflow-scrolling: touch; }
+#intro .intro-panel { position: relative; box-sizing: border-box; width: min(680px, 100%); max-height: calc(100vh - 68px); max-height: calc(100dvh - 68px); overflow: auto; -webkit-overflow-scrolling: touch; background: var(--bar, #0b1016); color: var(--ink, #d7e3ee); border: 1px solid var(--cyan, #5fd3ff); border-radius: 8px; padding: 18px 20px 16px; box-shadow: 0 0 24px rgba(95, 211, 255, .25); font: 14px/1.55 system-ui, -apple-system, Segoe UI, sans-serif; outline: none; }
+#intro h1 { margin: 0 28px 10px 0; font-size: 18px; color: var(--cyan, #5fd3ff); letter-spacing: .02em; }
+#intro h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim, #7f93a6); }
+#intro .intro-text { margin: 0 0 12px; }
+#intro .intro-lede { margin: 0 0 8px; color: var(--dim, #7f93a6); }
+#intro .intro-explainers { margin: 0 0 12px; padding-left: 22px; }
+#intro .intro-explainers li { margin: 0 0 8px; padding: 2px 4px; border-radius: 4px; outline: none; }
+#intro .intro-explainers li:hover, #intro .intro-explainers li:focus { background: #111a24; }
+#intro .intro-explainers b { color: var(--cyan, #5fd3ff); }
+#intro .intro-error { flex: 1 0 100%; box-sizing: border-box; margin: 0; padding: 8px 10px; background: #1a0000; color: var(--err, #ff6b6b); border: 1px solid #b6161c; border-radius: 4px; white-space: pre-wrap; font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; }
+#intro .intro-nav { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; position: sticky; z-index: 1; bottom: -16px; margin: 0 -20px; padding: 10px 20px 2px; background: var(--bar, #0b1016); }
+#intro button { font: inherit; border-radius: 6px; padding: 8px 14px; cursor: pointer; background: #111a24; color: var(--ink, #d7e3ee); border: 1px solid var(--line, #1b2733); }
+#intro button:disabled { opacity: .55; cursor: default; }
+#intro .intro-next, #intro .intro-entry { background: var(--cyan, #5fd3ff); color: #04121a; border-color: var(--cyan, #5fd3ff); font-weight: 600; }
+#intro .intro-close { position: absolute; top: 8px; right: 8px; padding: 2px 10px; font-size: 18px; line-height: 1.2; }
+.intro-backdrop { position: fixed; inset: 0; z-index: 49; background: rgba(2, 4, 7, .72); }
+.intro-ring { position: fixed; box-sizing: border-box; border: 2px solid var(--cyan, #5fd3ff); border-radius: 6px; box-shadow: 0 0 10px rgba(95, 211, 255, .6); }
+.intro-ring.intro-ring-hot { border-color: #ffd36b; box-shadow: 0 0 14px rgba(255, 211, 107, .85); }
+.intro-badge { position: absolute; top: -9px; left: -9px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--cyan, #5fd3ff); color: #04121a; font: 600 11px/18px system-ui, -apple-system, Segoe UI, sans-serif; text-align: center; }
+.intro-ring-hot .intro-badge { background: #ffd36b; }
+#intro .intro-panel { transition: opacity .2s; }
+#intro.intro-peek .intro-panel { opacity: .03; }
+#intro .intro-explainers li { cursor: pointer; }
+/* Wide screens: the panel sits over the stage, leaving the conversation column (380 px) in view. */
+@media (min-width: 1100px) { #intro { justify-content: flex-start; padding-left: max(12px, calc((100vw - 380px - 680px) / 2)); padding-right: 392px; } }
+/* The MOVE and LOOK pads, drawn after the part's own look (a 96 px disc, a 34 px knob, the cap at the top), scaled down. */
+#intro .intro-pads { margin: 4px 0 12px; }
+#intro .intro-pads-picture { position: relative; height: 92px; margin: 0 0 10px; border: 1px solid var(--line, #1b2733); border-radius: 6px; background: #000; }
+#intro .intro-pad { position: absolute; bottom: 8px; width: 72px; height: 72px; box-sizing: border-box; border-radius: 50%; background: rgba(20, 30, 38, .55); border: 1px solid rgba(126, 200, 227, .5); }
+#intro .intro-pad-left { left: 10px; }
+#intro .intro-pad-right { right: 10px; }
+#intro .intro-pad-cap { position: absolute; top: 3px; left: 0; right: 0; text-align: center; color: rgba(126, 200, 227, .85); font: 9px sans-serif; }
+#intro .intro-pad-knob { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; background: rgba(126, 200, 227, .85); }
+#intro .intro-pad-rows { list-style: none; padding-left: 0; }
+#intro .intro-pad-rows li { cursor: default; }

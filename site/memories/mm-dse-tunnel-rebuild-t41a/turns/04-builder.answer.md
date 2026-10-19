@@ -1,0 +1,26 @@
+I opened all eight sampled frames (frame-00, 08, 16, 24, 32, 40, 48, 56) of DRAG screen — ticks 23203–23503.
+
+**The result first, before the pictures.** The hand returns `dragged: "screen"`, `from.center [325, 200, 0]` → `to.center [365, 200, 0]`, rect [315, 0, -77, 20, 400, 154] → [355, 0, -77, 20, 400, 154], `zHeld: false`, 150 ticks of travel + 150 of settle, 61 frames, 6.1 s. So the part did move in the world, 40 px along the beam, y and depth unchanged — exactly the centre my prediction named. A fresh `inventory` (reading hand, no clip) agrees: `screen` now has centre [365, 200, 0] and rect [355, 0, -77, 20, 400, 154]. The Record clock stands at tick 31042.
+
+**What the footage shows.** Same raking, rolled view as the baseline: three dull-red slabs with the two blue tunnel slots between them, yellow dots streaming left to right and fanning out densely just beyond the slots, the two translucent z-clip planes above and below, and the detector plate lying across the lower part of the frame as a flat strip of coarse coloured bins.
+
+Across the 61 frames the slabs, the slots and the camera never move. The plate does. The change is modest on screen — a 40 px world move seen nearly end-on under this camera — and the way I can read it honestly is as follows: in frame-00 the coloured strip sits tucked close under the red slab row, with its far end reaching to about the slab row's right-hand corner; from frame-16 onward the strip has eased down and out of that tuck, so by frames 32–56 a thin bright green-yellow edge line of the plate is visible along its lower-right flank that was not visible at the start, and a wider band of plain dark stage shows between the slabs' bottom edges and the strip. That is the plate standing farther from the slit wall along the beam. It keeps the same orientation and the same depth throughout; it does not tilt, rise or come nearer the viewer, and it stops well short of the stage's far edge.
+
+The hit map on it also changes, and this is the most visible difference between the first and last frames. At frame-00 the map is a broad spread of green and yellow cells running most of the strip's length with a strong red/orange core left of centre and further orange patches off to the right. By frames 40–56 the map is markedly cooler — mostly blue along its length — with a single compact orange/red core near the middle and only a faint green-yellow halo around it; the right-hand orange patches are gone. The yellow dot field in the gap between the slots and the plate stays dense throughout and, in the later frames, fills a visibly longer stretch of dark stage before reaching the strip.
+
+**Against my PREDICTION.** Matched: the result's from/to are exactly [325, 200, 0] → [365, 200, 0]; the plate slides bodily along the beam, same orientation, same transverse position, same depth, stopping well short of the far edge; the gap between the slits and the plate lengthens; dots keep arriving during the settle; and no sharp fringes resolve in 6 s. Missed, and I will say so rather than dress it up: I predicted the slide would read as an obvious shift of about a fifth of the slab-to-plate gap. On this camera it does not — it reads as a subtle easing-out, legible mainly from the plate's edge coming clear of the slab row and the dark gap widening, and I would not have been confident of the distance from the clip alone without the result JSON and the inventory. I also predicted at most a broader or shifted hot core; what I actually see is a cooler, bluer map with a *narrower*, more centred core than before. I am describing how it looks; I am not claiming to know whether that is the map re-accumulating after the move, a change in the arriving pattern, or the map's colour scale re-normalising — I have not tested which, and `zHeld: false` only tells me my z was taken as given.
+
+**Next.** The plan's last hand: the after clip at the new position, with nothing else changed, so the plate's face can be watched filling at the 195 px leg. Defaults — 250 ticks, a frame every 5, 10 fps = 51 frames = 5.1 s, inside the window. This is the clip I hand back.
+
+PREDICTION: a 5.1-second clip with the geometry still — the plate stationary at centre [365, 200, 0], its face 195 px past the slit wall's back face, its near edge clear of the slab row with dark stage between — and yellow dots streaming through both slots and across the longer gap onto it. On its face the bin map keeps taking hits and should continue to recover from the cool, narrow-cored state the drag clip ended in: I expect the green-yellow halo around the core to broaden over the 250 ticks. I do not expect sharp, countable bands in 5.1 s, and I will not claim fringe spacing from this clip; the memory record's reading is that the pattern is unreadable at ~1500 ticks and only clear by ~7200.
+
+```json:call:see
+{
+  "note": "After the change: the detector plate now stands at centre [365,200,0], rect [355,0,-77,20,400,154] - its face 195 px past the slit wall's back face, 40 px farther than before. Nothing else was touched. Describe exactly what you see: where the plate stands relative to the slit wall, and what the pattern on its face looks like now.",
+  "everyTicks": 5,
+  "stopAt": {
+    "ticks": 250
+  },
+  "fps": 10
+}
+```

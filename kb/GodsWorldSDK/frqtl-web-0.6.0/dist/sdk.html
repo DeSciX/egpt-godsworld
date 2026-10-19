@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FRQTL SDK — Game Objects API Reference</title>
+    <link rel="stylesheet" href="css/bootstrap.min.css">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a; color: #c8cdd0;
+            margin: 0; padding: 0;
+            line-height: 1.6;
+        }
+        .sdk-container {
+            max-width: 900px; margin: 0 auto;
+            padding: 40px 24px 80px;
+        }
+        .sdk-header {
+            border-bottom: 1px solid #222; padding-bottom: 20px; margin-bottom: 32px;
+        }
+        .sdk-header h1 { color: #fff; font-size: 1.8rem; margin-bottom: 4px; }
+        .sdk-header .subtitle { color: #666; font-size: 0.9rem; }
+
+        h2 { color: #fff; font-size: 1.3rem; margin: 40px 0 16px; border-bottom: 1px solid #1a1a1a; padding-bottom: 8px; }
+        h3 { color: #ddd; font-size: 1.05rem; margin: 28px 0 10px; }
+        h4 { color: #aaa; font-size: 0.95rem; margin: 20px 0 8px; }
+
+        p { margin-bottom: 12px; color: #999; }
+        strong { color: #ccc; }
+
+        code {
+            background: #1a1a1a; color: #e8a0bf; padding: 2px 6px;
+            border-radius: 3px; font-size: 0.88em;
+            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+        }
+        pre {
+            background: #111; border: 1px solid #222; border-radius: 6px;
+            padding: 16px; overflow-x: auto; margin: 12px 0 20px;
+            font-size: 0.85rem; line-height: 1.5;
+        }
+        pre code {
+            background: none; padding: 0; color: #b8d4e8;
+        }
+        .comment { color: #555; }
+        .keyword { color: #c678dd; }
+        .string { color: #98c379; }
+        .number { color: #d19a66; }
+
+        table {
+            width: 100%; border-collapse: collapse; margin: 12px 0 20px;
+            font-size: 0.85rem;
+        }
+        th { text-align: left; color: #aaa; border-bottom: 2px solid #222; padding: 8px 12px; font-weight: 600; }
+        td { border-bottom: 1px solid #1a1a1a; padding: 8px 12px; color: #888; }
+        td code { font-size: 0.82em; }
+
+        .callout {
+            background: #1a1a1a; border-left: 3px solid #b6161c;
+            padding: 14px 16px; margin: 16px 0;
+            border-radius: 0 4px 4px 0;
+            font-size: 0.88rem; color: #aaa;
+        }
+        .callout strong { color: #e8e8e8; }
+
+        .toc { margin: 20px 0 40px; }
+        .toc a {
+            display: block; padding: 4px 0; color: #4a9eff;
+            text-decoration: none; font-size: 0.88rem;
+        }
+        .toc a:hover { color: #6db3ff; }
+        .toc .indent { padding-left: 20px; }
+    </style>
+</head>
+<body>
+<div class="sdk-container">
+
+<div class="sdk-header">
+    <h1>FRQTL SDK — Game Objects API</h1>
+    <div class="subtitle">Engine-agnostic game objects for building physics experiments with the EGPT FRQTL engine.</div>
+</div>
+
+<div class="callout">
+    <strong>No force calculations. No wave equations.</strong> The EGPT engine operates on three axioms:
+    Time = 1 tick, Space = 1 pixel, Mass = pixel occupancy count.
+    All physics — waves, interference, thermodynamics, circuits — emerges from local rules.
+</div>
+
+<nav class="toc">
+    <strong style="color:#777; font-size:0.75rem; text-transform:uppercase; letter-spacing:1px;">Contents</strong>
+    <a href="#quickstart">Quick Start</a>
+    <a href="#universe">EGPTUniverse</a>
+    <a href="#large-object">LargeObject</a>
+    <a href="#quantum-emitter">QuantumEmitter</a>
+    <a href="#sphere-emitter">SphereEmitter</a>
+    <a href="#wall">Wall</a>
+    <a href="#box">Box</a>
+    <a href="#tunnel">Tunnel</a>
+    <a href="#oven-box">OvenBox</a>
+    <a href="#detector-wall">DetectorWall</a>
+    <a href="#graphing-detector-wall">GraphingDetectorWall</a>
+    <a href="#live-chart">LiveChart</a>
+    <a href="#circuit-probe">CircuitProbe</a>
+    <a href="#circuit-gate">CircuitGate</a>
+    <a href="#constants" class="indent">Constants</a>
+    <a href="#rendering">Rendering</a>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="quickstart">Quick Start</h2>
+
+<p>Every FRQTL sim follows the same pattern: get an engine handle, create a universe, add a tick-function or parts, run ticks, render. In node (headless, no DOM — <code>@descix/frqtl-node</code>):</p>
+
+<pre><code><span class="keyword">const</span> { bootNode, LargeObject, CollisionTypes } = require(<span class="string">'@descix/frqtl-node'</span>);
+
+<span class="comment">// 1. Get the engine handle (compiled WASM, same on browser and node)</span>
+<span class="keyword">const</span> handle = <span class="keyword">await</span> bootNode();
+
+<span class="comment">// 2. Create a universe — EGPTUniverse.create(config) is the ONE construction authority — then init it</span>
+<span class="keyword">const</span> universe = handle.EGPTUniverse.create({ rect: <span class="keyword">new</span> handle.Rectangle(<span class="number">0</span>, <span class="number">0</span>, <span class="number">600</span>, <span class="number">400</span>, <span class="keyword">null</span>, <span class="keyword">false</span>), seed: <span class="number">42</span> });
+universe.init(<span class="number">0</span>, { wavelengthScale: <span class="number">1</span> });
+
+<span class="comment">// 3. A tick-function that adds a frame, and a wall it bounces off</span>
+universe.experimentTickFunctions.push(<span class="keyword">function</span> (u) { u.injectFrame(u.makeLeafFrame(<span class="number">20</span>, <span class="number">200</span>, <span class="number">0</span>, <span class="keyword">null</span>, <span class="number">1</span>, <span class="number">0</span>)); });
+<span class="keyword">new</span> LargeObject(universe, [<span class="number">400</span>, <span class="number">0</span>, <span class="number">12</span>, <span class="number">400</span>], CollisionTypes.BOUNCE, [], <span class="string">'mirror'</span>);
+
+<span class="comment">// 4. Run simulation ticks</span>
+<span class="keyword">const</span> tickData = universe.doTick();
+</code></pre>
+
+<p>In the browser (<code>@descix/frqtl-web</code>), <code>bootScene(mount, sketch)</code> boots the engine and the renderer and runs a sketch — a <code>buildExperiment(exp)</code> function whose first statement creates the world. Import the parts the sketch uses from the same dist the doors come from:</p>
+
+<pre><code><span class="keyword">const</span> DIST = <span class="string">'https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.0/dist'</span>;
+<span class="keyword">const</span> { bootScene } = <span class="keyword">await</span> import(DIST + <span class="string">'/frqtl/experiments/_shared/doors.js'</span>);
+<span class="keyword">const</span> { SphereEmitter } = <span class="keyword">await</span> import(DIST + <span class="string">'/frqtl/parts/index.js'</span>);
+
+<span class="keyword">await</span> bootScene(<span class="string">'mount'</span>, <span class="keyword">function</span> (exp) {
+    exp.createCanvas(<span class="number">600</span>, <span class="number">400</span>, { dimension: <span class="number">0</span>, wavelengthScale: <span class="number">1</span> });
+    <span class="keyword">new</span> SphereEmitter([<span class="number">300</span>, <span class="number">200</span>], { preset: <span class="string">'spherical'</span>, is2D: <span class="keyword">true</span> }).addTo(exp.universe);
+});
+</code></pre>
+
+<p>A sketch held as text — or a project with more files beside it, such as a forked part — boots through <code>bootProject(mount, { files: { 'sketch.js': text }, entry: 'sketch.js' })</code>. With no module script at all, load <code>DIST + '/frqtl-web.min.js'</code> with a <code>&lt;script&gt;</code> tag and call <code>FRQTL.bootScene(…)</code>.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="universe">EGPTUniverse</h2>
+
+<h3>Constructor</h3>
+
+<pre><code>EGPTUniverse.create(config)   <span class="comment">// ONE config bag — rect REQUIRED, name only what else you change</span>
+
+<span class="keyword">var</span> universe = EGPTUniverse.create({ rect: rect, seed: <span class="number">42</span> });
+universe.init(<span class="number">0</span>, { wavelengthScale: <span class="number">1</span> });   <span class="comment">// init(fundamentalDimension, options) — ALWAYS FIRST; no rect</span>
+</code></pre>
+
+<p><code>rect</code> is REQUIRED — the one world-rect declaration; <code>init(fundamentalDimension, options)</code> reads it and takes no rect. Every other key is optional and carries the default below, so a scene names only the settings it actually means to change. Unknown keys throw.</p>
+
+<table>
+    <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>rect</code></td><td>Rectangle</td><td>REQUIRED</td><td>Simulation boundary (x, y, w, h). A leaf that leaves it is gone.</td></tr>
+    <tr><td><code>seed</code></td><td>number</td><td><code>42</code></td><td>PRNG seed — same seed, bit-identical run</td></tr>
+    <tr><td><code>fps</code></td><td>number</td><td><code>60</code></td><td>Target frame rate</td></tr>
+    <tr><td><code>iframeIntervalSeconds</code></td><td>number</td><td><code>1</code></td><td>Seconds between iframe (higher-dimension) ticks; <code>1/60</code> = every tick</td></tr>
+    <tr><td><code>withInterQuantumCollisions</code></td><td>boolean</td><td><code>false</code></td><td>Enable inter-frame collisions/merging (collision-born parent frames)</td></tr>
+    <tr><td><code>withBonding</code></td><td>boolean</td><td><code>false</code></td><td>Bond vs charge-flip on collision</td></tr>
+    <tr><td><code>frameGenMode</code></td><td>'groundUp' | 'topDown'</td><td><code>'groundUp'</code></td><td>How PARENT frames are generated: <code>'groundUp'</code> = by actual collisions between the smallest frames; <code>'topDown'</code> = by how many frames an area can parent</td></tr>
+    <tr><td><code>minMBFillRate</code></td><td>number</td><td><code>0.1</code></td><td>Compression threshold for frame merging</td></tr>
+    <tr><td><code>wavelengthScale</code></td><td>number</td><td><code>1</code></td><td>Global multiplier: wavelength = (capacity/mass) &times; scale</td></tr>
+    <tr><td><code>liveQuantaCap</code></td><td>number | false</td><td><code>300000</code></td><td>Preview cap on live leaf quanta: once this many are alive, <code>makeLeafFrame</code> returns <code>null</code> (the leaf is skipped) and the console warns once. <code>false</code> = uncapped; above the default throws</td></tr>
+</table>
+
+<h3>Key Methods</h3>
+
+<table>
+    <tr><th>Method</th><th>Returns</th><th>Description</th></tr>
+    <tr><td><code>doTick()</code></td><td>TickData</td><td>Run one simulation tick (Phase A-D pipeline)</td></tr>
+    <tr><td><code>registerLargeObject(spec)</code></td><td>handle</td><td>Register a collidable boundary object</td></tr>
+    <tr><td><code>queryRect(left, top, w, h)</code></td><td>Array</td><td>Query particles in a rectangular region</td></tr>
+    <tr><td><code>addDimension(layer)</code></td><td>Dimension</td><td>Add/access a higher scale layer</td></tr>
+</table>
+
+<div class="callout">
+    There is no <code>registerEmitter</code> / <code>setEmitterActive</code> / <code>unregisterEmitter</code>
+    method on the universe — an emitter (<code>QuantumEmitter</code>, <code>SphereEmitter</code>, ...) is
+    engine-agnostic sugar: it runs as a host tick-fn pushed onto <code>universe.experimentTickFunctions</code>,
+    not a native engine registration.
+</div>
+
+<h3>Frame Generation Modes</h3>
+
+<div class="callout">
+    <strong>Top-down</strong> (<code>frameGenMode:'topDown'</code>): Phase B density clustering, brownian motion ON, no inter-particle collisions.<br>
+    <strong>Ground-up</strong> (<code>frameGenMode:'groundUp'</code>): Phase C collision-based promotion, inter-particle collisions ON.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="large-object">LargeObject</h2>
+
+<p>Engine-agnostic collidable boundary (wall, detector, wire segment). Uses handle-based API — calls <code>universe.registerLargeObject(spec)</code> internally.</p>
+
+<h3>Constructor</h3>
+
+<pre><code><span class="keyword">new</span> LargeObject(universe, rect, collisionType, actions, name,
+              reposition, observedDimensions, searchPadding, color, collectCollided)
+</code></pre>
+
+<table>
+    <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>universe</code></td><td>EGPTUniverse</td><td>Universe instance to register with</td></tr>
+    <tr><td><code>rect</code></td><td>[left,top,w,h] | [left,top,z,w,h,d]</td><td>Position and dimensions (6-element form for a 3D z-slab)</td></tr>
+    <tr><td><code>collisionType</code></td><td>string</td><td>How particles collide (see CollisionTypes)</td></tr>
+    <tr><td><code>actions</code></td><td>string[]</td><td>What happens on collision (see CollisionActions)</td></tr>
+    <tr><td><code>name</code></td><td>string</td><td>Identifier for debugging/queries</td></tr>
+    <tr><td><code>reposition</code></td><td>string</td><td>Eject direction on collision (default <code>'closest'</code>)</td></tr>
+    <tr><td><code>observedDimensions</code></td><td>number[] | null</td><td>Dimension(s) this object collides in; <code>null</code> = all</td></tr>
+    <tr><td><code>searchPadding</code></td><td>number</td><td>Collision-search rect padding (default 1)</td></tr>
+    <tr><td><code>color</code></td><td>[r,g,b]</td><td>RGB color for rendering (default <code>[120,120,120]</code>)</td></tr>
+    <tr><td><code>collectCollided</code></td><td>boolean</td><td>Buffer a FrameData copy per collided frame each tick (needed for a counting/detect wall)</td></tr>
+</table>
+
+<h3>Properties</h3>
+
+<table>
+    <tr><th>Property</th><th>Description</th></tr>
+    <tr><td><code>.rect</code></td><td>Bounding rectangle</td></tr>
+    <tr><td><code>.color</code></td><td>RGB color array</td></tr>
+    <tr><td><code>.visible</code></td><td>Whether to render (default true)</td></tr>
+    <tr><td><code>.alpha</code></td><td>Opacity (0-255)</td></tr>
+    <tr><td><code>.handle</code></td><td>Opaque engine handle</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="quantum-emitter">QuantumEmitter</h2>
+
+<p>Emits leaf frames (quanta) into the universe. Supports auto-fire, manual fire, temperature-controlled emission rate.</p>
+
+<h3>Constructor</h3>
+
+<pre><code><span class="keyword">new</span> QuantumEmitter(universe, source_rects, vx, vy, burst_size,
+                 charge, auto_fire, random_direction, quantum_limit, delay, wrap, opts)
+</code></pre>
+
+<table>
+    <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>source_rects</code></td><td>—</td><td>Array of emission region rects</td></tr>
+    <tr><td><code>vx</code>, <code>vy</code></td><td>—</td><td>Initial velocity (direction) of emitted particles</td></tr>
+    <tr><td><code>burst_size</code></td><td>1</td><td>Particles emitted per fire</td></tr>
+    <tr><td><code>charge</code></td><td>null</td><td><code>0</code>/<code>1</code>/<code>'POSITIVE'</code>/<code>'NEGATIVE'</code>/<code>null</code> (random) — back-compat; maps onto <code>chargeMode</code></td></tr>
+    <tr><td><code>auto_fire</code></td><td>true</td><td>Emit automatically each tick</td></tr>
+    <tr><td><code>random_direction</code></td><td>false</td><td>Randomize emission direction</td></tr>
+    <tr><td><code>quantum_limit</code></td><td><code>Infinity</code></td><td>Max quanta to emit</td></tr>
+    <tr><td><code>delay</code></td><td>0</td><td>Ticks between bursts</td></tr>
+    <tr><td><code>wrap</code></td><td>false</td><td>Wrap emitted particles at canvas boundaries</td></tr>
+    <tr><td><code>opts.wavelength</code></td><td>null</td><td>Per-emitted-particle wavelength override (drives mass); <code>null</code> = engine default</td></tr>
+    <tr><td><code>opts.zMin</code>, <code>opts.zDepth</code></td><td>null</td><td>Uniform z-spread <code>[zMin, zMin+zDepth)</code> for each emitted leaf (3D only)</td></tr>
+</table>
+
+<p>Set <code>chargeMode</code> (<code>'random'</code> | <code>'positive'</code> | <code>'negative'</code> | <code>'both'</code>) and <code>colorOverride</code> after construction to drive charge/color live.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="sphere-emitter">SphereEmitter</h2>
+
+<p>Object-constructor facade for the uniform-direction emitter family — a "sun" (spherical), "laser" (collimated beam), "drum" (planar disk of directions), or "particle-walk" (deterministic drift + transverse wave) source, all drawn from the SAME ball-rejected velocity sampler. This is the palette-exposed, position-holding way to build a radial or directional light/particle source.</p>
+
+<pre><code><span class="keyword">var</span> sun = <span class="keyword">new</span> SphereEmitter([x, y], { preset: <span class="string">'spherical'</span>, is2D: <span class="keyword">true</span> });
+sun.addTo(universe);
+sun.setCenter([x2, y2]);   <span class="comment">// reposition live</span>
+sun.setWavelength(200);    <span class="comment">// dial the next leaf's mass</span>
+sun.dispose();
+</code></pre>
+
+<table>
+    <tr><th>Option</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>preset</code></td><td>'spherical'</td><td>'spherical' (full ball, a sun) | 'laser' (collimated beam) | 'drum' (planar disk, no forward component) | 'particle-walk' (deterministic drift + transverse wave)</td></tr>
+    <tr><td><code>is2D</code></td><td>false</td><td>Fixed at construction. true → velocities sampled as (vx,vy) disk-rejected (no z)</td></tr>
+    <tr><td><code>R</code></td><td>24</td><td>Velocity sampling range [-R,R] per axis and the direction-count/resolution knob</td></tr>
+    <tr><td><code>mode</code></td><td>'ball'</td><td>'ball' (filled sphere of directions) | 'shell' (thin direction band)</td></tr>
+    <tr><td><code>emissionBoxSide</code></td><td>0</td><td>Side (px) of the cube emission region leaves are placed within; 0 = point source</td></tr>
+    <tr><td><code>emissionShell</code></td><td>'volume'</td><td>'volume' | 'surface' — where within the emission region leaves are placed</td></tr>
+    <tr><td><code>innerR</code></td><td>0</td><td>Shell radius (px) when <code>emissionShell:'surface'</code></td></tr>
+    <tr><td><code>burstSize</code></td><td>40</td><td>Leaves emitted per burst</td></tr>
+    <tr><td><code>emitEveryTicks</code></td><td>6</td><td>Ticks between bursts</td></tr>
+    <tr><td><code>chargeMode</code></td><td>'positive'</td><td>'positive' | 'negative' | 'random' — per-leaf charge for interference braiding</td></tr>
+    <tr><td><code>wavelength</code></td><td>(engine default)</td><td>Per-leaf wavelength arg forwarded to each emitted leaf (drives its mass/color)</td></tr>
+    <tr><td><code>fundamentalDimension</code></td><td>0</td><td>Init-time dimension this emitter starts at (raises leaf capacity so <code>wavelength</code> gains leverage). Boot-level — reload to change</td></tr>
+    <tr><td><code>fundamentalWaveLength</code></td><td>64</td><td>Init-time <code>wavelengthScale</code> seed (the GLOBAL multiplier, distinct from the per-leaf <code>wavelength</code> above). Boot-level — reload to change</td></tr>
+</table>
+
+<h3>Live STUDIO-editable fields</h3>
+
+<p>Beyond the construction options above, the STUDIO Inspector exposes these fields on an already-placed <code>SphereEmitter</code> (written into the sketch's <code>parts</code> block by the writer, <code>toSketch</code>). Its <em>Fork into project</em> button copies the part's file into the folder as <code>parts/MySphereEmitter.js</code> through <code>recipeContext.fork(name, NewKind, { by })</code>, the same door a page calls:</p>
+
+<table>
+    <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>center</code></td><td>canvas center</td><td>Emission source position <code>[x,y,z]</code> in absolute canvas px — the captured position authority (edit live via the marker drag or <code>setCenter</code>)</td></tr>
+    <tr><td><code>renderColor</code></td><td>null</td><td>Per-leaf render color override <code>[r,g,b]</code> (render-intent only, zero physics); null = scheme-driven fullness→ROYGBIV</td></tr>
+    <tr><td><code>renderShape</code></td><td>null</td><td>Per-leaf render shape override: 'ball' | 'box' | 'circle' | 'cube' | 'sphere'; null = the scene's default shape</td></tr>
+    <tr><td><code>orientationDeg</code></td><td>0</td><td>Emitter orientation, degrees. The velocity sampler rotates each emitted (vx,vy) by this angle (affects the NEXT leaf) — spinning a constrained/laser emitter sweeps its beam (a pulsar); an omni emitter is unaffected</td></tr>
+    <tr><td><code>leafDimension</code></td><td><code>fundamentalDimension</code></td><td>The per-emitter dimension leaves are born at (live, host-side <code>addDimension</code>). A value below the current fundamental self-lowers the universe floor — a one-way ratchet</td></tr>
+    <tr><td><code>emissionCap</code></td><td>uncapped</td><td>Self-throttle target: the emitter deactivates when the population measured by <code>gateCounter</code> reaches this value, reactivates below it (the blackbody-thermostat pattern applied to an emitter)</td></tr>
+    <tr><td><code>gateCounter</code></td><td>—</td><td>Name of a counting <a href="#wall">Wall</a> (<code>collisionBehavior:'nothing'</code> + the count hook) whose live count is <code>emissionCap</code>'s population authority. Required once <code>emissionCap</code> is set</td></tr>
+</table>
+
+<p>Every other control method the underlying factory exposes (<code>getCenter</code>, <code>setPreset</code>, <code>setR</code>, <code>setBurstSize</code>, <code>setChargeMode</code>, <code>setEmissionShell</code>, <code>setInnerR</code>, <code>setEmissionBoxSide</code>, <code>setRenderColor</code>, …) is auto-forwarded onto the instance — the object is a thin, zero-physics naming/ergonomics face (canonical-bench SU1).</p>
+
+<p><code>rect</code> (a write-only drag-handle adapter over <code>center</code>) and <code>emissionBox</code> (a derived read-out of <code>emissionBoxSide</code>) are internal round-trip plumbing, not separate knobs — edit position via <code>center</code>/the marker drag and box size via <code>emissionBoxSide</code>.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="wall">Wall</h2>
+
+<p>The first-class wall primitive — a thin, named facade over one engine-registered LargeObject whose collision response is the Collision LEXICON: a <code>collisionBehavior</code> axis plus composable statistics hooks. <code>collisionBehavior</code> (or a <code>preset</code>) is REQUIRED — a wall must say what it does.</p>
+
+<pre><code><span class="keyword">var</span> barrier = <span class="keyword">new</span> Wall(universe, { rect: [<span class="number">200</span>, <span class="number">0</span>, <span class="number">8</span>, <span class="number">120</span>], collisionBehavior: <span class="string">'block'</span> });
+barrier.setV2Prop(<span class="string">'collisionBehavior'</span>, <span class="string">'bounce'</span>);   <span class="comment">// recompile the running behavior live</span>
+
+<span class="keyword">var</span> screen = <span class="keyword">new</span> Wall(universe, { rect: [<span class="number">400</span>, <span class="number">0</span>, <span class="number">20</span>, <span class="number">400</span>], preset: <span class="string">'detector-screen'</span> });
+screen.getCollisionHistogram(tickData);   <span class="comment">// y -> count on the counting screen</span>
+</code></pre>
+
+<table>
+    <tr><th>Option</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>rect</code></td><td>—</td><td><code>[left,top,w,h]</code> (or the 6-element <code>[left,top,z,w,h,d]</code> 3D form), or <code>left</code>/<code>top</code>/<code>w</code>/<code>h</code> individually</td></tr>
+    <tr><td><code>collisionBehavior</code></td><td>REQUIRED</td><td>The behavior axis — see the Collision LEXICON table below. Supply this or a <code>preset</code></td></tr>
+    <tr><td><code>preset</code></td><td>—</td><td><code>mirror</code> | <code>brick</code> | <code>detector-screen</code> | <code>transparent-probe</code> | <code>wall</code> — construction sugar expanding to the lexicon fields</td></tr>
+    <tr><td><code>name</code></td><td>'wall'</td><td>Display/debug identifier</td></tr>
+    <tr><td><code>color</code></td><td>—</td><td>RGB <code>[r,g,b]</code> render color</td></tr>
+    <tr><td><code>alpha</code></td><td>—</td><td>Render opacity 0-255</td></tr>
+    <tr><td><code>visible</code></td><td>true</td><td>Whether the wall is drawn (render-only; collision stays active either way)</td></tr>
+    <tr><td><code>layer</code></td><td>null (all)</td><td>Dimension layer this wall is scoped to; null = every layer</td></tr>
+    <tr><td><code>shellShape</code></td><td>—</td><td>Render shape hint of the wall's visual shell: ball | box | circle | cube | sphere (render-only)</td></tr>
+</table>
+
+<h3>Key Methods</h3>
+
+<table>
+    <tr><th>Method</th><th>Description</th></tr>
+    <tr><td><code>setV2Prop(prop, value)</code></td><td>Retarget a lexicon field live (collisionBehavior / bounceDirection / decoherence / hooks / markTag / countFilter / capacity / orientationDeg / pitchDeg) — recompiles the running op-program. <code>emissivity</code> is also accepted and takes the short path: a radiator knob, so it retunes the live radiator with no recompile</td></tr>
+    <tr><td><code>getCollisionHistogram(tickData)</code></td><td>For a wall carrying the <code>count</code> hook: accumulate and return <code>{combined, grid, total}</code> hit counts</td></tr>
+    <tr><td><code>getLiveCount(tickData)</code></td><td>For a wall with the count hook: the number of frames colliding this tick (live population)</td></tr>
+    <tr><td><code>resetHistogram()</code></td><td>Clear the accumulated histogram</td></tr>
+    <tr><td><code>dispose()</code></td><td>Tear down (unregisters any host tick-fn, disposes the inner LargeObject)</td></tr>
+    <tr><td><code>setOrientation(deg)</code> / <code>getOrientation()</code></td><td>Live re-aim (see <code>orientationDeg</code> below)</td></tr>
+    <tr><td><code>setPitch(deg)</code></td><td>Live tilt (see <code>pitchDeg</code> below; throws on a 2D wall)</td></tr>
+    <tr><td><code>getAbsorbStats()</code></td><td>For an <code>absorb</code>-behavior wall: <code>{stored, absorbedTotal, radiatedTotal}</code>, the real backing-frame mass ledger</td></tr>
+</table>
+
+<p><code>DetectorWall</code> and <code>GraphingDetectorWall</code> (below) both build on this primitive.</p>
+
+<h3>Rotation and 3D</h3>
+
+<table>
+    <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>orientationDeg</code></td><td>0</td><td>The mirror SURFACE angle, degrees. Live — recompiles the op-program: a <code>reflect</code>/<code>bounce</code> wall bakes the standard-optics 2θ deflection law (45° turns a +x beam to +y); a random-bounce wall re-aims its scatter cone</td></tr>
+    <tr><td><code>pitchDeg</code></td><td>0</td><td>Up/down tilt (-90..90°) about the plate's own long axis — the second mirror rotation axis, 3D walls only (visible only when <code>depth</code> is set). 0 = the flat in-plane mirror</td></tr>
+    <tr><td><code>depth</code></td><td>0</td><td>Read-only: the wall's z-slab depth in physics px (0 = a flat 2D wall). Set via the 6-element <code>rect</code> form, not directly</td></tr>
+    <tr><td><code>z</code></td><td>0</td><td>Read-only: the wall's z placement (near-face…far-face center) in physics px. Set via the 6-element <code>rect</code> form</td></tr>
+</table>
+
+<h3>Collision LEXICON — the behavior axis and its hooks</h3>
+
+<p>The behavior axis is decomposed from the composable statistics hooks, so combinations like "count collisions without destroying the particle" are directly expressible:</p>
+
+<pre><code><span class="keyword">var</span> mirror = <span class="keyword">new</span> Wall(universe, {
+    rect: [<span class="number">200</span>, <span class="number">0</span>, <span class="number">8</span>, <span class="number">120</span>],
+    collisionBehavior: <span class="string">'bounce'</span>, bounceDirection: <span class="string">'reflect'</span>
+});
+
+<span class="keyword">var</span> countingScreen = <span class="keyword">new</span> Wall(universe, {
+    rect: [<span class="number">400</span>, <span class="number">0</span>, <span class="number">20</span>, <span class="number">400</span>],
+    collisionBehavior: <span class="string">'destroy'</span>, hooks: [<span class="string">'count'</span>], countFilter: <span class="string">'any'</span>
+});
+</code></pre>
+
+<table>
+    <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>collisionBehavior</code></td><td>REQUIRED</td><td><code>nothing</code> (pass-through) | <code>block</code> (STOP the particle at the surface: it is repositioned to the closest position outside the wall and keeps its velocity, so it parks at the face rather than turning around) | <code>bounce</code> (see <code>bounceDirection</code>) | <code>absorb</code> (tally the collider's mass into the wall's REAL backing frame + radiate, conserving) | <code>destroy</code> (remove the particle). Hooks compose with any behavior</td></tr>
+    <tr><td><code>bounceDirection</code></td><td>'reflect'</td><td>Only shown for <code>bounce</code>: <code>reflect</code> = mirror (invert velocity on the axis of incidence) | <code>random</code> = redraw the exit direction (omni, or constrained to a cone about the wall's INITIAL orientation)</td></tr>
+    <tr><td><code>decoherence</code></td><td>false</td><td>Only shown for a random bounce: also reset the wave phase + re-roll the charge sign on bounce (an independent toggle from the direction randomization)</td></tr>
+    <tr><td><code>hooks</code></td><td>[]</td><td>Composable statistics hooks (enum-set, any behavior): <code>mark</code> = stamp a user string on each collided frame | <code>count</code> = tally collisions (filterable by mark) | <code>recolor</code> = stamp the wall's own drawn color onto each collided frame's render-intent data</td></tr>
+    <tr><td><code>markTag</code></td><td>—</td><td>Only shown when <code>hooks</code> includes <code>mark</code>: the string MARK stamps into each collided frame</td></tr>
+    <tr><td><code>countFilter</code></td><td>'any'</td><td>Only shown when <code>hooks</code> includes <code>count</code>: restrict COUNT to frames carrying a specific <code>markTag</code> ('any' = count all)</td></tr>
+    <tr><td><code>capacity</code></td><td>64</td><td>Only shown for <code>absorb</code>: the ABSORB mass ceiling (snapped up to a leaf level the engine can actually size — the capacity law runs over the ACTIVE AXES) AND the 1/capacity per-tick radiation probability. How much it holds, and how often it gives some back</td></tr>
+    <tr><td><code>emissivity</code></td><td>0.5</td><td>Only shown for <code>absorb</code>: radiating efficiency — the FULLNESS of each re-emitted leaf, as a fraction in (0,1] of that layer's cell capacity. A colour knob, not bookkeeping: fullness is the move gate and sets the wavelength, so <code>1.0</code> re-emits at light speed with the shortest &lambda;, <code>0.5</code> at half the step rate with twice the &lambda;. Outside (0,1] it throws. Live-settable via <code>setV2Prop('emissivity', v)</code> with no recompile</td></tr>
+</table>
+
+<div class="callout">
+    An ABSORB wall re-emits <strong>at a layer it actually soaked from</strong> — a level-2 body absorbed comes back as a level-2 quantum — so the emitted scale is not a knob. A wall fed at several scales gives back at each in proportion to what it took from that scale, and mass is conserved <em>per layer</em>, not merely in total (<code>wall.getAbsorbStats().byLayer</code> is the ledger). At the fundamental layer a cell holds one unit and the emitted mass floors at 1, so every emissivity yields a single full quantum there.
+</div>
+
+<p>Named presets expand to this v2 field set at construction (<code>new Wall(universe, { preset: 'mirror', rect: [...] })</code>): <code>mirror</code> (bounce+reflect), <code>brick</code> (bounce+random, no decoherence), <code>detector-screen</code> (destroy + count, any filter — a counting screen), <code>transparent-probe</code> (pass-through + mark + count — measure without disturbing), <code>wall</code> (block — a solid barrier that stops particles at its surface).</p>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="box">Box</h2>
+
+<p>Rectangular enclosure made of four LargeObject walls. Particles bounce inside.</p>
+
+<pre><code><span class="keyword">new</span> Box(universe, {
+    left: <span class="number">60</span>, top: <span class="number">60</span>, width: <span class="number">80</span>, height: <span class="number">80</span>,
+    wallThickness: <span class="number">10</span>, collisionType: <span class="string">'BOUNCE'</span>, actions: [], color: [<span class="number">120</span>,<span class="number">120</span>,<span class="number">120</span>]
+})
+</code></pre>
+
+<table>
+    <tr><th>Option</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>left</code>, <code>top</code>, <code>width</code>, <code>height</code></td><td>—</td><td>Inner box rect (physics px); walls extend outward from it</td></tr>
+    <tr><td><code>wallThickness</code></td><td>10</td><td>Wall thickness, px</td></tr>
+    <tr><td><code>collisionType</code></td><td>'BOUNCE'</td><td>Collision type applied to all walls</td></tr>
+    <tr><td><code>actions</code></td><td>[]</td><td>Collision actions applied to all walls</td></tr>
+    <tr><td><code>color</code></td><td>[120,120,120]</td><td>Wall color <code>[r,g,b]</code></td></tr>
+    <tr><td><code>slit</code></td><td>—</td><td>Optional <code>{wall:'right'|'left'|'top'|'bottom', height}</code> gap in one wall</td></tr>
+</table>
+
+<p>Returns an object with <code>.walls</code> (array of 4 LargeObjects) and <code>.innerRect</code> (inner bounds).</p>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="tunnel">Tunnel</h2>
+
+<p>Two parallel <a href="#wall">Wall</a>s forming a corridor. In the default <code>mirror</code> mode it is the waveguide/light-pipe primitive: a beam travelling down the bore reflects off the two facing mirror walls and stays collimated inside the channel. Pure composition: zero engine, zero new physics — every collision effect is realized by the two walls' own compiled behavior.</p>
+
+<pre><code><span class="keyword">var</span> t = <span class="keyword">new</span> Tunnel(universe, { left: <span class="number">96</span>, top: <span class="number">233</span>, length: <span class="number">64</span>, bore: <span class="number">31</span> });
+t.walls;      <span class="comment">// [ Wall{bounce}, Wall{bounce} ] — the two mirror surfaces</span>
+t.innerRect;  <span class="comment">// [96, 233, 64, 31] — the clear bore the beam passes through</span>
+</code></pre>
+
+<p><strong>Directed mode.</strong> <code>mode:'directed'</code> turns the corridor into a semi-circular <em>emitter</em> instead of a mirror: a wall hit ejects the quantum back into the bore and re-emits it in a uniformly random direction within 180° of the corridor axis. That is what makes a slit spread a beam rather than merely pass it, so it is the mode the double-slit scene uses for its slit channels. The exit angle is drawn between ticks with real trigonometry, which is what keeps the fan flat — an in-collision random redraw is diagonal-weighted (it peaks near ±45°) rather than angle-uniform.</p>
+
+<pre><code><span class="keyword">var</span> slit = <span class="keyword">new</span> Tunnel(universe, {
+    left: <span class="number">96</span>, top: <span class="number">233</span>, length: <span class="number">64</span>, bore: <span class="number">31</span>,
+    axis: <span class="string">'x'</span>, mode: <span class="string">'directed'</span>          <span class="comment">// fan aims +x (from `axis`), half-width 90° = a full 180°</span>
+});
+runner.addTickListener(<span class="keyword">function</span> (tickData) { slit.applyRedirectIfActive(tickData); });
+</code></pre>
+
+<p>The re-emission is a between-ticks step, so it needs one call per tick with that tick's <code>tickData</code>. <code>applyRedirectIfActive</code> self-gates on the mode, so it is safe to call for every tunnel unconditionally; when a Tunnel is created through the object factory this wiring is done for you.</p>
+
+<table>
+    <tr><th>Option</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>left</code>, <code>top</code></td><td>—</td><td>Bore (aperture) top-left corner, px</td></tr>
+    <tr><td><code>rect</code></td><td>—</td><td>Write-only: the envelope of every member, <code>[left, top, w, h]</code> or <code>[left, top, z, w, h, d]</code>. Writing it (<code>t.setRect(...)</code>, the STUDIO carry) moves the whole Tunnel as one object — both plates and the exit gate by one delta, the gate program re-pushed; a size change re-derives <code>length</code>/<code>bore</code> (refused on a directed Tunnel). Never written to code — <code>left</code>/<code>top</code> are.</td></tr>
+    <tr><td><code>length</code></td><td>—</td><td>Travel-axis extent of the corridor, px</td></tr>
+    <tr><td><code>bore</code></td><td>—</td><td>Cross-section gap between the two mirror faces, px (the clear aperture)</td></tr>
+    <tr><td><code>wallThickness</code></td><td>10</td><td>Thickness of each mirror wall, px</td></tr>
+    <tr><td><code>axis</code></td><td>'x'</td><td>'x' → horizontal corridor (mirrors above/below); 'y' → vertical corridor (mirrors left/right)</td></tr>
+    <tr><td><code>mode</code></td><td>'mirror'</td><td><code>'mirror'</code> = guarded-bounce waveguide (collimating). <code>'directed'</code> = each wall hit re-emits into a random forward direction within 180° of the corridor axis. Set at construction (the walls are registered differently), so rebuild to change it.</td></tr>
+    <tr><td><code>directedAngle</code></td><td>from <code>axis</code></td><td>Directed mode: centre of the forward fan, in degrees. Defaults to the corridor's own travel direction (0 for an x corridor, 90 for a y one). Set 180/270 for a corridor fed from the far end.</td></tr>
+    <tr><td><code>redirectSpread</code></td><td>90</td><td>Directed mode: half-width of the fan, in degrees. 90 = a full 180° forward fan; 0 = a perfectly collimated re-emission along <code>directedAngle</code>.</td></tr>
+    <tr><td><code>polarSpread</code></td><td>0</td><td>Directed mode: half-width of the out-of-plane fan, in degrees. 0 (default, even for a 3D corridor) keeps the fan in the XY plane. A non-zero value draws the polar angle uniformly, which over-weights the pole — it is polar-uniform, not solid-angle-uniform.</td></tr>
+    <tr><td><code>exitCollapse</code></td><td>false</td><td>Point-exit gate. Adds a third <a href="#wall">Wall</a>-backed collision region spanning the last 2 columns of the bore at the output mouth; every crossing quantum is pinned to the bore mid-line, so the mouth radiates as a one-pixel <strong>point source</strong>. Composes with either mode. Set at construction. Requires <code>withInterQuantumCollisions:false</code> — it throws otherwise, because with collisions on the collapse pixel serializes one quantum per tick and kills the contended ones.</td></tr>
+    <tr><td><code>exitRecenter</code></td><td>true</td><td>Pin every quantum crossing the exit gate to the bore mid-line — the point-source collapse. Turning it off leaves the exit spatially unchanged, which separates the question "does the point source matter?" from "does coherence matter?" (<code>exitPhaseReset</code>). With <em>both</em> off the gate carries no program at all and remains only as an inert collector. Live via <code>setExitRecenter()</code>; requires <code>exitCollapse</code>.</td></tr>
+    <tr><td><code>exitPhaseReset</code></td><td>false</td><td>Re-phase-lock the ensemble at the exit gate (adds <code>local_time = 0</code> to the gate's program). Whether the fan bands without it is wavelength-dependent: at long effective λ the mouth is already nearly phase-aligned and bands appear with this off; at short λ the mouth is phase-flat and the fan reads smooth until you turn this on. Phase only — it never redraws charge. Live via <code>setExitPhaseReset()</code>; requires <code>exitCollapse</code>.</td></tr>
+    <tr><td><code>z</code></td><td>0</td><td>3D passthrough: z placement of the corridor (only meaningful together with <code>depth</code>)</td></tr>
+    <tr><td><code>depth</code></td><td>—</td><td>3D passthrough: when given, each mirror <a href="#wall">Wall</a> is built as a real z-slab (six-face reflect); omitted = a flat 2D-in-3D corridor</td></tr>
+    <tr><td><code>color</code></td><td>[90,120,200]</td><td>RGB render color for both mirrors</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="oven-box">OvenBox</h2>
+
+<p>Temperature-controlled box — a Box with inward-firing wall emitters (op-programs; bit-identical to native bounce) and a thermostat holding the cavity at a target quanta count. Used for blackbody radiation experiments.</p>
+
+<pre><code><span class="keyword">new</span> OvenBox(universe, {
+    left: <span class="number">60</span>, top: <span class="number">40</span>, width: <span class="number">100</span>, height: <span class="number">120</span>,
+    wallThickness: <span class="number">10</span>, temperature: <span class="number">300</span>, slitHeight: <span class="number">60</span>, color: [<span class="number">120</span>,<span class="number">120</span>,<span class="number">120</span>]
+})
+</code></pre>
+
+<table>
+    <tr><th>Option</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>left</code>, <code>top</code>, <code>width</code>, <code>height</code></td><td>—</td><td>Inner box rect (physics px)</td></tr>
+    <tr><td><code>wallThickness</code></td><td>10</td><td>Wall thickness, px</td></tr>
+    <tr><td><code>temperature</code></td><td>300</td><td>Thermostat target quanta count (call <code>setTemperature(n)</code> to change live)</td></tr>
+    <tr><td><code>slitHeight</code></td><td>60</td><td>Radiation aperture height on the slit wall</td></tr>
+    <tr><td><code>slitWall</code></td><td>'right'</td><td>Which wall face carries the slit: 'right' | 'left' | 'top' | 'bottom'</td></tr>
+    <tr><td><code>color</code></td><td>[120,120,120]</td><td>Wall color</td></tr>
+</table>
+
+<h3>Temperature Control</h3>
+
+<pre><code><span class="comment">// Change temperature dynamically</span>
+ovenBox.setTemperature(<span class="number">500</span>);
+
+<span class="comment">// Get current temperature</span>
+<span class="keyword">var</span> temp = ovenBox.getTemperature();
+</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="detector-wall">DetectorWall</h2>
+
+<p>Counting/absorbing detector screen — a thin wrapper over a <a href="#wall">Wall</a>{detect} that additionally splits its running histogram by slit provenance. Used for double-slit-style fringe measurement.</p>
+
+<pre><code><span class="keyword">new</span> DetectorWall(universe, canvasRect, wallX, wallY, wallCollisionType,
+                 wallColor, wallHeight, wallWidth, wallName)
+
+<span class="comment">// Read the accumulated histogram</span>
+<span class="keyword">var</span> hist = detectorWall.getCollisionHistogram(tickData);
+<span class="comment">// { combined: Map&lt;y,count&gt;, slit1: Map&lt;y,count&gt;, slit2: Map&lt;y,count&gt;, total }</span>
+</code></pre>
+
+<table>
+    <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>canvasRect</code></td><td>—</td><td>Bounding rect of the simulation area, <code>{w,h}</code> or <code>[l,t,w,h]</code></td></tr>
+    <tr><td><code>wallX</code></td><td><code>canvasRect.w - 20</code></td><td>X position of the detector wall (physics px)</td></tr>
+    <tr><td><code>wallY</code></td><td>0</td><td>Y position (physics px)</td></tr>
+    <tr><td><code>wallCollisionType</code></td><td>'NONE'</td><td>Underlying engine collision type — leave at the default; absorption is handled by the ABSORB action, not the collision type</td></tr>
+    <tr><td><code>wallColor</code></td><td>[120,120,120]</td><td>RGB render color</td></tr>
+    <tr><td><code>wallHeight</code></td><td><code>canvasRect.h</code></td><td>Wall height (physics px)</td></tr>
+    <tr><td><code>wallWidth</code></td><td>20</td><td>Wall thickness (physics px)</td></tr>
+    <tr><td><code>wallName</code></td><td>'detector_wall'</td><td>Identifier used to key the collision histogram</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="graphing-detector-wall">GraphingDetectorWall</h2>
+
+<p>A detector screen that paints its own hit heatmap directly onto its face — a chart-free, spatially registered instrument (a hot cell sits exactly where the counted collisions occurred). Extends <a href="#wall">Wall</a>, so every Wall option and method applies; defaults to the counting (<code>detect</code>-equivalent) behavior.</p>
+
+<pre><code><span class="keyword">var</span> screen = <span class="keyword">new</span> GraphingDetectorWall(universe, {
+    rect: [<span class="number">236</span>, <span class="number">0</span>, <span class="number">20</span>, <span class="number">600</span>], name: <span class="string">'screen'</span>, binPx: <span class="number">12</span>
+});
+</code></pre>
+
+<table>
+    <tr><th>Option</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>binPx</code></td><td>12</td><td>Face bin size in physics pixels; bins are anchored at the face origin</td></tr>
+    <tr><td><code>refreshMs</code></td><td>100</td><td>Repaint throttle (ms); hit accumulation itself is un-throttled</td></tr>
+    <tr><td><code>heatBase</code></td><td>0.35</td><td>Opacity (0-1) of the ramp's zero-color wash under the bins</td></tr>
+    <tr><td><code>capacity</code>, <code>emissivity</code></td><td>—</td><td>Inherited from <a href="#wall">Wall</a> and inert on the default counting behavior; they take effect only if the screen is constructed with <code>collisionBehavior: 'absorb'</code></td></tr>
+</table>
+
+<div class="callout">
+    A wall's collided-frame buffer may be drained by exactly one consumer per tick — pointing both a <code>LiveChart</code> and a <code>GraphingDetectorWall</code> at the same wall throws. Choose one instrument per detector.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="live-chart">LiveChart</h2>
+
+<p>An in-scene live chart panel that plots a counting wall's running histogram as the sim runs — a render-only object (no collision, zero physics) built through the object factory rather than a standalone constructor. The chart data model ships with the engine layer; drawing the panel to a canvas is done by the host chart-wiring (the STUDIO/IDE layer, Chart.js-backed) that composites it into the scene as a texture.</p>
+
+<pre><code><span class="comment">// Via the declarative object factory (STUDIO / a host that provides ObjectFactory):</span>
+ObjectFactory.create(<span class="string">'LiveChart'</span>, {
+    rect: [<span class="number">420</span>, <span class="number">40</span>, <span class="number">200</span>, <span class="number">140</span>],
+    source: <span class="string">'detector'</span>,             <span class="comment">// name of a detect/count Wall</span>
+    projector: <span class="string">'detectorHistogram'</span>
+}, ctx);
+</code></pre>
+
+<table>
+    <tr><th>Option</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>rect</code></td><td>—</td><td>Placement/size of the chart panel in physics pixels</td></tr>
+    <tr><td><code>source</code></td><td>—</td><td>A counting/absorbing Wall handle, or its name — a source lacking the projector's read method fails loud</td></tr>
+    <tr><td><code>projector</code></td><td>'detectorHistogram'</td><td><code>detectorHistogram</code> (y→count fringes) | <code>absorberStats</code> | <code>liveCount</code> | <code>detectorSurface</code></td></tr>
+    <tr><td><code>series</code></td><td>'bar'</td><td>'bar' | 'line'</td></tr>
+    <tr><td><code>orientation</code></td><td>90 for <code>detectorHistogram</code>, else 0</td><td>0 = standard vertical bars; 90 = horizontal bars stacked along y (the GYM detector-histogram presentation, aligned with a vertical detector wall beside it). Live-editable</td></tr>
+    <tr><td><code>label</code></td><td>source name</td><td>Dataset label shown in the chart legend</td></tr>
+    <tr><td><code>refreshMs</code></td><td>100</td><td>Repaint throttle (ms); hit accumulation itself is un-throttled (no dropped counts)</td></tr>
+    <tr><td><code>visible</code></td><td>true</td><td>Whether the chart panel is rendered (render-only)</td></tr>
+    <tr><td><code>alpha</code></td><td>—</td><td>Render opacity 0-255 (render-only)</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="circuit-probe">CircuitProbe</h2>
+
+<p>Non-intrusive density measurement. Queries the region via <code>universe.queryRect()</code> each tick without absorbing or otherwise affecting particles.</p>
+
+<pre><code><span class="keyword">new</span> CircuitProbe(universe, x, y, size, name)
+
+<span class="comment">// Read current flow rate (sliding-window average over probe.windowSize ticks)</span>
+<span class="keyword">var</span> rate = probe.getFlowRate();
+</code></pre>
+
+<table>
+    <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>x</code>, <code>y</code></td><td>—</td><td>Probe rectangle position (physics px)</td></tr>
+    <tr><td><code>size</code></td><td>—</td><td>Probe rectangle width and height, px</td></tr>
+    <tr><td><code>name</code></td><td>—</td><td>Identifier for the probe</td></tr>
+</table>
+
+<p><code>probe.windowSize</code> (default 10) sets the sliding-window length used by <code>getFlowRate()</code>. Registers a visual-only <code>NONE</code>-collision marker so the probe region shows up in the renderer.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="circuit-gate">CircuitGate</h2>
+
+<p>Density-activated gate: a boundary that blocks (<code>WALL</code>) or opens (<code>NONE</code>) depending on the sampled particle density in one or more control regions — enabling boolean logic from particle flow.</p>
+
+<pre><code><span class="keyword">new</span> CircuitGate(universe, gateType, x, y, signalWidth, gateLength, horizontal, options)
+</code></pre>
+
+<table>
+    <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>gateType</code></td><td>—</td><td>'AND' | 'OR' | 'NOT' | 'XOR' | 'BUFFER'</td></tr>
+    <tr><td><code>x</code>, <code>y</code></td><td>—</td><td>Gate body center (physics px)</td></tr>
+    <tr><td><code>signalWidth</code></td><td>6</td><td>Height (horizontal gate) or width (vertical gate) of the wire channel</td></tr>
+    <tr><td><code>gateLength</code></td><td>4</td><td>Length of the gate body along the flow axis</td></tr>
+    <tr><td><code>horizontal</code></td><td>true</td><td>true = left-to-right flow; false = top-to-bottom</td></tr>
+    <tr><td><code>options.thresholdHigh</code></td><td>2</td><td>Density average (quanta/tick over <code>windowTicks</code>) to call a control input HIGH</td></tr>
+    <tr><td><code>options.thresholdLow</code></td><td>1</td><td>Density average below which a HIGH input reverts to LOW (hysteresis); must be &lt; <code>thresholdHigh</code></td></tr>
+    <tr><td><code>options.windowTicks</code></td><td>20</td><td>Sliding-window length (ticks) for the density average</td></tr>
+    <tr><td><code>options.notEmissionRate</code></td><td>2</td><td>Burst size of the internal emitter a NOT gate creates (unused by other gate types)</td></tr>
+</table>
+
+<p><code>options.fundamentalDim</code> is currently unused (reserved for multi-dimension addressing) — it has no observable effect.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="constants">Constants</h2>
+
+<h3>CollisionTypes</h3>
+
+<table>
+    <tr><th>Constant</th><th>Description</th></tr>
+    <tr><td><code>NONE</code></td><td>No native collision response (an op-program, if any, still runs)</td></tr>
+    <tr><td><code>BOUNCE</code></td><td>Elastic bounce (reflect velocity)</td></tr>
+    <tr><td><code>RANDOM_X</code></td><td>Randomize horizontal velocity</td></tr>
+    <tr><td><code>RANDOM_Y</code></td><td>Randomize vertical velocity</td></tr>
+    <tr><td><code>RANDOM_XY</code></td><td>Randomize velocity direction</td></tr>
+    <tr><td><code>MOMENTUM_BASED</code></td><td>Collision response based on momentum</td></tr>
+    <tr><td><code>WALL</code></td><td>Eject to the nearest face (a solid, non-bouncing wall)</td></tr>
+</table>
+
+<h3>CollisionActions</h3>
+
+<table>
+    <tr><th>Constant</th><th>Description</th></tr>
+    <tr><td><code>ABSORB</code></td><td>Remove the particle on contact</td></tr>
+    <tr><td><code>BOUNCE</code></td><td>Elastic bounce action</td></tr>
+    <tr><td><code>BLOCK</code></td><td>Prevent passage (eject-only, no velocity flip)</td></tr>
+    <tr><td><code>COUNT</code></td><td>Increment the object's hit counter</td></tr>
+    <tr><td><code>MARK</code></td><td>Write a provenance tag onto the colliding frame (e.g. which slit it passed through)</td></tr>
+    <tr><td><code>DETECT</code></td><td>Buffer the collided frame for histogram readout (pairs with <code>collect_collided</code>)</td></tr>
+    <tr><td><code>LOG</code></td><td>Log the collision (debugging)</td></tr>
+</table>
+
+<p>Render color on collision (the old <code>RECOLOR</code> action) is not an engine concept — the engine
+carries no color. Set it via the render-intent <code>string_map</code> (sugar-layer) instead.</p>
+
+<h3>Charge</h3>
+
+<table>
+    <tr><th>Constant</th><th>Value</th></tr>
+    <tr><td><code>Charge.POSITIVE</code></td><td>0</td></tr>
+    <tr><td><code>Charge.NEGATIVE</code></td><td>1</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="rendering">Rendering</h2>
+
+<p>The engine produces pure <code>TickData</code> from <code>doTick()</code>; drawing is a separate step, done by a <code>RendererProvider</code> — a plain object exposing <code>renderTick(tickData, largeObjects, options)</code> plus lifecycle (<code>init</code>/<code>setSize</code>/<code>start</code>/<code>stop</code>/<code>destroy</code>) and a <code>filter</code>/<code>removeFilter</code> post-process pair. Two providers ship with the engine — p5 (2D) and three.js (3D) — behind this one frozen interface.</p>
+
+<pre><code><span class="comment">// In your draw loop, once a provider is resolved (see below):</span>
+<span class="keyword">var</span> tickData = universe.doTick();
+<span class="keyword">if</span> (tickData) {
+    activeRenderer.renderTick(tickData, largeObjects);
+}
+</code></pre>
+
+<p><code>TickData</code> contains per-dimension arrays of frame positions, colors, and sizes. A provider draws each frame per its render-intent (color/shape/mesh, carried opaquely on the frame's data) and each LargeObject as a filled rect with optional alpha.</p>
+
+<div class="callout">
+    <strong>Bring your own renderer.</strong> The engine is renderer-agnostic. The shipped p5 and three.js providers
+    (<code>frqtl/compat/renderer/providers/</code> in this package) are two examples behind one frozen interface —
+    write your own provider implementing the same <code>init</code>/<code>setSize</code>/<code>renderTick</code>/<code>filter</code>/<code>destroy</code>
+    surface to render to Canvas 2D, WebGL, or any other target.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<div style="margin-top:60px; padding-top:20px; border-top:1px solid #222; color:#444; font-size:0.75rem;">
+    <p>Copyright 2023-2026 Essam Abadir. Licensed under the DeSciX Community License.</p>
+    <p><strong style="color:#555">@descix/frqtl-web</strong> · <strong style="color:#555">@descix/frqtl-node</strong> — No force calculations. Physics emerges.</p>
+</div>
+
+</div>
+</body>
+</html>

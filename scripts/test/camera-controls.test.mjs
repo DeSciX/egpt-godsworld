@@ -10,7 +10,7 @@
  * every scene (maxi-scene.js::attachHumanControls) so a scene that does not still gets them. Both must
  * name the SAME element — the runner's controlHost — or the page carries two pairs.
  *
- * Driven in node with the SERVED CameraControls (the vendored js/game copy) over a minimal DOM:
+ * Driven in node with the SERVED CameraControls (the vendored parts copy) over a minimal DOM:
  *   1. 3D, the scene attached its own pads, then the lab attaches: exactly one MOVE and one LOOK, under
  *      runner.controlHost (negative control: the lab attaching on its own mount → two pairs, RED);
  *   2. 3D, the scene attached nothing: the lab's attach alone gives one MOVE and one LOOK;
@@ -20,13 +20,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import path from 'node:path';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-import { SDK_DIST } from '../../site/app-assets/frqtl-sdk.js';
+import './site-import-map.mjs';   // maxi-scene.js imports the package by specifier: resolve it as the page does
 
-const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const CameraControls = createRequire(import.meta.url)(path.join(REPO, 'site', SDK_DIST, 'js/game/objects/CameraControls.js'));
+const { CameraControls } = await import('@descix/frqtl-web/parts');
 
 // ── a minimal DOM: what CameraControls and the lab touch, nothing more ──────────────────────
 function makeDoc() {
@@ -82,7 +78,7 @@ function stage(is3d) {
 }
 
 async function sceneModule(doc) {
-    globalThis.window = { CameraControls: CameraControls, getComputedStyle: function (el) { return { position: el.style.position || 'static' }; } };
+    globalThis.window = { getComputedStyle: function (el) { return { position: el.style.position || 'static' }; } };
     globalThis.document = doc;
     return import('../../site/app-assets/maxi-scene.js?' + Math.random());
 }

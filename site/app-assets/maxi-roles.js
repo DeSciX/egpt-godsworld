@@ -21,8 +21,11 @@
  * hands table's (maxi-hands.js HANDS) — a hand name is checked against it, never re-listed here.
  *
  * Hand-offs are fenced blocks in the persona's own shape (```json:call:<hand>), one per reply:
- *   Designer → ```json:plan     {scene, registryMode, changes:[{object, param, value, why}], hands:[…], prediction}
- *              (a plan names a scene ID; 2D or 3D is the loaded world's, read from the stage — never planned)
+ *   Designer → its FIRST line reads the message (READING_LINE + one of DESIGNER_READINGS), then
+ *              ```json:answer   {memories:[<memory file>, …]}   (a question: the words before it are the answer; no plan)
+ *              ```json:plan     {scene, registryMode, changes:[{object, param, value, why}], hands:[…], prediction}
+ *              (an outline; a plan names a scene ID; 2D or 3D is the loaded world's, read from the stage — never planned)
+ *              or the answer block THEN the plan block (a question and an outline) — parseDesignerReply
  *   Builder  → ```json:call:<hand> {…args}  + a line `PREDICTION: …` (what the hand will show, stated first)
  *              ```json:done     {}            (the last clip it filmed is its hand-back)
  *   Owl      → ```json:verdict  {seen:{contact, after, passes}, verdict:"approve"|"revise", reasons:[…], change}
@@ -37,10 +40,36 @@
 
 'use strict';
 
-import { HANDS, CLIP_FACTS, INVENTORY_KEYS, spansOf } from './maxi-hands.js';
+import { HANDS, CLIP_FACTS, INVENTORY_KEYS, SKETCH_KEYS, spansOf } from './maxi-hands.js';
 
 /** The fence tags of the hand-offs (the hands' own tag is the persona's `json:call:<hand>`). */
-export const HANDOFF_TAGS = Object.freeze({ plan: 'json:plan', call: 'json:call:', done: 'json:done', verdict: 'json:verdict' });
+export const HANDOFF_TAGS = Object.freeze({ plan: 'json:plan', answer: 'json:answer', call: 'json:call:', done: 'json:done', verdict: 'json:verdict' });
+
+/**
+ * What the Builder is asked after a refused hand: the refusal's own words say whether anything moved (a hand refused
+ * before it wrote moved nothing; a sketch that did not take a hand says the world changed), so the turn never adds a
+ * claim of its own. The loop stops a Builder that answers a refusal with no words (maxi-loop.js).
+ */
+export const REFUSAL_ASK = 'Before your next block, say in words which part and which key it refused and why (the refusal ' +
+    'says whether anything moved); the same hand sent again unchanged is refused again.';
+
+/**
+ * THE LAST CLIP: the Owl judges a round's LAST clip only (owlTurn), so a round ends on the act that SHOWS its change.
+ * `shows` films its own change, before-state and after (a dragTo films the move); `looks` films the world as it
+ * stands. A plan whose hands close with `looks` straight after `shows` (nothing between them but more looks) hands the
+ * Owl a clip with no before-state (trial mmt41a, round 1), and parsePlan refuses it; a plan of looks only stays allowed,
+ * and a look after another change (a setDeclared, a setCamera) is that change's clip. LAST_CLIP_RULE is the rule's words,
+ * in the Designer's and the Builder's prefaces; both hands are HANDS keys, checked here.
+ */
+export const LAST_CLIP = Object.freeze({ shows: 'dragTo', looks: 'see' });
+Object.keys(LAST_CLIP).forEach(function (k) {
+    if (!Object.prototype.hasOwnProperty.call(HANDS, LAST_CLIP[k])) { throw new Error('[roles] LAST_CLIP.' + k + ' names "' + LAST_CLIP[k] + '", which is not a hand in maxi-hands.js HANDS.'); }
+});
+export const LAST_CLIP_RULE = 'THE LAST CLIP IS THE ONE THE OWL JUDGES: it sees no earlier clip of the round, so the round ends on ' +
+    'the act that SHOWS the change. A ' + LAST_CLIP.shows + ' films its own change, from where the part was to where it ' +
+    'lands; a ' + LAST_CLIP.looks + ' straight after it hides that change behind a clip with no before-state. Use ' +
+    LAST_CLIP.looks + ' before a change, after a change no hand films (a setDeclared) or for framing (after a setCamera), ' +
+    'never as the closing act after a ' + LAST_CLIP.shows + '.';
 
 /** The Owl's two words. */
 export const VERDICTS = Object.freeze(['approve', 'revise']);
@@ -89,20 +118,57 @@ export function renderWorldFrameMarkdown() {
  */
 export const LOOK_RULE = 'LOOK, NOT ASK';
 
+/**
+ * The name of the persona's section that says when a message asks Maxi to imagine (an outline: build it) and when it
+ * asks him to talk (a question or a conversation: answer in words, from the memories, naming the file). The rule's
+ * words live in the persona only; the Designer's preface points at it by this name (roles.test.mjs checks both).
+ */
+export const TALK_RULE = 'IMAGINING VERSUS TALKING';
+
+/**
+ * The Designer's FIRST line: READING_LINE and one of DESIGNER_READINGS, exactly — the message read in words before
+ * anything is planned. The reading decides the blocks the reply carries (parseDesignerReply): an outline a json:plan,
+ * a question a json:answer and no plan, both the answer first and then the plan.
+ */
+export const READING_LINE = 'THIS IS:';
+export const DESIGNER_READINGS = Object.freeze({ outline: 'an outline', question: 'a question', both: 'a question and an outline' });
+
 const DESIGNER_PREFACE = [
     'ROLE FOR THIS THREAD: you are Maxi in your DESIGNER role — the orchestrator. The person is Tony; you are',
     'JARVIS. Two sub-agents work for you on threads of their own: the Builder (your implementer — the director',
     'of engineering) builds what you plan, with the hands, and hands back a clip; the Owl (a distinct verifier —',
     'your QA team) watches that clip against Tony\'s outline and the Builder\'s prediction and approves or sends',
-    'it back. You never use a hand on this thread and you never judge a clip: you plan.',
+    'it back. You never use a hand on this thread and you never judge a clip: you plan, or you answer.',
+    '',
+    'FIRST, READ THE MESSAGE (' + TALK_RULE + ', in your persona). The FIRST line of your reply says what it is,',
+    'exactly one of:'].concat(Object.keys(DESIGNER_READINGS).map(function (k) { return '  ' + READING_LINE + ' ' + DESIGNER_READINGS[k]; }), [
+    '- ' + DESIGNER_READINGS.outline + ': plan it, as below, ending with the json:plan block;',
+    '- ' + DESIGNER_READINGS.question + ' (or a conversation): answer Tony in words, from your memories, and name in your words',
+    '  every memory file you drew on. END with ONE block listing exactly the files your words name (a file the words do',
+    '  not name is refused), and nothing for the Builder: no plan, no hand, no clip.',
+    '```' + HANDOFF_TAGS.answer,
+    '{"memories": ["<a memory file you drew on, e.g. <id>-card.md>", "…"]}',
+    '```',
+    '- ' + DESIGNER_READINGS.both + ': the answer first, its json:answer block, then the plan\'s words and its json:plan block.',
     '',
     'Plan from your memories. Follow steps 1 and 2 of BUILDING FROM AN OUTLINE: list the parts, name the anchor,',
     'place every part relative to a rect you can read. Start from the scene in your memories closest to the',
     'outline and say which memory file you drew on ("in Experiment A we did this … we could combine that with Y',
     'from Experiment B"). A variant is a known sketch with one or two parameters changed: name them. Plan hands',
-    'that can make each change: a part\'s own parameter (an angle, a wavelength, a knob in its sketch) changes',
-    'only in the sketch — sceneSource to read it, then openSketch with the edited source; dragTo, moveObject and',
-    'resize move or size a part, they never turn or reconfigure it.',
+    'that can make each change. A scene is a SKETCH whose `export const parts = {…}` block is the one region a hand',
+    'rewrites (THE SKETCH, your hands table):',
+    '- a part\'s own parameter (an angle, a behaviour, a burst) is a setDeclared {name, patch}: one row in the',
+    '  Record, and the scene runs again with the same seed;',
+    '- a placement is a move: moveObject or resize, or dragTo to watch it happen; a move never turns or',
+    '  reconfigures a part;',
+    '- a whole-scene re-authoring (the author\'s own code, beyond what a part\'s entry says) is openSketch, which',
+    '  closes the Record and opens a new one: plan it only when no setDeclared or move can say the change;',
+    '- a part the scene declares in its code (the stage line marks it) cannot be touched by any hand;',
+    '- a part is never renamed: a new name is a new key (addObject) or a fork (openSketch).',
+    'Each `changes` item is one of these: `param` a field of the part\'s entry (the Builder\'s setDeclared patch',
+    '{param: value}) or its place (`rect`, `center`: a move).',
+    LAST_CLIP_RULE + ' Your `hands` end the same way: a plan whose hands close with ' + LAST_CLIP.looks + ' straight after ' +
+    LAST_CLIP.shows + ' is refused.',
     'An ambiguous word in the outline is resolved by ' + LOOK_RULE + ' (BUILDING FROM AN OUTLINE): on this thread your',
     'looking is THE STAGE below and your memories (the -seen records and their clips); the plan builds that reading.',
     '',
@@ -120,18 +186,19 @@ const DESIGNER_PREFACE = [
     'where the camera is and which z direction is TOWARD THE VIEWER (nearer on Tony\'s screen) and which is AWAY —',
     'read off the camera, never off an object\'s name: "toward the viewer" plans the centre along that axis.',
     '',
-    'Answer Tony in a few plain sentences (no code), then END with ONE block for the Builder, exactly:',
+    'For an outline, tell Tony in a few plain sentences (no code) what you will build, then END with ONE block for the',
+    'Builder, exactly:',
     '```json:plan',
     '{"scene": "<a scene id from your memories>",',
     ' "registryMode": null,',
-    ' "changes": [{"object": "<declared object name>", "param": "<parameter name>", "value": <new value>, "why": "<one line>"}],',
+    ' "changes": [{"object": "<a part of the scene\x27s parts block>", "param": "<a field of its entry, or rect/center>", "value": <new value>, "why": "<one line>"}],',
     ' "hands": ["<hand>", "…"],',
     ' "prediction": "<what the finished clip should show, in words, before anyone has seen it>"}',
     '```',
     'Strict JSON (double quotes, no comments). `changes` may be empty when the scene answers the outline as it',
     'is; `hands` names hands from your hands table, in the order you expect them used; `registryMode` is a',
     'declared mode string only when the stage (or the scene\'s memory) lists declared modes.'
-].join('\n');
+]).join('\n');
 
 const BUILDER_PREFACE = [
     'ROLE FOR THIS THREAD: you are Maxi\'s BUILDER — the implementer sub-agent (the director of engineering).',
@@ -160,11 +227,21 @@ const BUILDER_PREFACE = [
     '- or, when your last clip shows the plan built, ```json:done``` with the body `{}`.',
     'The lab runs your hand and the next message brings its result (JSON) or its error (verbatim). A hand that',
     'films (see, dragTo, record) brings its clip as video on that next message: first say in words what the',
-    'footage shows and whether it matched your prediction, then act. A part\'s own parameter (an angle, a',
-    'wavelength, a knob) changes only in its sketch: sceneSource{id} gives you the sketch text; change the value',
-    'there and boot the whole edited sketch with openSketch{source}. dragTo, moveObject and resize only move or',
-    'size a part. Check a hand\'s result before you describe its clip (from and to in a drag say whether anything',
-    'moved), and never say the footage shows a change it does not: the Owl watches the same clip.'
+    'footage shows and whether it matched your prediction, then act. Check a hand\'s result before you describe',
+    'its clip (from and to in a drag say whether anything moved), and never say the footage shows a change it',
+    'does not: the Owl watches the same clip.',
+    '',
+    'CHANGING A PART (THE SKETCH, your hands table). A part\'s own parameter (an angle, a behaviour, a burst) changes',
+    'with setDeclared{name, patch}, never by re-authoring the sketch: openSketch is for a change the author\'s code',
+    'holds, which no part\'s entry can say. setDeclared runs the scene again from its tick 0, so a clip filmed',
+    'before it shows a world that is gone. dragTo, moveObject and resize only move or size a part.',
+    'FILM EVERY CHANGE: after each change that should show, film it (see, or dragTo for a move) before the next one',
+    'or json:done. The Record refuses a change no clip shows, and the Owl needs a clip of each.',
+    LAST_CLIP_RULE + ' When the ' + LAST_CLIP.shows + '\'s clip shows the plan built, your next block is json:done.',
+    'A REFUSED HAND comes back verbatim. Before your next block, say in words which part and which key it refused',
+    'and why; never send the same hand again unchanged. A part the scene declares in its code, or a rename, is',
+    'refused by name: no hand can do it, so build what can be built and name that part and key in your json:done',
+    'words.'
 ].join('\n');
 
 const OWL_PREFACE = [
@@ -205,12 +282,12 @@ const OWL_PREFACE = [
 export const ROLES = Object.freeze({
     designer: Object.freeze({
         id: 'designer', name: 'Maxi', title: 'the Designer', metaphor: 'orchestrator',
-        description: 'Maxi in the Designer role — the orchestrator (JARVIS to the user\'s Tony): turns an outline into a plan for the Builder, from the memories.',
+        description: 'Maxi in the Designer role — the orchestrator (JARVIS to the user\'s Tony): reads each message first — an outline becomes a plan for the Builder, a question an answer in words — from the memories.',
         knowledgebase_names: Object.freeze(['GodsWorld']),
         persona: true,
         preface: DESIGNER_PREFACE,
         handoff: 'plan',
-        localReads: 'the memories in kb/GodsWorld/memories (INDEX.md first; <id>-card, <id>-build, <id>-seen)'
+        localReads: 'the knowledge base kb/GodsWorld: the memories in kb/GodsWorld/memories (INDEX.md first; <id>-card, <id>-build, <id>-seen) and the documents beside them'
     }),
     builder: Object.freeze({
         id: 'builder', name: 'the Builder', title: 'the Builder', metaphor: 'implementer',
@@ -258,8 +335,10 @@ function text(v, what) {
  */
 export function stageOf(inv) {
     if (!inv || typeof inv !== 'object' || Array.isArray(inv)) { throw new Error('[roles] stageOf takes the inventory hand\'s result (an object), got ' + JSON.stringify(inv)); }
-    const missing = INVENTORY_KEYS.filter(function (k) { return !Object.prototype.hasOwnProperty.call(inv, k); });
-    if (missing.length) { throw new Error('[roles] the stage is the inventory hand\'s result, and it lacks ' + missing.join(', ') + ' (maxi-hands.js INVENTORY_KEYS): ' + quote(JSON.stringify(inv))); }
+    const missing = INVENTORY_KEYS.concat([SKETCH_KEYS.parts]).filter(function (k) { return !Object.prototype.hasOwnProperty.call(inv, k); });
+    if (missing.length) { throw new Error('[roles] the stage is the inventory hand\'s result, and it lacks ' + missing.join(', ') + ' (maxi-hands.js INVENTORY_KEYS and SKETCH_KEYS.parts): ' + quote(JSON.stringify(inv))); }
+    const block = inv[SKETCH_KEYS.parts];
+    if (block !== null && (typeof block !== 'object' || Array.isArray(block))) { throw new Error('[roles] the inventory\'s ' + SKETCH_KEYS.parts + ' must be the sketch\'s parts block {name: [kind, props]} or null (declared in code), got ' + quote(JSON.stringify(block))); }
     if (inv.dimensions !== 2 && inv.dimensions !== 3) { throw new Error('[roles] the inventory\'s dimensions must be 2 or 3 (maxi-hands.js worldShape), got ' + JSON.stringify(inv.dimensions)); }
     if (!Array.isArray(inv.canvas) || inv.canvas.length !== inv.dimensions) { throw new Error('[roles] the inventory\'s canvas must have one size per dimension (' + inv.dimensions + '), got ' + JSON.stringify(inv.canvas)); }
     if (!Array.isArray(inv.modes) || !inv.modes.every(function (m) { return typeof m === 'string' && m; })) { throw new Error('[roles] the inventory\'s modes must be the declared registry modes ([] when none), got ' + JSON.stringify(inv.modes)); }
@@ -281,8 +360,10 @@ export function stageOf(inv) {
             if (Array.isArray(o.rect) && (spansOf(o.rect).z !== undefined) !== (inv.dimensions === 3)) {
                 throw new Error('[roles] "' + o.name + '"\'s rect must be [left, top' + (inv.dimensions === 3 ? ', z, w, h, d' : ', w, h') + '] in a ' + inv.dimensions + 'D world, got ' + JSON.stringify(o.rect));
             }
-            // a READ-ONLY copy of the inventory row for the words (center/rect: null when the object has none)
-            return { name: o.name, kind: o.kind, center: Array.isArray(o.center) ? o.center.slice() : null, rect: Array.isArray(o.rect) ? o.rect.slice() : null };
+            // a READ-ONLY copy of the inventory row for the words (center/rect: null when the object has none); inParts: a key
+            // of the sketch's parts block (the block is the authority: a part outside it is declared in the scene's code)
+            return { name: o.name, kind: o.kind, center: Array.isArray(o.center) ? o.center.slice() : null, rect: Array.isArray(o.rect) ? o.rect.slice() : null,
+                inParts: block !== null && Object.prototype.hasOwnProperty.call(block, o.name) };
         })
     };
 }
@@ -296,7 +377,7 @@ function num(n) { return Number.isInteger(n) ? String(n) : String(Math.round(n *
  * A centre-placed object has no box: its centre only. No placement: the name and kind.
  */
 export function extentWords(o, dimensions) {
-    const head = o.name + ' (' + o.kind + ')';
+    const head = o.name + ' (' + o.kind + (o.inParts === false ? '; declared in the scene\'s code: no hand can change it' : '') + ')';
     const centre = o.center ? 'centre [' + o.center.slice(0, dimensions).map(num).join(', ') + ']' : null;
     if (!o.rect) { return centre ? head + ': ' + centre : head; }
     const sp = spansOf(o.rect);
@@ -350,11 +431,14 @@ function requireStage(spec, where) {
     return st;
 }
 
-/** The Designer's turn: the preface (first turn of its thread only), THE STAGE and Tony's outline. */
+/**
+ * The Designer's turn: the preface (first turn of its thread only), THE STAGE and Tony's message, labelled as a
+ * message (never as an outline: reading it is the Designer's first move). `spec.outline` is the message's words.
+ */
 export function designerTurn(spec) {
     const outline = text(spec && spec.outline, 'designerTurn.outline');
     const stage = requireStage(spec, 'designerTurn');
-    return (spec.first === false ? '' : DESIGNER_PREFACE + '\n\n') + stageWords(stage) + '\n\nTONY\'S OUTLINE: ' + outline;
+    return (spec.first === false ? '' : DESIGNER_PREFACE + '\n\n') + stageWords(stage) + '\n\nTONY\'S MESSAGE: ' + outline;
 }
 
 /**
@@ -377,10 +461,11 @@ export function resultForTurn(result, omit) {
  *                                          (`omit`: result keys the caller sends another way, e.g. file paths);
  *                                          footageAttached (boolean, required) says the caller put the clip a
  *                                          hand filmed on this same turn as media;
- *   {revise: verdict}                   → the Owl's reasons and its one change, after a revise.
+ *   {revise: verdict}                   → the Owl's reasons and its one change, after a revise;
+ *   {doneRefused: words}                → the loop's refusal of a json:done (a change, or a new world, no clip shows), verbatim.
  */
 export function builderTurn(spec) {
-    if (!spec || typeof spec !== 'object') { throw new Error('[roles] builderTurn takes {plan, stage} | {results:[{hand, ok, result|error}], footageAttached} | {revise}.'); }
+    if (!spec || typeof spec !== 'object') { throw new Error('[roles] builderTurn takes {plan, stage} | {results:[{hand, ok, result|error}], footageAttached} | {revise} | {doneRefused}.'); }
     if (spec.plan) {
         const stage = requireStage(spec, 'builderTurn.plan');
         const load = planOnStage(spec.plan, stage) ? '' : '\nThe plan\'s scene is not on the stage: your first hand loads it — loadScene ' +
@@ -388,6 +473,10 @@ export function builderTurn(spec) {
         return BUILDER_PREFACE + '\n\nTHE PLAN (from Maxi, the Designer):\n' + JSON.stringify(spec.plan, null, 2) +
             '\n\n' + stageWords(stage) + load +
             '\n\nBuild it. Your first reply ends with one hand block (and its PREDICTION line).';
+    }
+    if (spec.doneRefused !== undefined) {
+        return 'YOUR json:done WAS REFUSED, verbatim:\n' + text(spec.doneRefused, 'builderTurn.doneRefused') +
+            '\nFilm it (see, or dragTo for a move), say what the clip shows, and end with json:done when your last clip shows every change.';
     }
     if (spec.revise) {
         const v = spec.revise;
@@ -400,7 +489,7 @@ export function builderTurn(spec) {
     if (typeof spec.footageAttached !== 'boolean') { throw new Error('[roles] builderTurn.results needs footageAttached (boolean): does the clip ride as media on this turn?'); }
     const parts = results.map(function (r, i) {
         const hand = text(r && r.hand, 'builderTurn.results[' + i + '].hand');
-        if (r.ok === false) { return 'YOUR HAND `' + hand + '` WAS REFUSED, verbatim:\n' + text(String(r.error), 'builderTurn.results[' + i + '].error') + '\nNothing moved.'; }
+        if (r.ok === false) { return 'YOUR HAND `' + hand + '` WAS REFUSED, verbatim:\n' + text(String(r.error), 'builderTurn.results[' + i + '].error') + '\n' + REFUSAL_ASK; }
         if (r.ok !== true || !r.result || typeof r.result !== 'object') { throw new Error('[roles] builderTurn.results[' + i + '] must be {hand, ok:true, result:{…}} or {hand, ok:false, error}.'); }
         return 'RESULT OF `' + hand + '`:\n' + JSON.stringify(resultForTurn(r.result, spec.omit), null, 2);
     });
@@ -463,6 +552,9 @@ export const PLAN_REFUSED_KEYS = Object.freeze({
     dimensions: '`dimensions` is not a plan field: 2D or 3D is read from the stage after loading, never planned'
 });
 
+/** A plan's keys, in order: parsePlan's output carries exactly these, and an answer carrying any of them is refused. */
+export const PLAN_KEYS = Object.freeze(['scene', 'registryMode', 'changes', 'hands', 'prediction']);
+
 /** The loadScene args a plan's scene needs: its id, and a mode only when the plan names a registryMode. */
 export function loadArgsOf(plan) {
     return plan.registryMode === null ? { id: plan.scene } : { id: plan.scene, mode: plan.registryMode };
@@ -503,10 +595,20 @@ export function parsePlan(reply, stage) {
     }
     if (typeof p.prediction !== 'string' || !p.prediction.trim()) { bad.push('`prediction` (words)'); }
     if (bad.length) { throw new Error(where + ': the plan lacks ' + bad.join('; ') + '. The block was: ' + quote(b.body)); }
-    const plan = { scene: p.scene, registryMode: p.registryMode === undefined ? null : p.registryMode, changes: p.changes, hands: p.hands, prediction: p.prediction };
+    const plan = {};
+    PLAN_KEYS.forEach(function (k) { plan[k] = p[k]; });
+    if (plan.registryMode === undefined) { plan.registryMode = null; }
     if (stage.none === undefined && plan.scene === stage.id && plan.registryMode !== null && stage.modes.indexOf(plan.registryMode) === -1) {
         throw new Error(where + ': the plan names registryMode "' + plan.registryMode + '" for "' + plan.scene + '", which is on the stage and declares ' +
             (stage.modes.length ? 'only the registry modes ' + stage.modes.join(', ') : 'no registry modes (registryMode is null)') + '. The block was: ' + quote(b.body));
+    }
+    let last = plan.hands.length - 1;
+    if (plan.hands[last] === LAST_CLIP.looks) {
+        while (last >= 0 && plan.hands[last] === LAST_CLIP.looks) { last -= 1; }
+        if (last >= 0 && plan.hands[last] === LAST_CLIP.shows) {
+            throw new Error(where + ': the plan\'s hands [' + plan.hands.join(', ') + '] close with ' + LAST_CLIP.looks + ' straight after ' + LAST_CLIP.shows +
+                ', so the Owl would judge a clip with no before-state — end on the ' + LAST_CLIP.shows + ' (' + LAST_CLIP_RULE + ') The block was: ' + quote(b.body));
+        }
     }
     if (!planOnStage(plan, stage) && !plan.hands.some(function (h) { return LOADING_HANDS.indexOf(h) !== -1; })) {
         throw new Error(where + ': the plan is for "' + plan.scene + (plan.registryMode ? '" registryMode "' + plan.registryMode : '') + '", which is not on the stage (' +
@@ -516,7 +618,102 @@ export function parsePlan(reply, stage) {
     return { plan: plan, words: wordsOf(reply, b) };
 }
 
-/** Builder → {kind:'call', hand, args, prediction, words} | {kind:'done', words}. */
+/** The keys a json:answer block may carry: the memory files the answer drew on, nothing else. */
+export const ANSWER_KEYS = Object.freeze(['memories']);
+
+/** A memory file as an answer names it: a KB file name (or its kb-relative path) ending in .md. */
+const MEMORY_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)*\.md$/;
+
+/**
+ * The Designer's reading of the message: its reply's first line, READING_LINE + one of DESIGNER_READINGS. Returns the
+ * reading's key (outline | question | both) and where the rest of the reply starts. THROWS on any other first line.
+ */
+export function readingOf(reply) {
+    const where = '[designer → reading]';
+    const s = String(reply);
+    const lead = s.match(/^\s*/)[0].length;
+    const nl = s.indexOf('\n', lead);
+    const line = (nl === -1 ? s.slice(lead) : s.slice(lead, nl)).trim();
+    const said = line.indexOf(READING_LINE) === 0 ? line.slice(READING_LINE.length).trim().replace(/\.$/, '').toLowerCase() : null;
+    const key = said === null ? undefined : Object.keys(DESIGNER_READINGS).find(function (k) { return DESIGNER_READINGS[k] === said; });
+    if (!key) {
+        throw new Error(where + ': the reply\'s first line must read the message — one of ' + Object.keys(DESIGNER_READINGS).map(function (k) { return '"' + READING_LINE + ' ' + DESIGNER_READINGS[k] + '"'; }).join(', ') +
+            ' — got ' + JSON.stringify(line) + '. The reply was: ' + quote(reply));
+    }
+    return { reading: key, rest: nl === -1 ? '' : s.slice(nl + 1) };
+}
+
+/**
+ * Whether `words` name the memory file `file` as a whole token: its file name WITH its extension (dse-tunnel-rebuild-card.md),
+ * not followed by a further name character and not preceded by one (a path before it, kb/GodsWorld/<file>, still names it).
+ * "card" does not name card.md; "my-card.md" does not name card.md.
+ */
+export function namesFile(words, file) {
+    const base = String(file).slice(String(file).lastIndexOf('/') + 1);
+    const re = new RegExp('(^|[^A-Za-z0-9._-])' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![A-Za-z0-9_-])');
+    return re.test(String(words));
+}
+
+/**
+ * The json:answer block of `text` (the reply after its reading line) → {words, memories}. THROWS on a malformed answer.
+ * This parser checks the FORMAT of each memory file (a KB file name, named in the words as a whole token); it cannot
+ * list the knowledge base (DOM-free, no file system), so it never checks that a file EXISTS. The node driver
+ * (minimaxi/loop.mjs) refuses an answer naming a file that is not under kb/GodsWorld; the page relies on this format check.
+ */
+function parseAnswer(text, block, reply) {
+    const where = '[designer → answer]';
+    const a = strictObject(block.body, where, reply);
+    const planKeys = PLAN_KEYS.concat(Object.keys(PLAN_REFUSED_KEYS)).filter(function (k) { return Object.prototype.hasOwnProperty.call(a, k); });
+    if (planKeys.length) {
+        throw new Error(where + ': an answer carries no plan — `' + planKeys.join('`, `') + '` ' + (planKeys.length > 1 ? 'are plan fields' : 'is a plan field') +
+            '; a message that also asks for a build is "' + READING_LINE + ' ' + DESIGNER_READINGS.both + '", its plan in its own json:plan block. The block was: ' + quote(block.body));
+    }
+    const extra = Object.keys(a).filter(function (k) { return ANSWER_KEYS.indexOf(k) === -1; });
+    if (extra.length) { throw new Error(where + ': a json:answer block carries only ' + ANSWER_KEYS.join(', ') + ', got `' + extra.join('`, `') + '`. The block was: ' + quote(block.body)); }
+    const m = a.memories;
+    if (!Array.isArray(m) || !m.length) { throw new Error(where + ': an answer names the memory files it drew on — `memories` must be a non-empty array of file names, got ' + JSON.stringify(m) + '. The block was: ' + quote(block.body)); }
+    const badNames = m.filter(function (f) { return typeof f !== 'string' || !MEMORY_FILE_RE.test(f); });
+    if (badNames.length) { throw new Error(where + ': `memories` holds file names of the knowledge base (<name>.md), got ' + badNames.map(function (f) { return JSON.stringify(f); }).join(', ') + '. The block was: ' + quote(block.body)); }
+    const words = text.slice(0, block.start).trim();
+    if (!words) { throw new Error(where + ': the answer is the words before the json:answer block, and there are none. The reply was: ' + quote(reply)); }
+    const unnamed = m.filter(function (f) { return !namesFile(words, f); });
+    if (unnamed.length) { throw new Error(where + ': the answer\'s words never name ' + unnamed.join(', ') + ' — a memory an answer draws on is named in its words. The reply was: ' + quote(reply)); }
+    return { words: words, memories: m.slice() };
+}
+
+/**
+ * Designer → {reading, answer: {words, memories}|null, plan|null, words|null} — the one parser of the Designer's reply.
+ * The first line reads the message (readingOf); the reading decides the blocks:
+ *   outline  → exactly one json:plan and no json:answer (parsePlan: {plan, words});
+ *   question → exactly one json:answer and no json:plan: an answer in words, no build;
+ *   both     → one json:answer, then one json:plan after it: the answer first, then the plan (its words are those
+ *              between the two blocks).
+ * A reply whose blocks disagree with its reading THROWS naming both.
+ */
+export function parseDesignerReply(reply, stage) {
+    const r = readingOf(reply);
+    const all = fencedBlocks(r.rest);
+    const answers = all.filter(function (b) { return b.tag === HANDOFF_TAGS.answer; });
+    const plans = all.filter(function (b) { return b.tag === HANDOFF_TAGS.plan; });
+    const want = { outline: [0, 1], question: [1, 0], both: [1, 1] }[r.reading];
+    if (answers.length !== want[0] || plans.length !== want[1]) {
+        throw new Error('[designer → ' + r.reading + ']: "' + READING_LINE + ' ' + DESIGNER_READINGS[r.reading] + '" ends with ' +
+            (want[0] ? 'ONE ' + HANDOFF_TAGS.answer + ' block' : 'no ' + HANDOFF_TAGS.answer + ' block') + ' and ' + (want[1] ? 'ONE ' + HANDOFF_TAGS.plan + ' block' : 'no ' + HANDOFF_TAGS.plan + ' block') +
+            ', found ' + answers.length + ' ' + HANDOFF_TAGS.answer + ' and ' + plans.length + ' ' + HANDOFF_TAGS.plan + '. The reply was: ' + quote(reply));
+    }
+    if (r.reading === 'both' && answers[0].end > plans[0].start) {
+        throw new Error('[designer → both]: the answer comes first — the json:answer block before the json:plan block. The reply was: ' + quote(reply));
+    }
+    const answer = answers.length ? parseAnswer(r.rest, answers[0], reply) : null;
+    if (!plans.length) { return { reading: r.reading, answer: answer, plan: null, words: null }; }
+    const planned = parsePlan(answer ? r.rest.slice(answers[0].end) : r.rest, stage);
+    return { reading: r.reading, answer: answer, plan: planned.plan, words: planned.words };
+}
+
+/**
+ * Builder → {kind:'call', hand, args, prediction, words, said} | {kind:'done', words, said}. `said` is what the Builder
+ * said in words before its PREDICTION line (a call) or before json:done: the loop reads it after a refusal.
+ */
 export function parseBuilderReply(reply) {
     const where = '[builder → hand-off]';
     const b = theBlock(reply, [HANDOFF_TAGS.call, HANDOFF_TAGS.done], where);
@@ -524,7 +721,7 @@ export function parseBuilderReply(reply) {
     if (b.tag === HANDOFF_TAGS.done) {
         const body = strictObject(b.body.trim() || '{}', where, reply);
         if (Object.keys(body).length) { throw new Error(where + ': json:done takes the body {} — the hand-back is the last clip filmed, got ' + quote(b.body)); }
-        return { kind: 'done', words: words };
+        return { kind: 'done', words: words, said: words };
     }
     const hand = b.tag.slice(HANDOFF_TAGS.call.length);
     if (!Object.prototype.hasOwnProperty.call(HANDS, hand)) {
@@ -534,7 +731,7 @@ export function parseBuilderReply(reply) {
     // the prediction is everything from `PREDICTION:` to the block — a list of lines is one prediction
     const pm = words.match(/^[ \t]*PREDICTION:[ \t]*([\s\S]*)$/m);
     if (!pm || !pm[1].trim()) { throw new Error(where + ': json:call:' + hand + ' without a `PREDICTION: …` line before it — the prediction is stated before acting. The reply was: ' + quote(reply)); }
-    return { kind: 'call', hand: hand, args: args, prediction: pm[1].trim(), words: words };
+    return { kind: 'call', hand: hand, args: args, prediction: pm[1].trim(), words: words, said: words.slice(0, pm.index).trim() };
 }
 
 /** Owl → {seen:{contact, after, passes}, verdict, reasons, change, words}. The account is required. */
@@ -559,4 +756,4 @@ export function parseVerdict(reply) {
 }
 
 /** The parser of a role's hand-off, by role id. */
-export const PARSERS = Object.freeze({ designer: parsePlan, builder: parseBuilderReply, owl: parseVerdict });
+export const PARSERS = Object.freeze({ designer: parseDesignerReply, builder: parseBuilderReply, owl: parseVerdict });

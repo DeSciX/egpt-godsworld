@@ -1,0 +1,42 @@
+{
+  "source": [
+    "SphereEmitter",
+    {
+      "preset": "particle-walk",
+      "is2D": true,
+      "center": [
+        72,
+        200
+      ],
+      "orientationDeg": 0,
+      "chargeMode": "positive",
+      "fundamentalDimension": 2,
+      "wavelength": 1,
+      "fundamentalWaveLength": 4,
+      "burstSize": 2,
+      "emitEveryTicks": 1
+    }
+  ],
+  "mirror": [
+    "Wall",
+    {
+      "rect": [
+        360,
+        80,
+        20,
+        240
+      ],
+      "collisionBehavior": "bounce",
+      "bounceDirection": "reflect",
+      "orientationDeg": 45,
+      "color": [
+        255,
+        120,
+        0
+      ],
+      "hooks": [
+        "recolor"
+      ]
+    }
+  ]
+}

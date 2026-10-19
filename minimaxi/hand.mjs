@@ -6,20 +6,24 @@
  *
  *   node minimaxi/hand.mjs --bridge <url> [--thread <name>] [--kb A,B] [--stills N] [--no-ask] <hand> ['<json args>']
  *   node minimaxi/hand.mjs --bridge <url> ask '<json {thread, knowledgebase_names?, user_input, media?:[{path, label?}]}>'
+ *   node minimaxi/hand.mjs --bridge <url> record begin|next|end|abandon     (the page's Record doors: body.mjs /bridge/record)
  *
  * <url> is the `bridge` of body.mjs's first stdout line. A hand is a name of the HANDS table
  * (site/app-assets/maxi-hands.js); the body refuses any other by name. `--kb ''` sends [] (no KB).
  * --no-ask: a footage hand films and keeps its clip ({clip, frames}, asked:false) and asks nothing.
- * stdout: the result as JSON, exit 0. A refusal: its message verbatim on stderr, exit 1. Bad usage: exit 2.
+ * stdout: the result as JSON, exit 0. A refusal: its message verbatim on stderr, exit 1 (stdout: {changes} when
+ * the refused hand had already written). Bad usage: exit 2.
  */
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { RECORD_ACTS } from './body.mjs';
 
 function usage(msg) {
     process.stderr.write((msg ? msg + '\n' : '') +
         'usage: hand.mjs --bridge <url> [--thread <name>] [--kb A,B] [--stills N] [--no-ask] <hand> [\'<json args>\']\n' +
-        '       hand.mjs --bridge <url> ask \'<json {thread, knowledgebase_names?, user_input, media?}>\'\n');
+        '       hand.mjs --bridge <url> ask \'<json {thread, knowledgebase_names?, user_input, media?}>\'\n' +
+        '       hand.mjs --bridge <url> record begin|next|end|abandon\n');
     process.exit(2);
 }
 
@@ -39,7 +43,11 @@ export function parseArgs(argv) {
     if (!out.rest.length) { throw new Error('name a hand (or `ask`).'); }
     out.hand = out.rest[0];
     const raw = out.rest[1];
-    if (raw === undefined) { out.args = {}; }
+    if (out.hand === 'record') {   // a Record door: its act is a word, not JSON
+        if (RECORD_ACTS.indexOf(raw) === -1) { throw new Error('record takes one act: ' + RECORD_ACTS.join(' | ') + ', got ' + JSON.stringify(raw) + '.'); }
+        out.args = { act: raw };
+    }
+    else if (raw === undefined) { out.args = {}; }
     else {
         try { out.args = JSON.parse(raw); } catch (e) { throw new Error('the args are not JSON: ' + e.message); }
     }
@@ -50,6 +58,7 @@ export function parseArgs(argv) {
 /** The request: {route, body} for /bridge/hand or /bridge/ask. */
 export function requestOf(a) {
     if (a.hand === 'ask') { return { route: '/ask', body: a.args }; }
+    if (a.hand === 'record') { return { route: '/record', body: a.args }; }
     const body = { hand: a.hand, args: a.args };
     if (a.thread !== undefined) { body.thread = a.thread; }
     if (a.kb !== undefined) { body.knowledgebase_names = a.kb; }
@@ -66,9 +75,11 @@ async function main() {
     const text = await res.text();
     let got;
     try { got = JSON.parse(text); } catch (e) { process.stderr.write('the bridge answered ' + res.status + ' with non-JSON: ' + text.slice(0, 500) + '\n'); process.exit(1); }
-    if (res.ok && got.result !== undefined) { process.stdout.write(JSON.stringify(got.result, null, 2) + '\n'); process.exit(0); }
+    // exitCode, never process.exit() after a write: exit() drops what a pipe has not taken yet (a Record's folder is megabytes; measured cut at 65536 bytes)
+    if (res.ok && got.result !== undefined) { process.stdout.write(JSON.stringify(got.result, null, 2) + '\n'); process.exitCode = 0; return; }
     process.stderr.write(String(got.error !== undefined ? got.error : text) + '\n');
-    process.exit(1);
+    if (Array.isArray(got.changes) && got.changes.length) { process.stdout.write(JSON.stringify({ changes: got.changes }) + '\n'); }   // a refused hand's writes still happened
+    process.exitCode = 1;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

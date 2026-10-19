@@ -1,0 +1,184 @@
+{
+  "producer": "loop",
+  "scene": {
+    "label": "sketch (Maxi)",
+    "id": null,
+    "mode": null,
+    "renderer": "p5"
+  },
+  "brain": "local",
+  "run": "mmp41d",
+  "chain": {
+    "index": 2,
+    "records": [
+      "record-01",
+      "record-02"
+    ]
+  },
+  "handBack": {
+    "record": "record-02",
+    "clip": "clip-02.mp4"
+  },
+  "declared": {
+    "before": [
+      {
+        "name": "source",
+        "kind": "SphereEmitter",
+        "authority": "center",
+        "center": [
+          72,
+          200,
+          0
+        ]
+      },
+      {
+        "name": "mirror",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          370,
+          200,
+          0
+        ],
+        "rect": [
+          360,
+          80,
+          20,
+          240
+        ]
+      }
+    ],
+    "after": [
+      {
+        "name": "source",
+        "kind": "SphereEmitter",
+        "authority": "center",
+        "center": [
+          72,
+          200,
+          0
+        ]
+      },
+      {
+        "name": "mirror",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          300,
+          200,
+          0
+        ],
+        "rect": [
+          290,
+          80,
+          20,
+          240
+        ]
+      }
+    ]
+  },
+  "outline": "a laser hitting a mirror at 30 degrees, then slide the mirror back along the beam",
+  "plan": {
+    "scene": "cl1a-mirror",
+    "registryMode": null,
+    "changes": [
+      {
+        "object": "mirror",
+        "param": "orientationDeg",
+        "value": 30,
+        "why": "the outline asks for the mirror at 30 degrees; at 45 the beam leaves straight up"
+      },
+      {
+        "object": "mirror",
+        "param": "center",
+        "value": [
+          300,
+          200
+        ],
+        "why": "slide the mirror back along the beam toward the laser"
+      }
+    ],
+    "hands": [
+      "see",
+      "openSketch",
+      "setDeclared",
+      "see",
+      "dragTo"
+    ],
+    "prediction": "first the beam rises straight up from the 45 degree mirror; in our sketch at 30 degrees it leaves orange, up and to the left; as the mirror slides left the hit point and the reflected column move left with it"
+  },
+  "designerWords": "Tony, I start from the 1A mirror memory (cl1a-mirror-build): a laser along y 200 into an orange bounce wall at 45 degrees, which sends the beam straight up. First we look at it as it is. Then I open the same mirror as a sketch of our own, so the change is ours to keep, turn the mirror's declared angle from 45 to 30 so the beam leaves up and back toward the laser, film it, and slide the mirror back along the beam to centre x 300.",
+  "steps": [
+    {
+      "hand": "see",
+      "args": {}
+    },
+    {
+      "hand": "openSketch",
+      "args": {
+        "source": "import { SphereEmitter, Wall } from '@descix/frqtl-web/parts';\n\n// The 1A mirror as our own sketch: a laser along y 200 into a bounce wall; turn the mirror to steer the beam.\nconst W = 600, H = 400;\nconst cy = Math.round(H / 2);\n\nexport const parts = {\n  source: [SphereEmitter, {\n    preset: 'particle-walk', is2D: true, center: [72, cy],\n    orientationDeg: 0, chargeMode: 'positive', fundamentalDimension: 2, wavelength: 1,\n    fundamentalWaveLength: 4, burstSize: 2, emitEveryTicks: 1\n  }],\n  mirror: [Wall, {\n    rect: [360, 80, 20, 240],\n    collisionBehavior: 'bounce', bounceDirection: 'reflect',\n    orientationDeg: 45, color: [255, 120, 0], hooks: ['recolor']\n  }],\n};\n\nexport default function buildExperiment(exp) {\n  exp.createCanvas(W, H, SphereEmitter.worldCfg(parts.source[1]));\n  exp.declare(parts);\n}\n"
+      }
+    },
+    {
+      "hand": "setDeclared",
+      "args": {
+        "name": "mirror",
+        "patch": {
+          "orientationDeg": 30
+        }
+      }
+    },
+    {
+      "hand": "see",
+      "args": {}
+    },
+    {
+      "hand": "dragTo",
+      "args": {
+        "name": "mirror",
+        "to": [
+          300,
+          200
+        ],
+        "ticks": 150
+      }
+    }
+  ],
+  "prediction": "mirror centre [300, 200] — the slab glides left over 150 ticks, the hit point moves left with it, and the up-left column keeps leaving from the new hit point.",
+  "builderWords": "The footage shows the steep orange slab gliding left from x about 370 to about 300 while the pale beam keeps running along y 200; the hit point moves left with the slab and the orange column keeps leaving up and to the left from it, more steeply in the last frames. During the slide a looser pale band appears to the right of the slab and drifts on to the right: quanta already past the slab's new position when it moved. It matched my prediction, with that band as the one thing I did not predict.",
+  "owl": {
+    "seen": {
+      "contact": "the pale band meets the orange slab in its middle third",
+      "after": "up and to the left, back over the band, steeper in the last frames",
+      "passes": "during the slide a looser pale band is to the right of the slab and moves on to the right"
+    },
+    "verdict": "approve",
+    "reasons": [
+      "a pale beam meets a mirror tilted steeper than 45 degrees and leaves up and back toward its source, as a 30 degree mirror should",
+      "the slab moves left along the beam across the frames and the meeting point moves with it",
+      "the pale band to the right is the part of the beam that was already past the slab when it moved; it does not contradict the outline"
+    ],
+    "change": null,
+    "words": "In every frame a pale band of dots runs left to right along the middle of the frame into a steep orange slab, tilted well past 45 degrees from the horizontal. Where the band meets the slab an orange column rises up and to the left, more steeply in the last frames. Across the frames the slab sits further left each time and the meeting point moves left with it. From the middle of the clip on, a looser pale band appears to the right of the slab and moves on to the right."
+  },
+  "threads": {
+    "designer": "local minimaxi/out/turns/mmp41d/01-designer.md",
+    "builder": "local minimaxi/out/turns/mmp41d/02-builder.md, minimaxi/out/turns/mmp41d/03-builder.md, minimaxi/out/turns/mmp41d/04-builder.md, minimaxi/out/turns/mmp41d/05-builder.md, minimaxi/out/turns/mmp41d/06-builder.md, minimaxi/out/turns/mmp41d/07-builder.md",
+    "owl": "local minimaxi/out/turns/mmp41d/08-owl.md"
+  },
+  "rounds": 1,
+  "filmed": [
+    {
+      "clip": "clip-01.mp4",
+      "hand": "see",
+      "firstTick": 4266,
+      "lastTick": 4516
+    },
+    {
+      "clip": "clip-02.mp4",
+      "hand": "dragTo",
+      "firstTick": 8229,
+      "lastTick": 8529
+    }
+  ]
+}

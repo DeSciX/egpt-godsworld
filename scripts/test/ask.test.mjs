@@ -16,7 +16,9 @@
  *      refused BY NAME before anything is sent; exactly at the limit passes;
  *   5. a refused call is thrown verbatim (no retry: the door is called once); the answer is read from the
  *      measured body, wrapped or bare, and anything else is refused naming its keys;
- *   6. the persona's HOW YOU ACT teaches the new reality (the page delivers; answer_excerpt), not the chat.
+ *   6. the persona's HOW YOU ACT teaches the new reality (the page delivers; answer_excerpt), not the chat;
+ *   7. the human's teaching words on a Record ride its question verbatim (footageUserInput(note, teaching)); none = the
+ *      look alone; a door that drops them is RED; the lab passes them, the node body's door refuses them by name.
  */
 
 import { test } from 'node:test';
@@ -29,16 +31,17 @@ import {
     ASK, MEDIA_LIMITS, LOOK_QUESTION, buildAskParams, readAnswer, createThread, base64Bytes, footageUserInput, plainWords, excerpt
 } from '../../site/app-assets/maxi-ask.js';
 import { HANDS, HANDS_MARKERS } from '../../site/app-assets/maxi-hands.js';
+import { withSketch } from './fake-runner.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel) => fs.readFileSync(path.join(REPO, rel), 'utf8');
 
 // ── 1. no chat-attachment path ────────────────────────────────────────────────────────────────
 
-/** The lab's own sources: everything under site/app-assets except the vendored SDK copy, plus app.html and the persona. */
+/** The lab's own sources: everything under site/app-assets, plus app.html and the persona. */
 function ownSources() {
     const dir = path.join(REPO, 'site', 'app-assets');
-    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.js') && f !== 'frqtl-sdk.js').map((f) => 'site/app-assets/' + f);
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.js')).map((f) => 'site/app-assets/' + f);
     return files.concat(['site/app.html', 'assets/system_instructions.md']);
 }
 
@@ -86,11 +89,11 @@ function fakeVideo(n) {
 /** A lab whose ask is the REAL thread over a capturing door; the composition mirrors maxi-lab.js ask(). */
 function labWithDoor(door) {
     const thread = createThread({ call: door });
-    const sc = { label: 'fake', runner: { isRunning: true }, tick: () => 10, win: { FrqtlVision: { attach: () => ({ record: async () => fakeVideo(51) }) } } };
+    const sc = withSketch({ label: 'fake', runner: { isRunning: true }, tick: () => 10, win: { MaxiScene: { FrqtlVision: { attach: () => ({ record: async () => fakeVideo(51) }) } } } });
     return {
         thread,
         lab: {
-            state: { grab: null }, scene: () => sc,
+            state: { grab: null }, scene: () => sc, current: () => sc,
             ask: (op, q) => thread.ask({ op, note: q.note, userInput: footageUserInput(q.note), media: q.media }),
             fetchMemory: async (op, id) => ({ mime_type: 'video/mp4', data: B64, bytes: 25, url: 'memories/' + id + '/clip.mp4' })
         }
@@ -222,4 +225,37 @@ test('the persona HOW YOU ACT says the page delivers the footage and Maxi answer
     check(block);
     assert.throws(() => check(block + '\nDescribe only footage that reached you (the result says delivered:true)'), /still teaches the chat attachment/);
     assert.equal(ASK.command, 'ask_question_to_app');
+});
+
+// ── 7. the human's teaching words ride the demonstration's question ───────────────────────────
+
+/** The teaching checks on a footageUserInput (the real one or a planted copy); THROWS on the first that does not hold. */
+function assertTeachingRides(fui, door) {
+    const WORDS = 'Light leaves the mirror at the angle it arrives.\nWatch the beam when I turn it.';
+    const note = 'The human pressed Record and made this demonstration in one world:';
+    assert.equal(fui(note), note + '\n\n' + LOOK_QUESTION, 'no words: the question is the look alone, as before');
+    const q = fui(note, WORDS);
+    assert.equal(q, note + '\n\n' + door.TEACHING_HEAD + '\n' + WORDS + '\n\n' + LOOK_QUESTION + '\n' + door.TEACHING_QUESTION, 'the words ride verbatim after the note, then the look, then what they teach');
+    assert.ok(q.includes(WORDS), 'the human\'s words are in the user_input');
+    assert.throws(() => fui(note, '   '), /^Error: \[ask\] the teaching words are the human's typed words, got "   " — an empty blurb is omitted/);
+    assert.throws(() => fui(note, 3), /the teaching words are the human's typed words, got 3/);
+}
+
+test('footageUserInput carries the human\'s teaching words verbatim, and a Record with no words asks as before (negative control: a door that drops them is red); the lab passes them, the node door refuses them by name', async () => {
+    const door = await import('../../site/app-assets/maxi-ask.js');
+    assertTeachingRides(footageUserInput, door);
+    const src = read('site/app-assets/maxi-ask.js');
+    const RIDES = "return note.trim() + '\\n\\n' + TEACHING_HEAD + '\\n' + teaching.trim() + '\\n\\n' + LOOK_QUESTION + '\\n' + TEACHING_QUESTION;";
+    assert.equal(src.split(RIDES).length, 2, 'the plant target moved — the control would measure nothing');
+    const planted = await import('data:text/javascript;base64,' + Buffer.from(src.replace(RIDES, "return note.trim() + '\\n\\n' + LOOK_QUESTION;")).toString('base64'));
+    assert.throws(() => assertTeachingRides(planted.footageUserInput, planted), /the words ride verbatim/, 'a door that drops the words is RED');
+    // the page's one ask passes the words to the one composition, and the turn carries them for the strip
+    const lab = read('site/app-assets/maxi-lab.js');
+    const ask = lab.slice(lab.indexOf('async function ask('), lab.indexOf('\n}\n', lab.indexOf('async function ask(')));
+    assert.ok(ask.includes('userInput: footageUserInput(q.note, q.teaching)') && ask.includes('teaching: q.teaching'), 'lab.ask must pass q.teaching to footageUserInput and the thread');
+    assert.ok(/if \(node && q\.teaching !== undefined\) \{\s*throw new Error\(/.test(ask), 'the node body\'s door carries no teaching words: refused by name, never dropped');
+    const turns = [];
+    const t = createThread({ call: async () => ({ status: 'OK', response: 'ok', interaction_id: 'i1' }), onTurn: (x) => turns.push(x) });
+    await t.ask({ op: 'record', note: 'n', teaching: 'w', userInput: footageUserInput('n', 'w'), media: [{ mime_type: 'video/mp4', data: 'AAAA' }] });
+    assert.deepEqual(turns.map((x) => [x.phase, x.teaching]), [['asking', 'w'], ['answered', 'w']], 'the thread\'s turns carry the words for the strip');
 });

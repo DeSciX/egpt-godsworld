@@ -1,0 +1,28 @@
+{
+  "_purpose": "The ONE pin of the FRQTL packages this repo consumes. The site serves site/vendor/frqtl-web/<version>/dist, the published @descix/frqtl-web tarball's dist/ copied unchanged; MiniMaxi (minimaxi/package.json) installs @descix/frqtl-web and @descix/frqtl-node at this same version. Each package's dist/dist-manifest.json lists every other dist file with its sha256; this pin records each TARBALL's sha256 and npm integrity and its manifest's own sha256, taken from the packed tarball, never from a copy, so a copy cannot vouch for itself. Every field below is read by a gate (scripts/test/sdk-copy.test.mjs PINNED_FIELDS_VERIFIED fails on one that is not): sdk-copy.test serves the site and hashes every served file against the web manifest, and checks both registry tarballs (npm's cache copy, addressed by the integrity) against their sha256, shasum, integrity and byte count, the vendored tree against the unpacked web tarball, and the node manifest; minimaxi.test holds MiniMaxi's lock and installed packages to these values. Re-vendor: unpack the pinned tarball into an empty scratch dir, copy package/dist and package/package.json (the site's import maps are the package's own pageImportMapFor, scripts/gen-import-maps.mjs), re-record the hashes here, delete the old version directory in the same change.",
+  "name": "@descix/frqtl-web",
+  "version": "0.6.0",
+  "npm": {
+    "tarball": "https://registry.npmjs.org/@descix/frqtl-web/-/frqtl-web-0.6.0.tgz",
+    "shasum": "97f70d396bb3a881d18dfc4508870b8a918535f2",
+    "integrity": "sha512-CvK9+M0cMisKNkdq7aDJRSRzFwMeZ6d7zkp7CQQJ8hz6ROuKJmnqcXX5WZZb3PjNy0VBIpARCWDJKneUfju+8w=="
+  },
+  "tarballSha256": "524cf77e134492a7cd3ded9d87788b233ace5de388f903b354de080b5cad50ac",
+  "tarballBytes": 8542210,
+  "copied": "dist",
+  "distManifest": "dist-manifest.json",
+  "distManifestSha256": "d6e6da1c695d267a231b0b492f547740a6883bf680536bbd25f7310b10116b32",
+  "packageJson": "package.json",
+  "packageJsonSha256": "a1249a36e24e4934e2caab8095ecb0ec61198fbdff7fff4045f1bd66399f2566",
+  "node": {
+    "name": "@descix/frqtl-node",
+    "npm": {
+      "tarball": "https://registry.npmjs.org/@descix/frqtl-node/-/frqtl-node-0.6.0.tgz",
+      "shasum": "6067c0026810cd9472545a7d2283c1d0ddc00bd7",
+      "integrity": "sha512-DMRsAKzMWjAKeud6BN0OOmg7nuKZMWqVMqTCkSPvMWirnx5EWeaS5Gh8nmBnwhvKJpLi0G8SXwwrTa6843c93g=="
+    },
+    "tarballSha256": "de5be3394276fe61d689eaa4e61559a57ce11c2eab2cece83bd2e4210e29d168",
+    "tarballBytes": 1377327,
+    "distManifestSha256": "22375f1aee1b6b589ba42acd04aab442d9cc925a329b2e18f9615eeb8312b1df"
+  }
+}

@@ -4,7 +4,7 @@
   "designer": [
     {
       "status": "OK",
-      "response": "[replayed fixture answer, authored for the page test — not a platform reply] Tony, you named the 3D mirror, so we go there: the cl1a mirror as a slab 160 deep in a 600 x 400 x 600 world, the laser along y 200 in the z 0 plane. Sliding the slab 120 px along z takes most of it out of the beam plane, so the beam should run on past it.\n\n```json:plan\n{\n  \"scene\": \"cl1a-mirror-3d\",\n  \"registryMode\": null,\n  \"changes\": [],\n  \"hands\": [\n    \"loadScene\",\n    \"dragTo\"\n  ],\n  \"prediction\": \"the orange slab slides 120 px along z, out of the beam plane; the pale beam that hit its face runs on past it toward the far side\"\n}\n```",
+      "response": "THIS IS: an outline\n[replayed fixture answer, authored for the page test — not a platform reply] Tony, you named the 3D mirror, so we go there: the cl1a mirror as a slab 160 deep in a 600 x 400 x 600 world, the laser along y 200 in the z 0 plane. Sliding the slab 120 px along z takes most of it out of the beam plane, so the beam should run on past it.\n\n```json:plan\n{\n  \"scene\": \"cl1a-mirror-3d\",\n  \"registryMode\": null,\n  \"changes\": [],\n  \"hands\": [\n    \"loadScene\",\n    \"dragTo\"\n  ],\n  \"prediction\": \"the orange slab slides 120 px along z, out of the beam plane; the pale beam that hit its face runs on past it toward the far side\"\n}\n```",
       "interaction_id": "replay.designer.1",
       "usage": {
         "input_tokens": 0,

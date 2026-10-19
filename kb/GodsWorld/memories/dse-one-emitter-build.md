@@ -1,10 +1,10 @@
 # Memory: One Emitter at the Canonical Leg — build
 
-load: GYM scene id `dse-one-emitter` · 2D · source site/vendor/frqtl-sdk/0.5.1/dist/scenes/dse-one-emitter.js
-source sha256 0d4c96bac0cfcfcca97e6c6599ab87a71717665824aceba6570e972044edb578 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-sdk/0.5.1/dist/scenes/dse-one-emitter.js
-how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
+load: GYM scene id `dse-one-emitter` · 2D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/dse-one-emitter.js
+source sha256 825e7c2ad37cf760807c05d2a356477dfb24c87aab0d30b3a34cb136d21a95f1 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/dse-one-emitter.js
+how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
-How to extrapolate: the canonical leg: one source, a see-through counting plate at D = λ/4, a count-by-y chart behind it. The claim: the chart shows a band PAIR at y 120 and 280 (±λ/4 of the source) with a plateau between. Variants: legFrac 1/2 → the plate at λ/2, predict the crossings elsewhere; lamPx 160 → everything halves (the plate at 40 px, bands at y 160 and 240), the dip-to-peak structure smeared on a 600 px stage; NSRC 2 → dse-two-emitters. The clip (memories/dse-one-emitter/clip.mp4) showed the yellow fan reaching the plate by ≈120 ticks and dots over the whole chart region by 1202; no band pair was readable by eye in the particle field, and no chart line was drawn in that recording (the GYM colour scheme was not carried).
+How to extrapolate: the canonical leg: one source, a see-through counting plate at D = λ/4, a count-by-y chart behind it. The claim: the chart shows a band PAIR at y 120 and 280 (±λ/4 of the source) with a plateau between. Variants: legFrac 1/2 → the plate at λ/2, predict the crossings elsewhere; lamPx 160 → everything halves (the plate at 40 px, bands at y 160 and 240), the dip-to-peak structure smeared on a 600 px stage; two source entries in parts (source1, source2) → dse-two-emitters. The clip (memories/dse-one-emitter/clip.mp4) showed the yellow fan reaching the plate by ≈120 ticks and dots over the whole chart region by 1202; no band pair was readable by eye in the particle field, and no chart line was drawn in that recording (the GYM colour scheme was not carried).
 
 ```js
 /* Copyright 2023-2026 by Essam Abadir */
@@ -12,14 +12,14 @@ How to extrapolate: the canonical leg: one source, a see-through counting plate 
 /**
  * SCENE — One Emitter at the Canonical Leg
  *
- * A sketch file: the WHOLE scene as one dual-mode `buildExperiment(exp)` module. The world
+ * A sketch file: the WHOLE scene as one ES module, `export default function buildExperiment(exp)`. The world
  * (its co-init call, `exp.createCanvas` / `exp.createScene` — the one place its size is written),
- * the parts (`exp.addObject`) and the render intent are all here; the sugar
- * objects, renderer and engine are includes. Registered by lib/shim/registry/walkthrough.js
+ * the parts (`export const parts` + `exp.declare`, or `exp.addObject`) and the render intent are all here; the sugar
+ * objects, renderer and engine are imports. Registered by lib/shim/registry/walkthrough.js
  * (rung dse-one-emitter).
  */
 
-// ── H1 AT THE CANONICAL DETECTOR LEG (CEO 2026-08-03) ────────────────────────
+// ── H1 AT THE CANONICAL DETECTOR LEG ─────────────────────────────────────────
 //
 // The competence baseline: the most basic thing, done right, seen with eyes. One
 // emitter, then two, with the plate PRE-COMPUTED at the leg the ring formula was
@@ -76,116 +76,109 @@ How to extrapolate: the canonical leg: one source, a see-through counting plate 
 // 2D ONLY, deliberately. There is no `modes` strip and no `exp.is3D` guard: these
 // rungs declare one world each. A second dimensional variant would be a separate
 // recipe declaration, not a mode.
-// THE PAIR. `dse-two-emitters.js` is the SAME apparatus with NSRC = 2. The two files differ ONLY in
-// the title lines and the `var NSRC` line — lib/frqtl/scenes/test/scene-files.test.mjs
-// fails if any other line diverges, so the A/B the pair exists to make stays an A/B.
+// THE PAIR. `dse-two-emitters.js` is the SAME apparatus with TWO source entries. The two files differ ONLY in the
+// title lines, this note, and their `source*` entries of `parts` (with the world call naming the first
+// of them) — lib/frqtl/scenes/test/scene-files.test.mjs fails if anything else diverges, so the A/B the
+// pair exists to make stays an A/B.
 
-function buildExperiment(exp) {
-  // memo: How many sources: 1 here; dse-two-emitters is this file with NSRC = 2 and nothing else changed. Set 3 and add a y to srcYs for a third.
-  var NSRC = 1;
+import { SphereEmitter, Wall } from '@descix/frqtl-web/parts';
+
   // memo: The world's size.
-  var CW = 600, H = 400;   // THE WORLD this scene states (its co-init call below)
-  // ── THE ONLY LENGTH ─────────────────────────────────────────────────────
-  // lamPx is lambda_eff in pixels. 320 is chosen for RESOLUTION, not for how many
-  // orders fit: the feature this rung exists to show (the minimum just inside the
-  // band and the peak riding outside it) is 0.025*lambda wide, which is 8 px at
-  // lambda 320 and 3 px at lambda 128. A stage that cannot separate them shows a
-  // smooth hump and leaves you unable to say whether the physics or the sampling
-  // was at fault. One well-resolved pair beats three mushy ones.
+const CW = 600, H = 400;   // THE WORLD this scene states (its co-init call below)
+// ── THE ONLY LENGTH ─────────────────────────────────────────────────────
+// lamPx is lambda_eff in pixels. 320 is chosen for RESOLUTION, not for how many
+// orders fit: the feature this rung exists to show (the minimum just inside the
+// band and the peak riding outside it) is 0.025*lambda wide, which is 8 px at
+// lambda 320 and 3 px at lambda 128. A stage that cannot separate them shows a
+// smooth hump and leaves you unable to say whether the physics or the sampling
+// was at fault. One well-resolved pair beats three mushy ones.
   // memo: λ in PIXELS, the one geometry knob: every distance below is a fraction of it, so change it and the whole apparatus rescales. 320 px on a 600 px stage.
-  var lamPx  = 320;
-  // memo: capacity ÷ mass on layer 2 (capacity 16): mass 5, fullness 1/3.2 = 0.3125 → the yellow band. This sets COLOUR; lamPx sets geometry; they are kept independent (this source comment: arg 3.2 → mass 5 / capacity 16 → fullness 0.3125 [src]).
-  var lamArg = 3.2;                       // capacity/mass -> fullness 1/3.2 = 0.3125 (yellow)
-  // memo: fundamentalWaveLength 400 → wavelengthScale floor(400/4) = 100, so λ = lamArg × 100 = 320 px = lamPx. The arithmetic that ties the two knobs together [src].
-  var fwl    = 4 * (lamPx / lamArg);      // 400 -> wavelengthScale floor(400/4) = 100
-  // memo: 100.
-  var wlScale = Math.floor(fwl / 4);      // 100
-  // memo: FAIL-LOUD: the engine can only make λ = wavelength × floor(fwl/4); a lamPx that is not reachable refuses to build rather than silently drifting [src].
-  if (Math.abs(lamArg * wlScale - lamPx) > 1e-9) {
-    throw new Error('[dse-h1] lamPx ' + lamPx + ' is not realisable as lambda_eff: the engine ' +
-      'can only produce wavelengthArg x floor(fwl/4) = ' + (lamArg * wlScale) + '. (FAIL-LOUD.)');
-  }
-  // ── THE DETECTOR LEG — ONE NAMED CONSTANT ───────────────────────────────
-  // D = legFrac * lambda, measured from the SOURCE (there is no barrier, so the
-  // emitter itself is the reference point of the ladder). legFrac = 1/4 is the
-  // leg the ring formula was written for; see the block comment above.
-  // memo: The plate stands λ/4 from the source plane: the leg the ring formula r_m = (λ/4)·√((2m+1)²+1) was written for. 1/2 would move it to λ/2 [src] [DSE_WORKED_EXAMPLE §The detector leg].
-  var legFrac = 1 / 4;
-  // memo: D = 80 px.
-  var D    = Math.round(lamPx * legFrac); // 80
-  // memo: The source x = 20 px: a little launch room; the left canvas edge is the back sink.
-  var srcX = Math.round(lamPx / 16);      // 20 — launch room; the canvas edge is the back sink
-  // memo: y 200, the source plane's midline.
-  var cy   = Math.round(H / 2);           // 200 — the source plane's midline
-  // memo: The plate's FRONT face at x 100 = source + leg.
-  var detX = srcX + D;                    // 100 — the plate's FRONT FACE
-  // PLATE THICKNESS IS AN OPTICAL CHOICE UNDER A FLUX DETECTOR, not trim. A flux
-  // probe counts every tick a quantum overlaps it, so it integrates the density
-  // ACROSS its thickness — and the ring crest is a CIRCLE about the source, not a
-  // plane. At the m=0 band the crest's slope is dy/dx = -D/y = -1, so a slab t px
-  // thick smears the band over ~t px of y. Against an 8 px feature a lambda/8 (40
-  // px) plate would guarantee mush. lambda/64 = 5 px keeps the smear sub-feature
-  // and is still unjumpable (a quantum steps at most 2 px/axis/tick). A 'hits'
-  // plate would not care — it counts at first contact, i.e. at the front face —
-  // which is exactly why the reference H1 runs could afford a lambda/8 slab.
-  // memo: Plate thickness 5 px.
-  var detW = Math.round(lamPx / 64);      // 5   — plate thickness
+const lamPx  = 320;
   // memo: Far-edge sink 20 px thick.
-  var sinkW = Math.round(lamPx / 16);     // 20  — far-edge sink thickness
-  // TWO-SOURCE SEPARATION. Two sources reinforce when their separation is a
-  // multiple of lambda/2, and the coupling falls as (lambda/d)^2, so lambda/2 is
-  // the strongest case. At this leg it also puts a band of EACH source on the
-  // midline y = H/2 (source 1's lower band and source 2's upper band coincide
-  // there) — the doubly-reinforced central peak, equidistant from both emitters,
-  // exactly where the one-source rung has no peak at all.
-  // memo: Source separation 160 px = λ/2 (used when NSRC is 2): sources at y 120 and 280.
-  var sep  = lamPx / 2;                   // 160 -> sources at y 120 and 280
-  // memo: One source on the midline, or two straddling it.
-  var srcYs = (NSRC === 2) ? [cy - sep / 2, cy + sep / 2] : [cy];
-  // ── THE LIGHT SOURCE ────────────────────────────────────────────────────
-  // preset 'hemisphere' = 180 degrees of FORWARD (+X) emission: the SAME
-  // ball-rejected sampler as the omni source with the forward axis' range halved,
-  // so nothing about the walk changes, it is simply pointed at the plate. The
-  // default emission box is 0 for this preset, so the source is a single PIXEL —
-  // load-bearing, because any spread at birth blurs every band by that spread.
-  // NO START WALL: the backward population is empty by construction, and `wrap` is
-  // false, so the canvas edge kills whatever transverse wiggle out-runs its
-  // forward component. One sink, not two.
-  var SRC = {
+const sinkW = Math.round(lamPx / 16);     // 20  — far-edge sink thickness
+
+// ── THE DETECTOR LEG — ONE NAMED CONSTANT ───────────────────────────────
+// D = legFrac * lambda, measured from the SOURCE (there is no barrier, so the
+// emitter itself is the reference point of the ladder). legFrac = 1/4 is the
+// leg the ring formula was written for; see the block comment above.
+  // memo: The plate stands λ/4 from the source plane: the leg the ring formula r_m = (λ/4)·√((2m+1)²+1) was written for. 1/2 would move it to λ/2 [src] [DSE_WORKED_EXAMPLE §The detector leg].
+const legFrac = 1 / 4;
+  // memo: D = 80 px.
+const D    = Math.round(lamPx * legFrac); // 80
+  // memo: The source x = 20 px: a little launch room; the left canvas edge is the back sink.
+const srcX = Math.round(lamPx / 16);      // 20 — launch room; the canvas edge is the back sink
+  // memo: The plate's FRONT face at x 100 = source + leg.
+const detX = srcX + D;                    // 100 — the plate's FRONT FACE
+// PLATE THICKNESS IS AN OPTICAL CHOICE UNDER A FLUX DETECTOR, not trim. A flux
+// probe counts every tick a quantum overlaps it, so it integrates the density
+// ACROSS its thickness — and the ring crest is a CIRCLE about the source, not a
+// plane. At the m=0 band the crest's slope is dy/dx = -D/y = -1, so a slab t px
+// thick smears the band over ~t px of y. Against an 8 px feature a lambda/8 (40
+// px) plate would guarantee mush. lambda/64 = 5 px keeps the smear sub-feature
+// and is still unjumpable (a quantum steps at most 2 px/axis/tick). A 'hits'
+// plate would not care — it counts at first contact, i.e. at the front face —
+// which is exactly why the reference H1 runs could afford a lambda/8 slab.
+  // memo: Plate thickness 5 px.
+const detW = Math.round(lamPx / 64);      // 5   — plate thickness
+// ── THE PLATE — A COUNTING WALL THAT DOES NOT ABSORB ────────────────────
+// ONE NAMED CONSTANT, so the reading can be swapped in a single edit and the two
+// instruments compared rather than argued about:
+//   'transparent-probe' = collisionBehavior 'nothing' + mark/count. FLUX. The
+//       quantum is counted on every tick it overlaps the plate and then flies on,
+//       so the reading is the OCCUPANCY INTEGRAL at the plate plane — the density
+//       at that plane. This is the shipped choice.
+//   'detector-screen'   = destroy + count. HITS. Each quantum is counted once, at
+//       arrival, and removed: a transit census, the headcount a photographic plate
+//       would report. It is what the H1 reference runs used.
+// NEITHER ABSORBS. 'absorb' stores the arriving mass and re-radiates it — that is
+// the photoelectric experiment, and it saturates.
+  // memo: The plate COUNTS WITHOUT ABSORBING: a census at a plane, not a first-arrival caustic. 'detector-screen' would stop everything at the plate.
+const detectorPreset = 'transparent-probe';
+
+  // memo: capacity ÷ mass on layer 2 (capacity 16): mass 5, fullness 1/3.2 = 0.3125 → the yellow band. This sets COLOUR; lamPx sets geometry; they are kept independent (this source comment: arg 3.2 → mass 5 / capacity 16 → fullness 0.3125 [src]).
+const lamArg = 3.2;                       // capacity/mass -> fullness 1/3.2 = 0.3125 (yellow)
+  // memo: fundamentalWaveLength 400 → wavelengthScale floor(400/4) = 100, so λ = lamArg × 100 = 320 px = lamPx. The arithmetic that ties the two knobs together [src].
+const fwl    = 4 * (lamPx / lamArg);      // 400 -> wavelengthScale floor(400/4) = 100
+  // memo: 100.
+const wlScale = Math.floor(fwl / 4);      // 100
+  // memo: y 200, the source plane's midline.
+const cy   = Math.round(H / 2);           // 200 — the source plane's midline
+// TWO-SOURCE SEPARATION. Two sources reinforce when their separation is a
+// multiple of lambda/2, and the coupling falls as (lambda/d)^2, so lambda/2 is
+// the strongest case. At this leg it also puts a band of EACH source on the
+// midline y = H/2 (source 1's lower band and source 2's upper band coincide
+// there) — the doubly-reinforced central peak, equidistant from both emitters,
+// exactly where the one-source rung has no peak at all.
+  // memo: Source separation 160 px = λ/2, used by dse-two-emitters' source1 and source2 (y 120 and 280); this file states it and does not use it.
+const sep  = lamPx / 2;                   // 160 -> sources at y 120 and 280
+// ── THE LIGHT SOURCE ────────────────────────────────────────────────────
+// preset 'hemisphere' = 180 degrees of FORWARD (+X) emission: the SAME
+// ball-rejected sampler as the omni source with the forward axis' range halved,
+// so nothing about the walk changes, it is simply pointed at the plate. The
+// default emission box is 0 for this preset, so the source is a single PIXEL —
+// load-bearing, because any spread at birth blurs every band by that spread.
+// NO START WALL: the backward population is empty by construction, and `wrap` is
+// false, so the canvas edge kills whatever transverse wiggle out-runs its
+// forward component. One sink, not two.
+const SRC = {
     // memo: Forward half only (+x), flat, ± charges.
-    preset: 'hemisphere', is2D: true, chargeMode: 'random',
+  preset: 'hemisphere', is2D: true, chargeMode: 'random',
     // memo: The colour and λ knobs from above.
-    wavelength: lamArg, fundamentalDimension: 2, fundamentalWaveLength: fwl,
+  wavelength: lamArg, fundamentalDimension: 2, fundamentalWaveLength: fwl,
     // memo: 8 a tick per source.
-    burstSize: 8, emitEveryTicks: 1
-  };
-  // memo: THE WORLD: 600 x 400, 2D.
-  exp.createCanvas(CW, H, setupSphereEmitter3D.worldCfg(SRC));   // THE WORLD: a 2D canvas + universe — first, then parts
-  // memo: One emitter per y in srcYs, all sharing SRC and differing only in center.
-  for (var si = 0; si < srcYs.length; si++) {
-    exp.addObject('SphereEmitter', Object.assign({}, SRC, { center: [srcX, Math.round(srcYs[si])] }));
-  }
+  burstSize: 8, emitEveryTicks: 1
+};
+
+export const parts = {
+  // memo: source: the one emitter, SRC at (20, 200) on the midline. dse-two-emitters declares source1 and source2 here instead (y 120 and 280); the pair differs only there, in the title lines, the pair note and the world call naming its first source.
+  source: [SphereEmitter, { ...SRC, center: [srcX, cy] }],
   // FAR-EDGE SINK. The plate below counts WITHOUT removing, so quanta fly on past
   // it; this is the experiment-boundary sink downstream of the plate. It is not
   // load-bearing (wrap is false, so the canvas edge would remove them anyway) — it
   // is where the population bound is STATED rather than inferred.
   // memo: far_sink [580, 0, 20, 400]: the experiment boundary; quanta that pass the probe die here so the population stays bounded. Near-transparent (alpha 40).
-  exp.addObject('Wall', { rect: [CW - sinkW, 0, sinkW, H], collisionBehavior: 'destroy',
-    name: 'far_sink', color: [120, 120, 120], alpha: 40 });
-  // ── THE PLATE — A COUNTING WALL THAT DOES NOT ABSORB ────────────────────
-  // ONE NAMED CONSTANT, so the reading can be swapped in a single edit and the two
-  // instruments compared rather than argued about:
-  //   'transparent-probe' = collisionBehavior 'nothing' + mark/count. FLUX. The
-  //       quantum is counted on every tick it overlaps the plate and then flies on,
-  //       so the reading is the OCCUPANCY INTEGRAL at the plate plane — the density
-  //       at that plane. This is the shipped choice.
-  //   'detector-screen'   = destroy + count. HITS. Each quantum is counted once, at
-  //       arrival, and removed: a transit census, the headcount a photographic plate
-  //       would report. It is what the H1 reference runs used.
-  // NEITHER ABSORBS. 'absorb' stores the arriving mass and re-radiates it — that is
-  // the photoelectric experiment, and it saturates.
-  // memo: The plate COUNTS WITHOUT ABSORBING: a census at a plane, not a first-arrival caustic. 'detector-screen' would stop everything at the plate.
-  var detectorPreset = 'transparent-probe';
+  far_sink: [Wall, { rect: [CW - sinkW, 0, sinkW, H], collisionBehavior: 'destroy',
+    color: [120, 120, 120], alpha: 40 }],
   // markTag — the plate's PROVENANCE stamp. The mark hook fires ONLY when the
   // collision trigger does (genuine overlap), whereas the engine buffers every
   // frame inside the LO's mb_w-PADDED search rect whether it triggered or not. So a
@@ -193,8 +186,19 @@ function buildExperiment(exp) {
   // mark-filtered count is the trigger-gated census: two different instruments, and
   // an offline reader needs the tag to tell them apart.
   // memo: screen [100, 0, 5, 400]: full height, 5 px thick, at the leg. markTag 'plate' tags what crosses it.
-  var screen = exp.addObject('Wall', { rect: [detX, 0, detW, H],
-    preset: detectorPreset, markTag: 'plate', name: 'screen', color: [120, 200, 120] });
+  screen: [Wall, { rect: [detX, 0, detW, H],
+    preset: detectorPreset, markTag: 'plate', color: [120, 200, 120] }],
+};
+
+export default function buildExperiment(exp) {
+  // memo: FAIL-LOUD: the engine can only make λ = wavelength × floor(fwl/4); a lamPx that is not reachable refuses to build rather than silently drifting [src].
+  if (Math.abs(lamArg * wlScale - lamPx) > 1e-9) {
+    throw new Error('[dse-h1] lamPx ' + lamPx + ' is not realisable as lambda_eff: the engine ' +
+      'can only produce wavelengthArg x floor(fwl/4) = ' + (lamArg * wlScale) + '. (FAIL-LOUD.)');
+  }
+  // memo: THE WORLD: 600 x 400, 2D.
+  exp.createCanvas(CW, H, SphereEmitter.worldCfg(parts.source[1]));   // THE WORLD: a 2D canvas + universe — first, then parts
+  const p = exp.declare(parts);
   // ── THE INSTRUMENT — the live count-by-y histogram, REGISTERED TO THE PLATE ──
   // The panel takes the plate's OWN rect y-origin (0) and height (H), so the two
   // are co-extensive on the bin axis at any canvas size, and it starts just past
@@ -222,13 +226,11 @@ function buildExperiment(exp) {
   // memo: The count-by-y chart standing behind the wall, rotated 90 so y runs down its side.
   exp.addObject('LiveChart', {
     // memo: Reads the plate; orientation 90 = the histogram drawn vertically beside the wall.
-    source: screen, orientation: 90,
+    source: p.screen, orientation: 90,
     // memo: rect [113, 0, 479, 400]: from just behind the plate to the right edge, full height.
     rect: [detX + detW + 8, 0, Math.max(60, CW - (detX + detW + 8) - 8), H],
     // memo: A line, navy panel.
     series: 'line', label: 'count by y', refreshMs: 100, color: [24, 32, 46], alpha: 225
   });
 }
-if (typeof module !== 'undefined' && module.exports) { module.exports = { buildExperiment: buildExperiment }; }
-else if (typeof window !== 'undefined') { window.buildExperiment = buildExperiment; }
 ```

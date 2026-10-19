@@ -1,8 +1,8 @@
 # Memory: Atomic model — build
 
-load: GYM scene id `atomic-model` · 2D · source site/vendor/frqtl-sdk/0.5.1/dist/scenes/atomic-model.js
-source sha256 f8cb5cf37059aab90160aa7f4e6559aadf2d85c69bbbb79328a0af4f75ebdcec · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-sdk/0.5.1/dist/scenes/atomic-model.js
-how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
+load: GYM scene id `atomic-model` · 2D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/atomic-model.js
+source sha256 25d5336471c3aace925b5e502594d7834b9cd05b0a445d912ad9cfc45c91623f · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/atomic-model.js
+how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: three nested layers: quarks in a proton, proton and electron in an atom. More quarks: QUARKS_PER_PROTON 64 fills the 8 x 8 proton (fullness 1, a different oscillation: wavelength = capacity/mass = 1). A bigger atom: ATOM_LAYER 7 (128 px). Two electrons: a second makeLeafFrame at another corner and atom.insert it. A helium-like nucleus would be a second proton frame in the atom. No clip has been watched yet (memories/atomic-model/ holds only the tile still): the card says the quarks stay bound and the electron keeps its place with no force law; the drag to try is the electron pulled off and watched for whether it is drawn back a pixel per tick.
 
@@ -12,9 +12,9 @@ How to extrapolate: three nested layers: quarks in a proton, proton and electron
 /**
  * SCENE — Atomic model
  *
- * A sketch file: the WHOLE scene as one dual-mode `buildExperiment(exp)` module. The world and the
- * three-level frame hierarchy are built here from the engine's own primitives (leaf frames, parent
- * frames from a rect); the renderer and the engine are includes. Registered by
+ * A sketch file: the WHOLE scene as one `export default function buildExperiment(exp)` module. The
+ * world and the three-level frame hierarchy are built here from the engine's own primitives (leaf
+ * frames — `engine().Frame`, read when the scene builds — and parent frames from a rect). Registered by
  * lib/shim/registry/walkthrough.js (rung atomic-model).
  *
  * Physics (zero new — bench H1, A1, A2, M1, M4): 48 one-pixel quarks fill an 8x8 proton frame; the
@@ -29,7 +29,13 @@ How to extrapolate: three nested layers: quarks in a proton, proton and electron
  * from its rect → electron (registered) → atom from its rect → electron into the atom.
  */
 
-function buildExperiment(exp) {
+import { Rectangle } from '@descix/frqtl-web/parts';
+import * as OrbitBag from '@descix/frqtl-web/compat/renderer/orbit-bag.js';
+import { engine } from '@descix/frqtl-web/compat/engine.js';
+
+export const parts = {};
+
+export default function buildExperiment(exp) {
   // memo: A square 600 x 600 world.
   var W = 600, H = 600;          // THE WORLD this scene states (its co-init call below)
 
@@ -45,6 +51,7 @@ function buildExperiment(exp) {
   // ── WORLD — a 2D canvas + universe: quark layer fundamental, λ multiplier 1, quarks confined ──
   // memo: THE WORLD: 600 x 600, 2D, fundamental layer 0; bonding true = a child cannot escape its parent's live rect (noEscape), so the nucleus holds.
   exp.createCanvas(W, H, { dimension: QUARK_LAYER, wavelengthScale: 1, bonding: true });
+  exp.declare(parts);
   var u = exp.universe;
 
   // memo: Open the three layers. addDimension returns the layer object; its mb_w is the frame width on that layer (8 for layer 3, 64 for layer 6).
@@ -53,6 +60,7 @@ function buildExperiment(exp) {
   var atomDim = u.addDimension(ATOM_LAYER);
   var subatomicW = subatomicDim.mb_w, atomW = atomDim.mb_w;
 
+  var Frame = engine().Frame, Charge = engine().Charge;   // the engine's own frame primitive + charge ABI
   var cx = Math.round(W / 2), cy = Math.round(H / 2);
   // memo: The atom's rect, 64 x 64 centred on (300,300): [268, 268, 64, 64].
   var atomRect = new Rectangle(cx, cy, atomW, atomW, null, true);
@@ -101,12 +109,10 @@ function buildExperiment(exp) {
   //    height). The atom is 64 px in the world; at 1.5x its width it fills two thirds of the view,
   //    so the proton, its quarks and the electron are individually legible. ─────────────────────
   var cam = exp.runner.cameraControl;
-  var flat = !(typeof window !== 'undefined' && window.OrbitBag && window.OrbitBag.hasAngularPose(cam));
+  var flat = !OrbitBag.hasAngularPose(cam);
   // memo: Render only: aim the 2D camera at the atom and zoom to 1.5 x its width (96 px visible height) so quarks, proton and electron are each legible.
   if (cam && typeof cam.setOrbit === 'function' && flat) {
     cam.setOrbit({ target: { x: cx, y: cy }, distance: Math.round(atomW * 1.5) });
   }
 }
-if (typeof module !== 'undefined' && module.exports) { module.exports = { buildExperiment: buildExperiment }; }
-else if (typeof window !== 'undefined') { window.buildExperiment = buildExperiment; }
 ```

@@ -11,7 +11,7 @@
  *      (at most `stills` frames, evenly spaced: a local reader looks at these; the eyes stay the MP4);
  *   2. --brain none   → {asked:false, clip, frames}; NO platform call;
  *      --brain platform → the question runs through the published CLI,
- *        npx -y -p @descix/cli@2.0.4 descix mcp execute --tool ask_question_to_app --params <json> --json
+ *        npx -y -p <DESCIX_CLI> descix mcp execute --tool ask_question_to_app --params <json> --json
  *      on a NAMED thread with that thread's knowledgebase_names. The params, the answer and the thread
  *      are maxi-ask.js's (createThread → buildAskParams / readAnswer; footageUserInput): this file types
  *      none of them. Each thread's last interaction id lives in <out>/threads.json,
@@ -30,8 +30,13 @@ import { ASK, FOOTAGE_MIME, createThread, footageUserInput, knowledgebaseNamesOf
 
 export const BRAINS = Object.freeze(['none', 'platform']);
 
-/** The published CLI, pinned (the app lane's one form; plain `npx descix` resolves the wrong package). */
-export const CLI_ARGV = Object.freeze(['-y', '-p', '@descix/cli@2.0.4', 'descix', 'mcp', 'execute', '--tool', ASK.command]);
+/**
+ * The published CLI this repo runs, pinned: the ONE owner of the version (scripts/test/cli-pin.test.mjs holds every
+ * `npx -y -p` pin of @descix/cli in the tracked tree to it). Plain `npx descix` resolves the wrong package.
+ */
+export const DESCIX_CLI = '@descix/cli@4.0.0';
+
+export const CLI_ARGV = Object.freeze(['-y', '-p', DESCIX_CLI, 'descix', 'mcp', 'execute', '--tool', ASK.command]);
 
 /** The first line the CLI must print in this repo (CLAUDE.md, measured 2026-10-09 / 2026-10-14). */
 export const CLI_ORIGIN_RE = /^env: prod \(.*\) https:\/\/descix\.net\s*$/;

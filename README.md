@@ -13,10 +13,11 @@ site/                      the only directory uploaded as the site
   share.json, images/share/  the share card: title, description, favicon, 180 icon, 1200×630 image
   images/*                 front-page images
   DeSciXAppSDK.js          DeSciX app-side SDK, vendored
-  app-assets/host-view.js  the one view declarer: asks the DeSciX host for the whole frame (CodeSite) for index.html and app.html
+  app-assets/maxi-host-view.js  the one view declaration for index.html and app.html: NoChrome on a phone, CodeSite
+                           otherwise, through the package's @descix/frqtl-web/host-view declarer
   app.html                 Maxi's Lab: the whole frame, Maxi's conversation in its own panel (app-assets/maxi-lab.js)
   scene.html               the scene document Maxi's Lab replaces per load
-  vendor/frqtl-sdk/        the pinned @descix/frqtl-sdk dist (vendor/frqtl-sdk/PINNED.json)
+  vendor/frqtl-web/        the pinned @descix/frqtl-web dist (vendor/frqtl-web/PINNED.json)
   memories/                per memory: its filmed clip and stills, plus tile.png when its card has a tile
                            (atomic-model: tile only, no clip yet)
 ```

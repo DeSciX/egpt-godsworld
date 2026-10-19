@@ -1,0 +1,5 @@
+{
+  "name": "maxi-sketch",
+  "kind": "scene",
+  "entry": "sketch.js"
+}

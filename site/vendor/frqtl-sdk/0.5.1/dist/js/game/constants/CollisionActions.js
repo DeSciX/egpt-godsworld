@@ -1,2 +1,0 @@
-/* Copyright 2023-2025 by Essam Abadir */
-!function(){const CollisionActions={COUNT:"COUNT",MARK:"MARK",DETECT:"DETECT",LOG:"LOG",ABSORB:"ABSORB",BOUNCE:"BOUNCE",BLOCK:"BLOCK"};"undefined"!=typeof module&&module.exports?module.exports={CollisionActions:CollisionActions}:window.CollisionActions=CollisionActions}();

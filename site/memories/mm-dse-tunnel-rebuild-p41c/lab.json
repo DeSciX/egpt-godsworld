@@ -1,0 +1,474 @@
+{
+  "producer": "loop",
+  "scene": {
+    "label": "Double Slit (Tunnel, symmetric)",
+    "id": "dse-tunnel-rebuild",
+    "mode": "3d",
+    "renderer": "three"
+  },
+  "brain": "local",
+  "run": "mmp41c",
+  "chain": {
+    "index": 1,
+    "records": [
+      "record-01"
+    ]
+  },
+  "handBack": {
+    "record": "record-01",
+    "clip": "clip-01.mp4"
+  },
+  "declared": {
+    "before": [
+      {
+        "name": "source",
+        "kind": "SphereEmitter",
+        "authority": "center",
+        "center": [
+          20,
+          200,
+          0
+        ]
+      },
+      {
+        "name": "start_wall",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          5,
+          200,
+          0
+        ],
+        "rect": [
+          0,
+          0,
+          -77,
+          10,
+          400,
+          154
+        ]
+      },
+      {
+        "name": "wall1",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          128,
+          61.25,
+          0
+        ],
+        "rect": [
+          96,
+          0,
+          -77,
+          64,
+          122.5,
+          154
+        ]
+      },
+      {
+        "name": "wall2",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          128,
+          199.5,
+          0
+        ],
+        "rect": [
+          96,
+          174.5,
+          -77,
+          64,
+          50,
+          154
+        ]
+      },
+      {
+        "name": "wall3",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          128,
+          337.75,
+          0
+        ],
+        "rect": [
+          96,
+          276.5,
+          -77,
+          64,
+          122.5,
+          154
+        ]
+      },
+      {
+        "name": "slit1_channel",
+        "kind": "Tunnel",
+        "authority": "rect",
+        "center": [
+          128,
+          149,
+          0
+        ],
+        "rect": [
+          96,
+          123.5,
+          -77,
+          64,
+          51,
+          154
+        ]
+      },
+      {
+        "name": "slit2_channel",
+        "kind": "Tunnel",
+        "authority": "rect",
+        "center": [
+          128,
+          251,
+          0
+        ],
+        "rect": [
+          96,
+          225.5,
+          -77,
+          64,
+          51,
+          154
+        ]
+      },
+      {
+        "name": "far_sink",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          595,
+          200,
+          0
+        ],
+        "rect": [
+          590,
+          0,
+          -77,
+          10,
+          400,
+          154
+        ]
+      },
+      {
+        "name": "screen",
+        "kind": "GraphingDetectorWall",
+        "authority": "rect",
+        "center": [
+          325,
+          200,
+          0
+        ],
+        "rect": [
+          315,
+          0,
+          -77,
+          20,
+          400,
+          154
+        ]
+      },
+      {
+        "name": "zClipFar",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          300,
+          200,
+          97
+        ],
+        "rect": [
+          0,
+          0,
+          77,
+          600,
+          400,
+          40
+        ]
+      },
+      {
+        "name": "zClipNear",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          300,
+          200,
+          -97
+        ],
+        "rect": [
+          0,
+          0,
+          -117,
+          600,
+          400,
+          40
+        ]
+      }
+    ],
+    "after": [
+      {
+        "name": "source",
+        "kind": "SphereEmitter",
+        "authority": "center",
+        "center": [
+          20,
+          200,
+          0
+        ]
+      },
+      {
+        "name": "start_wall",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          5,
+          200,
+          0
+        ],
+        "rect": [
+          0,
+          0,
+          -77,
+          10,
+          400,
+          154
+        ]
+      },
+      {
+        "name": "wall1",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          128,
+          61.25,
+          0
+        ],
+        "rect": [
+          96,
+          0,
+          -77,
+          64,
+          122.5,
+          154
+        ]
+      },
+      {
+        "name": "wall2",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          128,
+          199.5,
+          0
+        ],
+        "rect": [
+          96,
+          174.5,
+          -77,
+          64,
+          50,
+          154
+        ]
+      },
+      {
+        "name": "wall3",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          128,
+          337.75,
+          0
+        ],
+        "rect": [
+          96,
+          276.5,
+          -77,
+          64,
+          122.5,
+          154
+        ]
+      },
+      {
+        "name": "slit1_channel",
+        "kind": "Tunnel",
+        "authority": "rect",
+        "center": [
+          128,
+          149,
+          0
+        ],
+        "rect": [
+          96,
+          123.5,
+          -77,
+          64,
+          51,
+          154
+        ]
+      },
+      {
+        "name": "slit2_channel",
+        "kind": "Tunnel",
+        "authority": "rect",
+        "center": [
+          128,
+          251,
+          0
+        ],
+        "rect": [
+          96,
+          225.5,
+          -77,
+          64,
+          51,
+          154
+        ]
+      },
+      {
+        "name": "far_sink",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          595,
+          200,
+          0
+        ],
+        "rect": [
+          590,
+          0,
+          -77,
+          10,
+          400,
+          154
+        ]
+      },
+      {
+        "name": "screen",
+        "kind": "GraphingDetectorWall",
+        "authority": "rect",
+        "center": [
+          410,
+          200,
+          0
+        ],
+        "rect": [
+          400,
+          0,
+          -77,
+          20,
+          400,
+          154
+        ]
+      },
+      {
+        "name": "zClipFar",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          300,
+          200,
+          97
+        ],
+        "rect": [
+          0,
+          0,
+          77,
+          600,
+          400,
+          40
+        ]
+      },
+      {
+        "name": "zClipNear",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          300,
+          200,
+          -97
+        ],
+        "rect": [
+          0,
+          0,
+          -117,
+          600,
+          400,
+          40
+        ]
+      }
+    ]
+  },
+  "outline": "In the 3D double slit, move the detector screen farther from the slits, to x 400, and show how the bands on it change",
+  "plan": {
+    "scene": "dse-tunnel-rebuild",
+    "registryMode": "3d",
+    "changes": [
+      {
+        "object": "screen",
+        "param": "center",
+        "value": [
+          410,
+          200,
+          0
+        ],
+        "why": "the screen moves from x 315..335 to x 400..420, farther from the slits"
+      }
+    ],
+    "hands": [
+      "dragTo"
+    ],
+    "prediction": "The yellow beam leaves the source at the left and passes the two blue slit channels; the green screen plate slides away from the slits to x 400..420 while the hits keep painting banded stripes on its face, and by the end of the clip the stripes are painted at the screen's new place."
+  },
+  "designerWords": "Tony, I will keep the 3D double slit that is on your screen (the scene of dse-tunnel-rebuild-card.md, and the look I remember in dse-tunnel-rebuild-seen.md) and change one thing: the detector screen moves farther from the slits. Its anchor is its own rect: it spans x 315..335 today, so its centre goes from x 325 to x 410 (spanning x 400..420), with y and its z slab unchanged. The Builder drags it there while filming, so the one clip shows the bands on the screen before, during and after the move: farther from the two slits the bands should spread wider apart.",
+  "steps": [
+    {
+      "hand": "dragTo",
+      "args": {
+        "name": "screen",
+        "to": [
+          410,
+          200,
+          0
+        ],
+        "ticks": 150,
+        "settle": 150
+      }
+    }
+  ],
+  "prediction": "the screen centre goes from [325, 200, 0] to [410, 200, 0] (rect [400, 0, -77, 20, 400, 154]); the 6.1 s clip shows the green plate sliding away from the slits with the banded hits painted on it.",
+  "builderWords": "The drag landed as predicted: the result moves the screen from centre [325, 200, 0] (rect [315, 0, -77, 20, 400, 154]) to centre [410, 200, 0] (rect [400, 0, -77, 20, 400, 154]). The footage looks down the experiment from the source end: the red barrier plates and the two blue slit channels sit at the top, the yellow quanta above them, and the screen is the heat-map plate below the slit plates. Over the clip the plate draws back from the slits: in the last frames it looks shorter and narrower than in the first (it is farther from the camera), and the painted pattern on it changes: at the start a broad bright patch sits in its middle, at the end the face shows long stripes along its length, a dark stripe near its upper edge and a lighter band through the middle with brighter cells. It matches my prediction of the plate sliding away with banded hits painted on it.",
+  "owl": {
+    "seen": {
+      "contact": "the quanta through the slit channels reach the heat-map plate across its middle third",
+      "after": "the hits stay as painted cells on the plate",
+      "passes": "no"
+    },
+    "verdict": "approve",
+    "reasons": [
+      "the screen plate is seen drawing back from the slits during the clip",
+      "its painted bands change from one broad bright patch to long stripes along its length as it moves"
+    ],
+    "change": null,
+    "words": "ACCOUNT, from the pixels only. The camera looks down the length of the experiment from the source end. At the top are the red barrier plates with two blue slit channels; yellow quanta fill the space around and past the slit channels. Below the slit plates lies a flat heat-map plate (blue, green and yellow cells). Through the clip that plate draws back from the slit plates: in the first frame it is long and wide and its near edge touches the bottom of the slit channels; by the last frames it is shorter and narrower, as a thing farther from the camera looks, with a gap of dark space opening toward the slits. The pattern on its face changes as it goes: first one broad bright patch in its middle, at the end long stripes running along its length, a dark stripe near its upper edge, a lighter band through the middle with brighter cells, and darker bands beside it.\n\n- contact: the quanta that come through the slit channels reach the heat-map plate across its middle third, where its brightest cells are.\n- after: the hits stay as painted cells on the plate; individual quanta cannot be seen leaving it.\n- passes: no quanta are seen going beside the plate.\n\nJUDGEMENT. The outline asks for the screen to move farther from the slits and to show how its bands change: the plate is seen moving away from the slits during the clip, and its painted bands change from one broad patch to long stripes along its length. The prediction's plate sliding away with banded hits on it is what the footage shows. The exact x 400 cannot be read off pixels; nothing in the clip contradicts it."
+  },
+  "threads": {
+    "designer": "local minimaxi/out/turns/mmp41c/01-designer.md",
+    "builder": "local minimaxi/out/turns/mmp41c/02-builder.md, minimaxi/out/turns/mmp41c/03-builder.md",
+    "owl": "local minimaxi/out/turns/mmp41c/04-owl.md"
+  },
+  "rounds": 1,
+  "filmed": [
+    {
+      "clip": "clip-01.mp4",
+      "hand": "dragTo",
+      "firstTick": 2929,
+      "lastTick": 3229
+    }
+  ]
+}

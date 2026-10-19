@@ -1,8 +1,8 @@
 # Memory: Smoking Gun — build
 
-load: GYM scene id `smoking-gun` · 3D · source site/vendor/frqtl-sdk/0.5.1/dist/scenes/smoking-gun.js
-source sha256 4a16142df971e51f3a2ece389d6bf649f0d90555aa0c50a0c0873b4e25cc47e0 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-sdk/0.5.1/dist/scenes/smoking-gun.js
-how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
+load: GYM scene id `smoking-gun` · 3D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/smoking-gun.js
+source sha256 d005f5e53627138023ca300400ea2cec4567cb999ff344966af4a7ee64ce9551 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/smoking-gun.js
+how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: from the sketch's own header and constants [src]. A 600 x 600 x 600 3D world; a SphereEmitter muzzle at the centre fires a 1 x 10 slit of leaves with the particle-walk preset (+X momentum), BURST 20 a tick; brownian motion and inter-quantum collisions are on, and dimensions 4, 8 and 12 are declared (the smoke ladder). The burst holds until RAMP_START 180, falls linearly to zero at RAMP_END 600, and the muzzle is cut once it rounds to zero. The bullet is a declared Wall named "bullet" (bounce, reflect), a 10 px cube that its own tick function steps +1 px every second tick until the far wall; the gun body is a painted LargeObject built with `new` (not declared, no collision). Variations to predict before running: RAMP_END 300 → a shorter puff; BURST 40 → denser smoke; BULLET_SIDE 20 → a bigger cube and a taller slit (the slit height is the bullet's edge). The bullet is stepped by the sketch every second tick, so a hand that moves it is overwritten on the next step. No clip has been watched yet.
 
@@ -12,9 +12,9 @@ How to extrapolate: from the sketch's own header and constants [src]. A 600 x 60
 /**
  * SCENE — Smoking Gun
  *
- * A sketch file: the WHOLE scene as one dual-mode `buildExperiment(exp)` module. The 3D world, the
+ * A sketch file: the WHOLE scene as one ES module, `export default function buildExperiment(exp)`. The 3D world, the
  * muzzle, its wind-down, the bullet and its flight, and the painted gun body are all here; the
- * sugar objects (SphereEmitter, Wall, LargeObject), the renderer and the engine are includes.
+ * sugar objects (SphereEmitter, Wall, LargeObject), the renderer and the engine are imports.
  * Registered by lib/shim/registry/walkthrough.js (rung smoking-gun); the look and the camera ride
  * that row's renderState.
  *
@@ -27,7 +27,7 @@ How to extrapolate: from the sketch's own header and constants [src]. A 600 x 60
  * Order (it seeds the run): world → brownian/collision flags → the smoke ladder → the muzzle →
  * the wind-down tick-fn → the bullet → its flight tick-fn → the gun body.
  *
- * Card text (the CEO's what / why / how for this scene, verbatim; the scene is not on the
+ * Card text (this scene's what / why / how, verbatim; the scene is not on the
  * showcase roster, lib/shim/registry/exhibits.js, so no front-page tile or GYM card shows it):
  *   What you are seeing:
  *     Explore how you can create CGI-like effects out of emergent physics - if you are a ThreeJS
@@ -63,24 +63,29 @@ How to extrapolate: from the sketch's own header and constants [src]. A 600 x 60
  *     not a render effect.
  */
 
-function buildExperiment(exp) {
-  var W = 600, H = 600, D = 600;          // THE WORLD this scene states (its co-init call below)
-  var BURST = 20;                          // quanta per tick at the muzzle, before the wind-down
-  var BULLET_SIDE = 10;                    // the bullet cube's edge = the muzzle slit's height (px)
-  var RAMP_START = 180, RAMP_END = 600;    // the wind-down: full burst until RAMP_START, zero at RAMP_END
-  var GUN_W = 150, GUN_H = 84;             // the painted gun body (px); its right edge is the muzzle
+import { CameraControls, CollisionTypes, LargeObject, SphereEmitter } from '@descix/frqtl-web/parts';
 
-  var MUZZLE_X = Math.floor(W / 2), MUZZLE_Y = Math.floor(H / 2);
-  var SRC = {
+const W = 600, H = 600, D = 600;          // THE WORLD this scene states (its co-init call below)
+const BURST = 20;                          // quanta per tick at the muzzle, before the wind-down
+const BULLET_SIDE = 10;                    // the bullet cube's edge = the muzzle slit's height (px)
+const MUZZLE_X = Math.floor(W / 2), MUZZLE_Y = Math.floor(H / 2);
+
+export const parts = {
+  muzzle: [SphereEmitter, {
     preset: 'particle-walk', is2D: false,             // pure +X momentum in 2D and 3D
     center: [MUZZLE_X, MUZZLE_Y, 0],
     emissionBox: { x: 0, y: BULLET_SIDE, z: 0 },      // the 1×10 slit
     chargeMode: 'negative', burstSize: BURST, emitEveryTicks: 1,
     fundamentalDimension: 0, fundamentalWaveLength: 64   // λ scale floor(64/4) = 16
-  };
+  }],
+};
+
+export default function buildExperiment(exp) {
+  var RAMP_START = 180, RAMP_END = 600;    // the wind-down: full burst until RAMP_START, zero at RAMP_END
+  var GUN_W = 150, GUN_H = 84;             // the painted gun body (px); its right edge is the muzzle
 
   // ── WORLD — a 3D scene + universe W×H×D, fundamental layer 0, λ multiplier 16 ──
-  exp.createScene(W, H, D, setupSphereEmitter3D.worldCfg(SRC));
+  exp.createScene(W, H, D, SphereEmitter.worldCfg(parts.muzzle[1]));
   var u = exp.universe;
   u.brownianMotion = true;
   u.withInterQuantumCollisions = true;
@@ -90,7 +95,8 @@ function buildExperiment(exp) {
   exp.runner.setRateLimits({ tpsLimit: 60 });   // pacing only: 60 ticks = 1 s of wall-clock
 
   // ── THE MUZZLE ──
-  var muzzle = exp.addObject('SphereEmitter', SRC);
+  const p = exp.declare(parts);
+  var muzzle = p.muzzle;
 
   // ── THE WIND-DOWN — the burst falls linearly from BURST at RAMP_START to zero at RAMP_END ──
   // The burst setter's floor is one quantum per tick, so zero is the muzzle's cut, issued once.
@@ -123,10 +129,8 @@ function buildExperiment(exp) {
   gun.renderHint = 'gun';
 
   // ── MOVE/LOOK pads ──
-  if (typeof document !== 'undefined' && window.CameraControls && exp.runner.controlHost) {
-    window.CameraControls.attach(exp.runner, exp.runner.controlHost);
+  if (typeof document !== 'undefined' && exp.runner.controlHost) {
+    CameraControls.attach(exp.runner, exp.runner.controlHost);
   }
 }
-if (typeof module !== 'undefined' && module.exports) { module.exports = { buildExperiment: buildExperiment }; }
-else if (typeof window !== 'undefined') { window.buildExperiment = buildExperiment; }
 ```

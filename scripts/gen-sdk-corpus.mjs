@@ -2,16 +2,14 @@
 /* Copyright 2023-2026 by Essam Abadir */
 
 /**
- * gen-sdk-corpus.mjs — the Builder's knowledge base corpus: the docs the PUBLISHED @descix/frqtl-sdk ships.
+ * gen-sdk-corpus.mjs — the Builder's knowledge base corpus: the docs the PUBLISHED @descix/frqtl-web ships.
  *
  *   node scripts/gen-sdk-corpus.mjs            # fetch the pinned tarball, verify it, write kb/GodsWorldSDK/
  *   node scripts/gen-sdk-corpus.mjs --check    # exit 1 when kb/GodsWorldSDK/ differs from the tarball's docs
  *
- * The pin is site/vendor/frqtl-sdk/PINNED.json (npm tarball URL + its sha256): the tarball is fetched and
- * REFUSED unless its sha256 equals the pin. The docs are every file of the tarball named *.md, llms.txt or
- * sdk.html (measured 2026-10-14 for 0.5.1: package/README.md, package/CLAUDE.md, package/llms.txt,
- * dist/README.md, dist/ide/README.md, dist/ide/expr/README.md, dist/sdk.html), written unchanged under
- * kb/GodsWorldSDK/frqtl-sdk-<version>/<path inside the package>. Nothing is authored here: the KB holds the
+ * The pin is site/vendor/frqtl-web/PINNED.json (npm tarball URL + its sha256, read through scripts/frqtl-web-pin.mjs):
+ * the tarball is fetched and REFUSED unless its sha256 equals the pin. The docs are every file of the tarball named
+ * *.md, llms.txt or sdk.html, written unchanged under kb/GodsWorldSDK/frqtl-web-<version>/<path inside the package>. Nothing is authored here: the KB holds the
  * package's own words: the published SDK's spec is canonical for egpt-godsworld, so the KB carries it
  * unchanged. The KB is synced from .descix/manifests/GodsWorldSDK.json.
  */
@@ -22,13 +20,12 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { REPO, PINNED as pin } from './frqtl-web-pin.mjs';
 
-const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const pin = JSON.parse(fs.readFileSync(path.join(REPO, 'site', 'vendor', 'frqtl-sdk', 'PINNED.json'), 'utf8'));
 export const DOC = /(^|\/)([^/]+\.md|llms\.txt|sdk\.html)$/;
 /** kb/GodsWorldSDK holds ONE version — the pinned one; the KB manifest syncs the whole root, so any other file under it is stale. */
 const ROOT = path.join(REPO, 'kb', 'GodsWorldSDK');
-const OUT = path.join(ROOT, 'frqtl-sdk-' + pin.version);
+const OUT = path.join(ROOT, pin.name.split('/')[1] + '-' + pin.version);
 
 async function tarball() {
     const res = await fetch(pin.npm.tarball);

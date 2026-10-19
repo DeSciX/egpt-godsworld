@@ -14,19 +14,26 @@
  *   THE STAGE — before the Designer is asked, the loop reads what is loaded through the body's own `inventory`
  *     hand (maxi-roles.js stageOf; a refused inventory is emptyStage, its words kept). The Designer and the
  *     Builder's first turn are shown it; a plan for a scene not on it must load it (parsePlan).
- *   Designer (Maxi, the orchestrator) — outline → words for Tony and a plan for the Builder. ONE thread kept
- *     across outlines (`reset()` starts a new one); its preface rides on that thread's first turn only.
+ *   Designer (Maxi, the orchestrator) — Tony's message → its reading first (maxi-roles.js parseDesignerReply): an
+ *     outline → words for Tony and a plan for the Builder; a question → an ANSWER in words naming the memory files it
+ *     drew on (emitted as designer:answer {words, memories, reading}), and the turn ENDS there: no Builder, no Owl, no
+ *     hand beyond the stage's inventory, no Record (imagine resolves {answered, outline, reading, threads}); a question
+ *     and an outline → the answer, then the plan as for an outline. ONE thread kept across messages (`reset()` starts
+ *     a new one); its preface rides on that thread's first turn only.
  *   Builder (the implementer) — a fresh thread per outline. ONE hand call per reply (parseBuilderReply),
  *     run at once by the body; a clip the hand filmed rides on the Builder's NEXT turn with the hand's
  *     result. The reply after a filmed clip must first SAY what the clip shows (its words are kept with the
  *     clip). The last filmed clip and its call's prediction are the hand-back; `json:done` hands them to
- *     the Owl. `json:done` before any clip of this round stops the loop.
+ *     the Owl. `json:done` before any clip of this round stops the loop; `json:done` after a change (or a new
+ *     world) no clip shows is REFUSED back to the Builder (emitted as builder:done-refused {round, words, refusal}), its words verbatim as the next turn (the Record's
+ *     changes lie inside its footage), within the round's limits.builderTurns. The reply after a refused hand
+ *     must first say in words what was refused (before its PREDICTION line), else the loop stops.
  *   Owl (the distinct verifier) — a fresh thread per verdict, shown the outline, the prediction and the
  *     clip ONLY; it accounts for the footage (`seen`) before it judges. approve → the record is returned;
  *     revise → the Owl's reasons go to the Builder, who must film again.
  *
  * Stops LOUDLY (throws "Maxi stopped: …", and emits it) on: a refused question, a malformed hand-off, a
- * clip outside 5–10 s, a clip the Builder never described, `json:done` with no clip, more than
+ * clip outside 5–10 s, a clip the Builder never described, a refusal the Builder answered with no words, `json:done` with no clip, more than
  * `limits.builderTurns` Builder replies in a round, `limits.rounds` revises, a hand output the body cannot
  * read (a body bug — never handed to the Builder as a refusal). Refuses to START while the human's Record
  * or Hand is on (no `tony` event: the outline was not taken); refuseWhileWorking() is the page's guard for Record and the Hand while it runs.
@@ -36,13 +43,17 @@
  *
  * BRAIN  thread(role, key) → { ask(userInput, clip|null) → Promise<reply text>, id, turns }
  *          key: 'designer' | 'builder' | 'owl-r<round>' — the brain names its thread from it.
- * BODY   run(hand, args) → Promise<{ok:true, result, clip:null|{seconds, label, …the body's own footage}} |
- *                                  {ok:false, error}>;   omit — result keys the body sends another way.
+ * BODY   run(hand, args) → Promise<{ok:true, result, clip:null|{seconds, label, firstTick, lastTick, …the body's own footage}, changes} |
+ *                                  {ok:false, error, changes}>;   omit — result keys the body sends another way.
+ *        `changes` — the §6 change rows the hand made, read off the world's Record (maxi-lab.js actRows), a refused hand's too.
+ *        reauthors(hand) → boolean: whether the hand boots a new world (maxi-hands.js reauthors). A Record spans one
+ *        world, so the approve carries the approving round's WORLDS in order, each with its changes, its clips and
+ *        its inventory at open and close (maxi-record-folder.js assembleLoopRecords).
  */
 
 'use strict';
 
-import { buildAdapter, CLIP_SECONDS, CLIP_FACTS } from './maxi-hands.js';
+import { buildAdapter, reauthors, CLIP_SECONDS, CLIP_FACTS } from './maxi-hands.js';
 import { createThread, plainWords } from './maxi-ask.js';
 
 export const LOOP_LIMITS = Object.freeze({
@@ -62,7 +73,7 @@ function assertClip(hand, clip) {
 
 /**
  * @param {object} spec
- *   roles   — the roles module (ROLES, designerTurn, builderTurn, owlTurn, parsePlan, parseBuilderReply, parseVerdict)
+ *   roles   — the roles module (ROLES, designerTurn, builderTurn, owlTurn, parseDesignerReply, parseBuilderReply, parseVerdict)
  *   brain   — see BRAIN above;  body — see BODY above
  *   onEvent — {role:'tony'|'designer'|'builder'|'owl'|'loop', kind, round?, …} (the conversation, the run report)
  *   limits  — optional {rounds, builderTurns} (defaults LOOP_LIMITS)
@@ -73,7 +84,7 @@ function assertClip(hand, clip) {
  */
 export function createLoop(spec) {
     const roles = spec && spec.roles;
-    ['designerTurn', 'builderTurn', 'owlTurn', 'parsePlan', 'parseBuilderReply', 'parseVerdict', 'stageOf', 'emptyStage'].forEach(function (k) {
+    ['designerTurn', 'builderTurn', 'owlTurn', 'parseDesignerReply', 'parseBuilderReply', 'parseVerdict', 'stageOf', 'emptyStage'].forEach(function (k) {
         if (!roles || typeof roles[k] !== 'function') { throw new Error('[loop] the roles module exports no ' + k + '() — maxi-roles.js and the loop disagree.'); }
     });
     if (!Array.isArray(roles.ROLE_ORDER)) { throw new Error('[loop] the roles module exports no ROLE_ORDER — maxi-roles.js owns the list of roles.'); }
@@ -88,7 +99,7 @@ export function createLoop(spec) {
             roles.ROLES.designer.knowledgebase_names.join(', ') + '] — the Owl never receives the memories.');
     }
     if (!spec.brain || typeof spec.brain.thread !== 'function') { throw new Error('[loop] createLoop needs a brain {thread(role, key)}.'); }
-    if (!spec.body || typeof spec.body.run !== 'function' || !Array.isArray(spec.body.omit)) { throw new Error('[loop] createLoop needs a body {run(hand, args), omit[]}.'); }
+    if (!spec.body || typeof spec.body.run !== 'function' || !Array.isArray(spec.body.omit) || typeof spec.body.reauthors !== 'function') { throw new Error('[loop] createLoop needs a body {run(hand, args), omit[], reauthors(hand)}.'); }
     if (typeof spec.onEvent !== 'function') { throw new Error('[loop] createLoop needs onEvent(event).'); }
     if (spec.recorder !== undefined && (!spec.recorder || typeof spec.recorder.recording !== 'boolean')) { throw new Error('[loop] createLoop\'s recorder must be the human\'s Record (attachRecorder: a boolean `recording`).'); }
     const recorder = spec.recorder || null;
@@ -109,16 +120,55 @@ export function createLoop(spec) {
     async function readStage() {
         const r = await body.run('inventory', {});
         if (!r || typeof r.ok !== 'boolean') { throw new Error('the body answered inventory without {ok}.'); }
-        if (!r.ok) { return roles.emptyStage(r.error); }
-        try { return roles.stageOf(r.result); }
+        if (!r.ok) { return { stage: roles.emptyStage(r.error), inventory: null }; }
+        try { return { stage: roles.stageOf(r.result), inventory: r.result }; }
         catch (err) { throw new Error('the body\'s inventory is not a stage (' + String((err && err.message) || err) + ') — a body bug, so the loop stopped.'); }
     }
 
+    /**
+     * Why a json:done cannot hand back yet, in words, or null: the last world has no clip (a loadScene/openSketch no clip
+     * shows), or a world has changes after its last clip. A Record's changes lie inside its footage (the design §6).
+     */
+    function doneRefusal(worlds) {
+        const now = worlds[worlds.length - 1];
+        if (!now.clips.length) { return 'json:done after a loadScene/openSketch that no clip shows — your last clip shows a world that was replaced; film the new world.'; }
+        for (let i = 0; i < worlds.length; i++) {
+            const w = worlds[i];
+            if (w.changes.length > w.changesAt) {
+                return 'json:done after ' + (w.changes.length - w.changesAt) + ' change(s) your last clip does not show (the first: ' + w.changes[w.changesAt].op + ' of ' +
+                    w.changes[w.changesAt].name + ') — a Record\'s changes lie inside its footage; film again after the last change.';
+            }
+        }
+        return null;
+    }
+
+    function newWorld(before) { return { before: before, after: null, afterRefused: null, changes: [], clips: [], changesAt: 0 }; }
+
+    /** The changes a hand made, as the body reports them: an array always, a refused hand's included. */
+    function changesOf(hand, ran) {
+        if (!Array.isArray(ran.changes)) { throw new Error('the body answered ' + hand + ' without `changes` (the writes it made) — a Record could not state them, so the loop stopped.'); }
+        return ran.changes;
+    }
+
     /** One round of Builder replies, ending in json:done after a described clip. */
-    async function build(ctx, builder, round, steps) {
+    /** The inventory as the body reads it now: {inventory} | {inventory: null, refused}. */
+    async function inventoryNow() {
+        const r = await body.run('inventory', {});
+        if (!r || typeof r.ok !== 'boolean') { throw new Error('the body answered inventory without {ok}.'); }
+        return r.ok ? { inventory: r.result, refused: null } : { inventory: null, refused: r.error };
+    }
+
+    /**
+     * One round of Builder replies, ending in json:done after a described clip. `worlds` holds the round's booted worlds
+     * in order ({before, after, afterRefused, changes, clips:[{hand, clip}], changesAt}); a re-authoring hand (the
+     * body's reauthors(hand)) closes the current world — its inventory read just before the hand — and opens the next.
+     * A Record spans exactly one world (the design §6).
+     */
+    async function build(ctx, builder, round, steps, worlds) {
         let text = ctx.revise ? roles.builderTurn({ revise: ctx.revise }) : roles.builderTurn({ plan: ctx.plan, stage: ctx.stage });
         let clip = null;      // the clip that rides on the NEXT Builder turn
         let last = null;      // {clip, prediction, hand, words, awaitingWords}
+        let refused = null;   // the hand refused on the last turn: the next reply must say in words what was refused
         for (let n = 1; n <= limits.builderTurns; n++) {
             const got = await ask('builder', builder, text, clip);
             let reply;
@@ -128,15 +178,36 @@ export function createLoop(spec) {
                 if (!reply.words.trim()) { throw new Error('the Builder did not say what its clip shows before its next block — it must describe the footage it filmed, so the loop stopped.'); }
                 last.words = reply.words; last.awaitingWords = false;
             }
+            if (refused && !reply.said.trim()) {
+                throw new Error('the Builder answered the refusal of its ' + refused + ' with no words before its next block — it must say which part and key were refused and why, never retry silently, so the loop stopped.');
+            }
+            refused = null;
             const words = plainWords(reply.words).text;
             if (reply.kind === 'done') {
                 if (!last) { throw new Error('the Builder said json:done before filming any clip — its hand-back is a clip, so the loop stopped.'); }
+                const unfilmed = doneRefusal(worlds);
+                if (unfilmed) {   // the Builder can repair it: the refusal is its next turn, verbatim, and the conversation shows it (maxi-talk.js DONE_REFUSED)
+                    emit({ role: 'builder', kind: 'done-refused', round: round, words: words, refusal: unfilmed });
+                    text = roles.builderTurn({ doneRefused: unfilmed });
+                    clip = null;
+                    continue;
+                }
                 return { prediction: last.prediction, clip: last.clip, hand: last.hand, words: last.words, doneWords: words };
             }
+            const reboots = body.reauthors(reply.hand) === true;
+            const closing = reboots ? await inventoryNow() : null;   // the world as this hand finds it: the close of its Record
             const ran = await body.run(reply.hand, reply.args);
             if (!ran || typeof ran.ok !== 'boolean') { throw new Error('the body answered ' + reply.hand + ' without {ok}.'); }
+            const world = worlds[worlds.length - 1];
+            Array.prototype.push.apply(world.changes, changesOf(reply.hand, ran));
             clip = (ran.ok && ran.clip) ? ran.clip : null;
-            if (clip) { assertClip(reply.hand, clip); last = { clip: clip, prediction: reply.prediction, hand: reply.hand, words: null, awaitingWords: true }; }
+            if (clip) { assertClip(reply.hand, clip); world.clips.push({ hand: reply.hand, clip: clip }); world.changesAt = world.changes.length; last = { clip: clip, prediction: reply.prediction, hand: reply.hand, words: null, awaitingWords: true }; }
+            if (reboots && ran.ok) {   // a new world: this Record closes, the next act opens a new one
+                world.after = closing.inventory; world.afterRefused = closing.refused;
+                const opened = await inventoryNow();
+                worlds.push(newWorld(opened.inventory));
+            }
+            if (!ran.ok) { refused = reply.hand; }
             steps.push({ hand: reply.hand, args: reply.args });
             emit({ role: 'builder', kind: 'working', round: round, words: words, hand: reply.hand, args: reply.args, prediction: reply.prediction,
                 ok: ran.ok, result: ran.ok ? ran.result : undefined, error: ran.ok ? undefined : ran.error, clip: clip });
@@ -163,17 +234,28 @@ export function createLoop(spec) {
         outline = outline.trim();
         emit({ role: 'tony', kind: 'said', words: outline });
         try {
-            const stage = await readStage();
+            const read = await readStage();
+            const stage = read.stage;
             if (!st.designer) { st.designer = brain.thread('designer', 'designer'); }
-            const parsed = roles.parsePlan(await ask('designer', st.designer, roles.designerTurn({ outline: outline, first: st.designer.turns === 0, stage: stage }), null), stage);
+            const parsed = roles.parseDesignerReply(await ask('designer', st.designer, roles.designerTurn({ outline: outline, first: st.designer.turns === 0, stage: stage }), null), stage);
+            const answered = parsed.answer ? { words: plainWords(parsed.answer.words).text, memories: parsed.answer.memories.slice() } : null;
+            if (answered) {   // a question: the answer in words, its memory files named (maxi-talk.js ANSWERED)
+                emit({ role: 'designer', kind: 'answer', words: answered.words, memories: answered.memories.slice(), reading: parsed.reading });
+            }
+            if (!parsed.plan) {   // nothing to build: the turn ends with the answer — no Builder, no Owl, no Record
+                return { answered: answered, outline: outline, reading: parsed.reading, threads: { designer: st.designer.id } };
+            }
             emit({ role: 'designer', kind: 'plan', words: plainWords(parsed.words).text, plan: parsed.plan, prediction: parsed.plan.prediction, stage: stage });
             const builder = brain.thread('builder', 'builder');
             const ctx = { plan: parsed.plan, stage: stage, revise: null };
             const steps = [];
+            let before = read.inventory;   // the round's first world's start: the stage for round 1, re-read for each later round
             const verdicts = [];
             let lastReasons = [];
             for (let round = 1; round <= limits.rounds; round++) {
-                const built = await build(ctx, builder, round, steps);
+                if (round > 1) { before = (await inventoryNow()).inventory; }
+                const worlds = [newWorld(before)];   // the approving ROUND's worlds become its Records, one per world (the design §6)
+                const built = await build(ctx, builder, round, steps, worlds);
                 emit({ role: 'builder', kind: 'built', round: round, words: built.doneWords, prediction: built.prediction, clip: built.clip });
                 const owl = brain.thread('owl', 'owl-r' + round);
                 const owlText = roles.owlTurn({ outline: outline, prediction: built.prediction });   // outline + prediction ONLY: never the plan
@@ -182,7 +264,10 @@ export function createLoop(spec) {
                 emit({ role: 'owl', kind: v.verdict, round: round, verdict: v, words: plainWords(v.words).text, seen: v.seen, reasons: v.reasons, change: v.change,
                     clip: built.clip, prediction: built.prediction });
                 if (v.verdict === 'approve') {
+                    const after = await inventoryNow();   // the last world's close; a refusal is kept in words (the Record assembly refuses it)
+                    worlds[worlds.length - 1].after = after.inventory; worlds[worlds.length - 1].afterRefused = after.refused;
                     st.last = {
+                        worlds: worlds.map(function (w) { return { before: w.before, after: w.after, afterRefused: w.afterRefused, changes: w.changes.slice(), clips: w.clips.slice() }; }),
                         outline: outline, verdict: 'approve', rounds: round, plan: parsed.plan, designerWords: parsed.words, steps: steps.slice(),
                         clip: built.clip, prediction: built.prediction, builderWords: built.words, owl: v, verdicts: verdicts,
                         threads: { designer: st.designer.id, builder: builder.id, owl: owl.id }
@@ -248,8 +333,10 @@ export function threadBrain(spec) {
  */
 export function labBody(spec) {
     if (!spec || !spec.hands || !spec.lab) { throw new Error('[loop] labBody needs {hands, lab}.'); }
+    if (typeof spec.lab.actRows !== 'function') { throw new Error('[loop] labBody\'s lab publishes no actRows(act) — a hand\'s rows are read off the world\'s Record (maxi-lab.js).'); }
     return {
         omit: [],
+        reauthors: function (hand) { return Object.prototype.hasOwnProperty.call(spec.hands, hand) && reauthors(spec.hands, hand); },
         run: async function (hand, args) {
             let held = null;
             const loopLab = Object.assign({}, spec.lab, {
@@ -260,17 +347,18 @@ export function labBody(spec) {
                 }
             });
             const adapter = buildAdapter(spec.hands, loopLab);
-            if (typeof adapter[hand] !== 'function') { return { ok: false, error: 'no hand "' + hand + '" — the hands are [' + Object.keys(spec.hands).join(', ') + '].' }; }
-            let raw;
-            try { raw = await adapter[hand](args); }
-            catch (err) { return { ok: false, error: String((err && err.message) || err) }; }   // a hand's own refusal goes back to the Builder verbatim
+            if (typeof adapter[hand] !== 'function') { return { ok: false, error: 'no hand "' + hand + '" — the hands are [' + Object.keys(spec.hands).join(', ') + '].', changes: [] }; }
+            const ran = await spec.lab.actRows(function () { return adapter[hand](args); });   // the hand's rows, read off the world's Record (maxi-lab.js)
+            if (!ran.ok) { return { ok: false, error: ran.error, changes: ran.changes }; }   // a hand's own refusal goes back to the Builder verbatim
+            const raw = ran.value;
             let result;
             try { result = JSON.parse(raw); }
             catch (err) {   // a body bug, not the Builder's to fix: it stops the loop
                 throw new Error('the body could not read the ' + hand + ' hand\'s output (' + String((err && err.message) || err) + ') — the hand returned ' +
                     (typeof raw === 'string' ? JSON.stringify(raw.slice(0, 200)) : String(raw)) + '; a body bug, so the loop stopped.');
             }
-            return { ok: true, result: result, clip: held ? { media: held, seconds: result[CLIP_FACTS.seconds], label: result[CLIP_FACTS.label] } : null };
+            return { ok: true, result: result, changes: ran.changes, clip: held ? { media: held, seconds: result[CLIP_FACTS.seconds], label: result[CLIP_FACTS.label],
+                firstTick: result[CLIP_FACTS.firstTick], lastTick: result[CLIP_FACTS.lastTick] } : null };
         }
     };
 }

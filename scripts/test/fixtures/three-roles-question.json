@@ -1,0 +1,16 @@
+{
+  "outline": "why is the double slit thought to be classically impossible?",
+  "note": "a question for the page loop and its LOOK: the Designer answers in words from a named memory; nothing is built",
+  "designer": [
+    {
+      "status": "OK",
+      "response": "THIS IS: a question\nFrom my card memory dse-tunnel-rebuild-card.md: the card says Feynman called it impossible to explain in any classical way, and that solving the light waves directly for a tabletop would cost far more than a supercomputer has. That is the card's claim, not something I proved.\n```json:answer\n{\"memories\":[\"dse-tunnel-rebuild-card.md\"]}\n```",
+      "interaction_id": "replay.designer.1",
+      "usage": {
+        "media_tokens": 0
+      }
+    }
+  ],
+  "builder": [],
+  "owl": []
+}

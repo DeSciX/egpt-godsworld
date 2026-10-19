@@ -25,7 +25,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ROLES, ROLE_ORDER, HANDOFF_TAGS, WORLD_FRAME } from '../site/app-assets/maxi-roles.js';
+import { ROLES, ROLE_ORDER, HANDOFF_TAGS, WORLD_FRAME, READING_LINE, DESIGNER_READINGS } from '../site/app-assets/maxi-roles.js';
+import { ANSWER_SUFFIX } from './gen-memories-seen.mjs';   // the thread format's owner: the loop writes, the generator serves
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const AGENTS_DIR = 'plugin/agents';
@@ -39,7 +40,7 @@ export const ROLES_MARKERS = Object.freeze({
 });
 
 const HANDOFF_BY_ROLE = {
-    designer: 'ONE ```' + HANDOFF_TAGS.plan + '``` block',
+    designer: 'ONE ```' + HANDOFF_TAGS.plan + '``` block for an outline, or ONE ```' + HANDOFF_TAGS.answer + '``` block for a question (the answer block, then the plan block, for both), its FIRST line `' + READING_LINE + ' …` reading the message',
     builder: 'ONE ```' + HANDOFF_TAGS.call + '<hand>``` block with its `PREDICTION:` line before it, or ONE ```' + HANDOFF_TAGS.done + '``` block',
     owl: 'ONE ```' + HANDOFF_TAGS.verdict + '``` block, its `seen` account of the footage first'
 };
@@ -73,7 +74,7 @@ function howLocal(r) {
         '# HOW THIS AGENT RUNS (MiniMaxi, local brain)',
         '',
         'You are ' + r.name + (r.name !== r.title ? ' (' + r.title + ')' : '') + ' — the ' + r.metaphor + ' — run by the `minimaxi` skill. Your prompt names a',
-        'TURN FILE `minimaxi/out/turns/<n>-' + r.id + '.md` and its ANSWER FILE `<n>-' + r.id + '.answer.md`. Read the turn file: it',
+        'TURN FILE `minimaxi/out/turns/<run>/<n>-' + r.id + '.md` and its ANSWER FILE `<n>-' + r.id + ANSWER_SUFFIX + '`. Read the turn file: it',
         'holds your turn text — exactly what the platform brain would be asked — and, when the turn carries footage,',
         'the paths of frame images sampled from the clip in order. Write your reply to the answer file, as the',
         'whole reply text, ending with ' + HANDOFF_BY_ROLE[r.id] + '. Nothing else ends your turn: the loop reads',
@@ -142,7 +143,13 @@ export function renderRolesTable() {
         'and no memories, on the platform and as a local agent alike.', '',
         'Every role is told the same world frame (`WORLD_FRAME`): the Designer and the Builder in the persona (its generated',
         'WORLD FRAME section), the Owl, who runs without the persona, in its first turn:', '',
-        '> ' + WORLD_FRAME, '', ROLES_MARKERS.end]).join('\n');
+        '> ' + WORLD_FRAME, '',
+        'The Designer reads every message first. `' + READING_LINE + ' ' + DESIGNER_READINGS.outline + '` plans and builds as above. `' +
+            READING_LINE + ' ' + DESIGNER_READINGS.question + '` ends at its answer:',
+        'the report\'s `answer` holds the words and the memory files they named, `outcome` reads `answered in words …: no',
+        'build, no Record`, and no Builder, Owl, Record or memory follows. On MiniMaxi an answer naming a file that is not',
+        'under kb/GodsWorld stops the run by name. `' + READING_LINE + ' ' + DESIGNER_READINGS.both + '` answers first, then builds as an outline does.',
+        '', ROLES_MARKERS.end]).join('\n');
 }
 
 function spliceRoles(text) {

@@ -1,7 +1,7 @@
 {
   "kb_name": "GodsWorldSDK",
   "sync_mode": "local",
-  "_purpose": "The Builder's KB on the egpt-godsworld app: the docs the published @descix/frqtl-sdk ships (README.md, CLAUDE.md, llms.txt, dist/README.md, dist/ide READMEs, dist/sdk.html), unchanged, written by scripts/gen-sdk-corpus.mjs from the tarball pinned in site/vendor/frqtl-sdk/PINNED.json. Nothing authored here.",
+  "_purpose": "The Builder's KB on the egpt-godsworld app: the docs the published @descix/frqtl-web ships (every *.md, llms.txt and sdk.html in its tarball), unchanged, written by scripts/gen-sdk-corpus.mjs from the tarball pinned in site/vendor/frqtl-web/PINNED.json. Nothing authored here.",
   "sources": [
     {
       "path": "kb/GodsWorldSDK",

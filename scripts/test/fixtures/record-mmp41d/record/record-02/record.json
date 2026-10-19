@@ -1,0 +1,46 @@
+{
+  "tickRange": [
+    2135,
+    8529
+  ],
+  "clips": [
+    "clip-01.mp4",
+    "clip-02.mp4"
+  ],
+  "changes": [
+    {
+      "tick": 2135,
+      "name": "mirror",
+      "op": "setDeclared",
+      "by": "maxi",
+      "from": {
+        "orientationDeg": 45
+      },
+      "to": {
+        "orientationDeg": 30
+      }
+    },
+    {
+      "tick": 8378,
+      "name": "mirror",
+      "op": "move",
+      "by": "maxi",
+      "from": {
+        "rect": [
+          360,
+          80,
+          20,
+          240
+        ]
+      },
+      "to": {
+        "rect": [
+          290,
+          80,
+          20,
+          240
+        ]
+      }
+    }
+  ]
+}

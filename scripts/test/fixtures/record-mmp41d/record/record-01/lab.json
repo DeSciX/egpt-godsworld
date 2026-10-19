@@ -1,0 +1,88 @@
+{
+  "producer": "loop",
+  "scene": {
+    "label": "1A · Mirror",
+    "id": "cl1a-mirror",
+    "mode": null,
+    "renderer": "p5"
+  },
+  "brain": "local",
+  "run": "mmp41d",
+  "chain": {
+    "index": 1,
+    "records": [
+      "record-01",
+      "record-02"
+    ]
+  },
+  "handBack": {
+    "record": "record-02",
+    "clip": "clip-02.mp4"
+  },
+  "declared": {
+    "before": [
+      {
+        "name": "source",
+        "kind": "SphereEmitter",
+        "authority": "center",
+        "center": [
+          72,
+          200,
+          0
+        ]
+      },
+      {
+        "name": "mirror",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          370,
+          200,
+          0
+        ],
+        "rect": [
+          360,
+          80,
+          20,
+          240
+        ]
+      }
+    ],
+    "after": [
+      {
+        "name": "source",
+        "kind": "SphereEmitter",
+        "authority": "center",
+        "center": [
+          72,
+          200,
+          0
+        ]
+      },
+      {
+        "name": "mirror",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          370,
+          200,
+          0
+        ],
+        "rect": [
+          360,
+          80,
+          20,
+          240
+        ]
+      }
+    ]
+  },
+  "filmed": [
+    {
+      "clip": "clip-01.mp4",
+      "hand": "see",
+      "firstTick": 2805,
+      "lastTick": 3055
+    }
+  ]
+}

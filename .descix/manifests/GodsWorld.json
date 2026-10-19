@@ -1,7 +1,7 @@
 {
   "kb_name": "GodsWorld",
   "sync_mode": "local",
-  "_purpose": "Maxi's default KB on the egpt-godsworld app: his memories (kb/GodsWorld/memories, one card, build and seen file per scene). Self-contained in this repo; the scene clips are served by the site under memories/<id>/.",
+  "_purpose": "Maxi's default KB on the egpt-godsworld app: his memories (kb/GodsWorld/memories, one card, build and seen file per scene) plus the robotic imagination guide (kb/GodsWorld/robotic-imagination.md). Self-contained in this repo; the scene clips are served by the site under memories/<id>/.",
   "sources": [
     {
       "path": "kb/GodsWorld",

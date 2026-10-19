@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<!-- FRQTL — bootScene self-contained scene page (a spherical "sun").
+     Authored at sdk/frqtl-web/src/artifact/sun.html; written to dist/artifact/sun.html by
+     sdk/frqtl-web/build.js (the build places its relative URLs: sdk/_build/lib-dist-placement.cjs
+     placePageHtml).
+
+     It boots through frqtl-web.min.js, the one-file form of the package (global FRQTL), served from the
+     SAME dist as this page: the bundle locates every engine, renderer and vendor file relative to the
+     URL it was loaded from.
+
+     The scene is a SKETCH, buildExperiment(exp): its first statement, exp.createScene, states the world
+     (a 480-cube, drawn by three); the mount takes its size from the canvas that call creates. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FRQTL — Sun (bootScene / SphereEmitter)</title>
+<style>
+  html,body{margin:0;padding:0;background:#050507;color:#c9c9c9;font-family:ui-monospace,Menlo,Consolas,monospace;}
+  #frqtl-status{text-align:center;font-size:12px;color:#888;padding:10px 0 4px;}
+  #frqtl-mount{width:fit-content;margin:0 auto 24px;position:relative;}
+</style>
+</head>
+<body>
+<div id="frqtl-status" data-role="frqtl-scene-status">booting FRQTL sun…</div>
+<div id="frqtl-mount" data-role="frqtl-scene-mount"></div>
+<script src="../frqtl-web.min.js"></script>
+<script>
+  /* BOOT DEADLINE — lib/shim/engine/artifact-shell.js ARTIFACT_BOOT_DEADLINE_MS. */
+  setTimeout(function () {
+    if (window.__frqtlLive) { return; }
+    var map = document.querySelector('script[type="importmap"]');
+    var min = document.querySelector('script[src$="frqtl-web.min.js"]');
+    var entry = min ? min.src : '(no import map)';
+    try { if (map) { entry = new URL(JSON.parse(map.textContent).imports['@descix/frqtl-web/boot'], document.baseURI).href; } } catch (e) { /* the message names the absence */ }
+    var msg = 'FRQTL BOOT TIMEOUT — not live after ' + (30000 / 1000) + ' s: the SDK entry ' + entry +
+      ' did not load, or its boot never reached a first tick.';
+    var el = document.getElementById('frqtl-status');
+    if (el) { el.textContent = msg; el.setAttribute('data-egpt-boot-timeout', '1'); }
+    if (window.console && console.error) { console.error('[frqtl-artifact]', msg); }
+  }, 30000);
+</script>
+
+<script>
+  var SphereEmitter = FRQTL.SphereEmitter;
+
+  var statusEl = document.getElementById('frqtl-status');
+  var tickCount = 0;
+
+  // The sun — a 3D omni POINT source: a spherical SphereEmitter at the centre of a 480-cube.
+  var SRC = {
+    preset: 'spherical', emissionBoxSide: 0, is2D: false,
+    chargeMode: 'random', fundamentalDimension: 2
+  };
+  FRQTL.bootScene('frqtl-mount', function buildExperiment(exp) {
+    exp.createScene(480, 480, 480, SphereEmitter.worldCfg(SRC));   // THE WORLD: a 3D scene + universe, 480 x 480 x 480
+    exp.addObject('SphereEmitter', SRC);
+  }, {
+    renderer: 'three',
+    seed: 42,
+    render: { shape: 'sphere', godrays: 0.8, glowIntensity: 1.6 },
+    onTick: function () {
+      tickCount++;
+      if (tickCount % 20 === 0) {
+        statusEl.textContent = 'FRQTL sun — live — tick ' + tickCount;
+      }
+    }
+  }).then(function (scene) {
+    window.__frqtlLive = true;
+    statusEl.textContent = 'FRQTL sun — live';
+    // Expose for realm assertions (Playwright): tweak render options live.
+    window.__frqtlScene = scene;
+  }).catch(function (err) {
+    window.__frqtlLive = true;   // failed LOUDLY already — the deadline has nothing to add
+    statusEl.textContent = 'FRQTL sun boot FAILED — see overlay below.';
+    if (window.console && console.error) { console.error('[frqtl-sun]', err); }
+  });
+</script>
+</body>
+</html>

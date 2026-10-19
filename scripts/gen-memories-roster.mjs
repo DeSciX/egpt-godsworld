@@ -3,16 +3,16 @@
 //
 //   node scripts/gen-memories-roster.mjs
 //
-// Reads the registry from the VENDORED SDK this site pins (the package's registry barrel,
-// site/vendor/frqtl-sdk/<version>/dist/ide/registry/index.js, version from PINNED.json — the same
+// Reads the registry from the VENDORED package this site pins (its `./registry` export, located by
+// scripts/frqtl-web-pin.mjs from site/vendor/frqtl-web/PINNED.json — the same
 // rungs and tiles the lab's picker shows), and writes kb/GodsWorld/memories/roster.json: the nine EXHIBITS rows first,
 // in front-page order, then every other WALKTHROUGH rung in registry order. Each row carries
 // the scene id, its default mode, the sketch file path (relative to the vendored dist) and the card copy
 // (title / tile / what / why / how / controls / still alt for a tile; title / prose / group for
 // every rung). The output is deterministic: a re-run against a newer registry shows drift as a
 // diff of this one file. The memory gate (scripts/test/memories.test.mjs) reads this roster.
-import { pathToFileURL } from 'node:url';
-import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { PINNED as pinned, DIST_REL, distUrl, exportFile } from './frqtl-web-pin.mjs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,10 +22,9 @@ if (process.argv.length > 2) {
 }
 const here = dirname(fileURLToPath(import.meta.url));
 const out = resolve(here, '..', 'kb', 'GodsWorld', 'memories', 'roster.json');
-const pinned = JSON.parse(readFileSync(resolve(here, '..', 'site', 'vendor', 'frqtl-sdk', 'PINNED.json'), 'utf8'));
-const registryRel = 'site/vendor/frqtl-sdk/' + pinned.version + '/dist/ide/registry/index.js';
+const registryRel = DIST_REL + '/' + exportFile('./registry');
 
-const reg = await import(pathToFileURL(resolve(here, '..', registryRel)).href);
+const reg = await import(distUrl(exportFile('./registry')));
 const ex = reg;
 const wt = reg;
 if (!Array.isArray(ex.EXHIBITS) || !Array.isArray(wt.WALKTHROUGH)) {

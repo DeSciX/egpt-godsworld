@@ -1,10 +1,10 @@
 # Memory: 3D Collisions Lab — build
 
-load: GYM scene id `collision-matrix-3d` · 3D · source site/vendor/frqtl-sdk/0.5.1/dist/scenes/collision-matrix-3d.js
-source sha256 a8983dd0d0fecbf7d343e9431a4c203a48dc7cdb799065fcf62440c5e49e6bc7 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-sdk/0.5.1/dist/scenes/collision-matrix-3d.js
-how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
+load: GYM scene id `collision-matrix-3d` · 3D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/collision-matrix-3d.js
+source sha256 70cc8255394e41ffd6dfe4897392d92dd7dfaffda64811d200922fb3b716d607 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/collision-matrix-3d.js
+how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
-How to extrapolate: seven head-on pairs at seven densities. The lab is the density table: lanesTable.LANE_DENSITIES (an include) maps lane k to a mass; laneMassesForCapacity scales it to the capacity the engine reports for a 64 px body. Variants: LEVEL 5 (32 px bodies, capacity 1024) → predict smaller balls. offset 16 (the knob): seat() puts A at cy + offset and B at cy − offset, so the two lane centres sit 2 × 16 = 32 px apart, not 16 (the source comment's 'miss by that much' undercounts by half); with 64 px bodies they still overlap by 64 − 32 = 32 px, so predict a glancing hit, not a miss. angle 0.5 → vy = −0.5·vx: predict oblique hits. ax0/bx0 ± 1.5 voxels = 96 px either side of centre, so the facing edges start 192 − 64 = 128 px apart and first contact comes after 96 − 32 = 64 px of travel each; predict about tick 64 at speed_prob 1 (1 px per tick). The clip (memories/collision-matrix-3d/clip.mp4, default camera) showed the pairs close at the start, parted left and right by ≈400 ticks, and about sixteen balls scattered mid-frame by 795.
+How to extrapolate: seven head-on pairs at seven densities. The lab is the density table: lanesTable.LANE_DENSITIES (the collisionMatrixLanes import) maps lane k to a mass; laneMassesForCapacity scales it to the capacity the engine reports for a 64 px body. Variants: LEVEL 5 (32 px bodies, capacity 1024) → predict smaller balls. offset 16 (the knob): seat() puts A at cy + offset and B at cy − offset, so the two lane centres sit 2 × 16 = 32 px apart, not 16 (the source comment's 'miss by that much' undercounts by half); with 64 px bodies they still overlap by 64 − 32 = 32 px, so predict a glancing hit, not a miss. angle 0.5 → vy = −0.5·vx: predict oblique hits. ax0/bx0 ± 1.5 voxels = 96 px either side of centre, so the facing edges start 192 − 64 = 128 px apart and first contact comes after 96 − 32 = 64 px of travel each; predict about tick 64 at speed_prob 1 (1 px per tick). The clip (memories/collision-matrix-3d/clip.mp4, default camera) showed the pairs close at the start, parted left and right by ≈400 ticks, and about sixteen balls scattered mid-frame by 795.
 
 ```js
 /* Copyright 2023-2026 by Essam Abadir */
@@ -12,9 +12,9 @@ How to extrapolate: seven head-on pairs at seven densities. The lab is the densi
 /**
  * SCENE — 3D Collisions Lab
  *
- * A sketch file: the WHOLE scene as one dual-mode `buildExperiment(exp)` module. The 3D world, the
+ * A sketch file: the WHOLE scene as one ES module, `export default function buildExperiment(exp)`. The 3D world, the
  * seven head-on lanes of equal-mass voxel pairs, their live knobs and the look are all here; the
- * lane density table (`collisionMatrixLanes`), the renderer and the engine are includes.
+ * lane density table (`collisionMatrixLanes`), the renderer and the engine are imports.
  * Registered by lib/shim/registry/walkthrough.js (rung collision-matrix-3d).
  *
  * Physics (zero new — bench C2, C3, C5, SU1): each lane fires two equal bodies at each other at
@@ -27,7 +27,13 @@ How to extrapolate: seven head-on pairs at seven densities. The lab is the densi
  * per lane, body A then body B (engine-built, capacity read back once) → seat every body.
  */
 
-function buildExperiment(exp) {
+import { CameraControls, FrqtlControlOverlay, FrqtlControlsPanel } from '@descix/frqtl-web/parts';
+import * as ControlRegistry from '@descix/frqtl-web/shim/controls/registry.js';
+import { collisionMatrixLanes } from '@descix/frqtl-web/objects/setup/_collisionMatrixLanes.js';
+
+export const parts = {};
+
+export default function buildExperiment(exp) {
   // memo: A 700 x 700 x 700 world.
   var W = 700, H = 700, D = 700;    // THE WORLD this scene states (its co-init call below)
   // memo: The voxel layer: 2^6 = 64 px bodies, capacity 4096 (read back from the engine below, never assumed). [src]
@@ -36,6 +42,7 @@ function buildExperiment(exp) {
   // ── WORLD — a 3D scene + universe W×H×D, fundamental layer 0, λ multiplier 1 ──
   // memo: THE WORLD, 3D, written directly (no emitter).
   exp.createScene(W, H, D, { dimension: 0, wavelengthScale: 1 });
+  exp.declare(parts);
   var u = exp.universe;
   // memo: Bodies that meet collide (bench C2/C3/C5): without this they would pass through each other [HUMAN_GUIDE Part 3, withInterQuantumCollisions].
   u.withInterQuantumCollisions = true;
@@ -44,8 +51,8 @@ function buildExperiment(exp) {
   // memo: Wall-clock pacing only (240 ticks/s max): never the physics.
   exp.runner.setRateLimits({ tpsLimit: 240 });   // pacing only: wall-clock, never the ticks
 
-  // memo: The ONE density table (an include): seven densities from feather-light to rigid.
-  var lanesTable = window.collisionMatrixLanes;   // the ONE lane density table (include)
+  // memo: The ONE density table, the collisionMatrixLanes import from '@descix/frqtl-web/objects/setup/_collisionMatrixLanes.js' (top of the file): seven densities from feather-light to rigid.
+  var lanesTable = collisionMatrixLanes;   // the ONE lane density table (imported)
   // memo: 64 and 32 px.
   var voxel = Math.pow(2, LEVEL), half = voxel / 2;
   // memo: 350: the meeting line.
@@ -114,25 +121,22 @@ function buildExperiment(exp) {
 
   // ── THE KNOBS (on the canvas) + MOVE/LOOK pads ──
   // memo: Page-only knobs: offset 0..48 px (step 4) and angle 0..1 (step 0.1), each re-seating all pairs; plus the MOVE/LOOK pads.
-  if (typeof document !== 'undefined' && window.ControlRegistry && window.FrqtlControlsPanel && window.FrqtlControlOverlay) {
-    var registry = window.ControlRegistry.makeControlRegistry();
-    registry.registerControls('collision-matrix-3d', [
-      { kind: 'scalar', id: 'offset', label: 'offset', min: 0, max: 48, step: 4, value: 0,
-        fmt: function (v) { return String(v); }, onChange: function (v) { offsetPx = v; reseatAll(); },
-        place: { x: 0.02, y: 0.03 } },
-      { kind: 'scalar', id: 'angle', label: 'angle', min: 0, max: 1, step: 0.1, value: 0,
-        fmt: function (v) { return v.toFixed(1); }, onChange: function (v) { angleVy = v; reseatAll(); },
-        place: { x: 0.02, y: 0.12 } }
-    ]);
-    window.FrqtlControlsPanel.exposeRegistry(registry, { runner: exp.runner });
-    // The overlay mounts through the runner's ONE door (runner.controlHost); before a canvas is mounted
-    // (a notebook pane) there is none, so the knobs stay in the exposed registry only.
-    if (exp.runner.controlHost) { window.FrqtlControlOverlay.mount(exp.runner, { registry: registry, name: 'collision-matrix-3d' }); }
-  }
-  if (typeof document !== 'undefined' && window.CameraControls) {
-    if (exp.runner.controlHost) { window.CameraControls.attach(exp.runner, exp.runner.controlHost); }
+  var registry = ControlRegistry.makeControlRegistry();
+  registry.registerControls('collision-matrix-3d', [
+    { kind: 'scalar', id: 'offset', label: 'offset', min: 0, max: 48, step: 4, value: 0,
+      fmt: function (v) { return String(v); }, onChange: function (v) { offsetPx = v; reseatAll(); },
+      place: { x: 0.02, y: 0.03 } },
+    { kind: 'scalar', id: 'angle', label: 'angle', min: 0, max: 1, step: 0.1, value: 0,
+      fmt: function (v) { return v.toFixed(1); }, onChange: function (v) { angleVy = v; reseatAll(); },
+      place: { x: 0.02, y: 0.12 } }
+  ]);
+  // Chrome (a page only): expose the knobs to a host frame, and mount the overlay through the
+  // runner's ONE door (runner.controlHost) — before a canvas is mounted (a notebook pane) there is
+  // none, so the knobs stay in the exposed registry only.
+  FrqtlControlsPanel.exposeRegistry(registry, { runner: exp.runner });
+  if (exp.runner.controlHost) { FrqtlControlOverlay.mount(exp.runner, { registry: registry, name: 'collision-matrix-3d' }); }
+  if (typeof document !== 'undefined') {
+    if (exp.runner.controlHost) { CameraControls.attach(exp.runner, exp.runner.controlHost); }
   }
 }
-if (typeof module !== 'undefined' && module.exports) { module.exports = { buildExperiment: buildExperiment }; }
-else if (typeof window !== 'undefined') { window.buildExperiment = buildExperiment; }
 ```

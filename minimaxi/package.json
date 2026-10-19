@@ -1,11 +1,12 @@
 {
   "name": "minimaxi",
   "private": true,
-  "description": "MiniMaxi: Maxi's body in node — the lab page driven through the published @descix/frqtl-sdk eyes.",
+  "description": "MiniMaxi: Maxi's body in node — the lab page driven through the published @descix/frqtl-node eyes.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE.md",
   "dependencies": {
-    "@descix/frqtl-sdk": "0.5.1",
+    "@descix/frqtl-node": "0.6.0",
+    "@descix/frqtl-web": "0.6.0",
     "playwright": "1.61.0"
   }
 }
