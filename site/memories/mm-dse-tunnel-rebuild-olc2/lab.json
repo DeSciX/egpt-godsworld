@@ -1,0 +1,548 @@
+{
+  "producer": "loop",
+  "scene": {
+    "label": "Double Slit (Tunnel, symmetric)",
+    "id": "dse-tunnel-rebuild",
+    "mode": "3d",
+    "renderer": "three"
+  },
+  "brain": "local",
+  "run": "mmolc2",
+  "chain": {
+    "index": 1,
+    "records": [
+      "record-01"
+    ]
+  },
+  "handBack": {
+    "record": "record-01",
+    "clip": "clip-03.mp4"
+  },
+  "declared": {
+    "before": [
+      {
+        "name": "source",
+        "kind": "SphereEmitter",
+        "authority": "center",
+        "center": [
+          20,
+          200,
+          0
+        ]
+      },
+      {
+        "name": "start_wall",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          5,
+          200,
+          0
+        ],
+        "rect": [
+          0,
+          0,
+          -77,
+          10,
+          400,
+          154
+        ]
+      },
+      {
+        "name": "wall1",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          128,
+          61.25,
+          0
+        ],
+        "rect": [
+          96,
+          0,
+          -77,
+          64,
+          122.5,
+          154
+        ]
+      },
+      {
+        "name": "wall2",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          128,
+          199.5,
+          0
+        ],
+        "rect": [
+          96,
+          174.5,
+          -77,
+          64,
+          50,
+          154
+        ]
+      },
+      {
+        "name": "wall3",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          128,
+          337.75,
+          0
+        ],
+        "rect": [
+          96,
+          276.5,
+          -77,
+          64,
+          122.5,
+          154
+        ]
+      },
+      {
+        "name": "slit1_channel",
+        "kind": "Tunnel",
+        "authority": "rect",
+        "center": [
+          128,
+          149,
+          0
+        ],
+        "rect": [
+          96,
+          123.5,
+          -77,
+          64,
+          51,
+          154
+        ]
+      },
+      {
+        "name": "slit2_channel",
+        "kind": "Tunnel",
+        "authority": "rect",
+        "center": [
+          128,
+          251,
+          0
+        ],
+        "rect": [
+          96,
+          225.5,
+          -77,
+          64,
+          51,
+          154
+        ]
+      },
+      {
+        "name": "far_sink",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          595,
+          200,
+          0
+        ],
+        "rect": [
+          590,
+          0,
+          -77,
+          10,
+          400,
+          154
+        ]
+      },
+      {
+        "name": "screen",
+        "kind": "GraphingDetectorWall",
+        "authority": "rect",
+        "center": [
+          325,
+          200,
+          0
+        ],
+        "rect": [
+          315,
+          0,
+          -77,
+          20,
+          400,
+          154
+        ]
+      },
+      {
+        "name": "zClipFar",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          300,
+          200,
+          97
+        ],
+        "rect": [
+          0,
+          0,
+          77,
+          600,
+          400,
+          40
+        ]
+      },
+      {
+        "name": "zClipNear",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          300,
+          200,
+          -97
+        ],
+        "rect": [
+          0,
+          0,
+          -117,
+          600,
+          400,
+          40
+        ]
+      }
+    ],
+    "after": [
+      {
+        "name": "source",
+        "kind": "SphereEmitter",
+        "authority": "center",
+        "center": [
+          20,
+          200,
+          0
+        ]
+      },
+      {
+        "name": "start_wall",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          5,
+          200,
+          0
+        ],
+        "rect": [
+          0,
+          0,
+          -77,
+          10,
+          400,
+          154
+        ]
+      },
+      {
+        "name": "wall1",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          128,
+          61.25,
+          0
+        ],
+        "rect": [
+          96,
+          0,
+          -77,
+          64,
+          122.5,
+          154
+        ]
+      },
+      {
+        "name": "wall2",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          128,
+          199.5,
+          0
+        ],
+        "rect": [
+          96,
+          174.5,
+          -77,
+          64,
+          50,
+          154
+        ]
+      },
+      {
+        "name": "wall3",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          128,
+          337.75,
+          0
+        ],
+        "rect": [
+          96,
+          276.5,
+          -77,
+          64,
+          122.5,
+          154
+        ]
+      },
+      {
+        "name": "slit1_channel",
+        "kind": "Tunnel",
+        "authority": "rect",
+        "center": [
+          128,
+          149,
+          0
+        ],
+        "rect": [
+          96,
+          123.5,
+          -77,
+          64,
+          51,
+          154
+        ]
+      },
+      {
+        "name": "slit2_channel",
+        "kind": "Tunnel",
+        "authority": "rect",
+        "center": [
+          128,
+          251,
+          0
+        ],
+        "rect": [
+          96,
+          225.5,
+          -77,
+          64,
+          51,
+          154
+        ]
+      },
+      {
+        "name": "far_sink",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          595,
+          200,
+          0
+        ],
+        "rect": [
+          590,
+          0,
+          -77,
+          10,
+          400,
+          154
+        ]
+      },
+      {
+        "name": "screen",
+        "kind": "GraphingDetectorWall",
+        "authority": "rect",
+        "center": [
+          365,
+          200,
+          0
+        ],
+        "rect": [
+          355,
+          0,
+          -77,
+          20,
+          400,
+          154
+        ]
+      },
+      {
+        "name": "zClipFar",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          300,
+          200,
+          97
+        ],
+        "rect": [
+          0,
+          0,
+          77,
+          600,
+          400,
+          40
+        ]
+      },
+      {
+        "name": "zClipNear",
+        "kind": "Wall",
+        "authority": "rect",
+        "center": [
+          300,
+          200,
+          -97
+        ],
+        "rect": [
+          0,
+          0,
+          -117,
+          600,
+          400,
+          40
+        ]
+      }
+    ]
+  },
+  "outline": "imagine the 3D double slit with the detector screen moved 40 pixels farther from the slit wall",
+  "plan": {
+    "scene": "dse-tunnel-rebuild",
+    "registryMode": "3d",
+    "changes": [
+      {
+        "object": "screen",
+        "param": "center",
+        "value": [
+          365,
+          200,
+          0
+        ],
+        "why": "the plate's near face goes from x 315 to x 355, so the leg from the slit wall's back face at x 160 grows from 155 to 195 pixels — 40 pixels farther from the slit wall, square to the beam in y and z"
+      }
+    ],
+    "hands": [
+      "setCamera",
+      "dragTo"
+    ],
+    "prediction": "A side-on view with the beam running across the screen: the yellow quanta leave the source, the red barrier plate stands with its two blue slit channels, and the green heat-map plate stands to its right with painted cells on its face. Over the clip the plate slides steadily to the right by 40 pixels, keeping its size and its square-on attitude, and the dark gap between the back of the slit wall and the plate's near face visibly widens; the hits keep painting on the face as it travels, and in the last frames the banded pattern is painted at the plate's new place, with the plate at rest there."
+  },
+  "designerWords": "Tony — the scene you want is already on the stage: the 3D double slit, `dse-tunnel-rebuild` in its `3d` mode. So nothing needs building from scratch; this is a one-parameter variant of a sketch I know, and the parameter is the detector leg.\n\nHow I read your words, so you can correct me after you have watched it: \"the slit wall\" is the red barrier plate with the two blue slit channels in it, which spans x 96..160 — its back face, the side the quanta leave from, is at x 160. The screen stands with its near face at x 315, so the leg from the wall's back to the plate is 155 pixels today. \"Moved 40 pixels farther\" I read as +40 in x: the near face goes to 355, the plate's centre from [325, 200, 0] to [365, 200, 0], and the leg becomes 195 pixels. Nothing moves in y or z, so the plate stays square to the beam.\n\nThat 155 is not an arbitrary figure, and it is the reason this is worth watching. `dse-tunnel-rebuild-build.md` derives the leg from the ring ladder with no free parameters: each slit exit is a phase-locked point source laying rings at r = (λ/4)·√((2m+1)²+1), and D = √(r₂² − halfSep²) = √(163.2² − 51²) = 155 puts ring m = 2 of *both* slits on the axis exactly at the plate, so the centre of the pattern is doubly reinforced. Pull the plate out to 195 and the midline is no longer sitting on that intersection. I do not know what that does to the bands — it is a prediction I can only settle by looking, and it is exactly the kind of one-thing change `dse-tunnel-rebuild-seen.md` lists as drag 2 (\"drag the screen right: does the pattern move with the plate?\").\n\nOne more reading, about the camera. `mm-dse-tunnel-rebuild-p41c-seen.md` is a record of this same move at 85 pixels, and it carries a lesson: filmed on the oblique default pose, which looks down the experiment from the source end, the plate moving away mostly read as the plate *shrinking*, and both watchers had to say the x could not be read off the pixels. Forty pixels on that pose would be worse. So the Builder frames it side-on first — azimuth 90, elevation 0, the x axis running across the screen with the slit wall on one side and the plate on the other — and then drags. On that view the move is a plain lateral slide and the widening dark gap between the wall's back face and the plate is the thing to watch.\n\nThe Builder's order is therefore: frame it side-on, then drag the screen from centre [325, 200, 0] to [365, 200, 0] over ticks inside the recording, so the move itself is on the footage and the Owl sees the before-state and the after-state in one clip. No `see` after the drag — that would hide the very change the round is about.\n\nMemories I drew on: `dse-tunnel-rebuild-build.md` (the sketch, the plate's parts entry, the ring-ladder leg), `dse-tunnel-rebuild-seen.md` (the objects' rects and the screen-drag counterfactual), `mm-dse-tunnel-rebuild-p41c-seen.md` (the same move at 85 px, and why the oblique camera hid it).",
+  "steps": [
+    {
+      "hand": "setCamera",
+      "args": {
+        "orbit": {
+          "azimuth": 0,
+          "elevation": 0,
+          "roll": 0,
+          "distance": 520,
+          "target": {
+            "x": 210,
+            "y": 200,
+            "z": 0
+          }
+        }
+      }
+    },
+    {
+      "hand": "see",
+      "args": {
+        "everyTicks": 5,
+        "stopAt": {
+          "ticks": 250
+        },
+        "fps": 10,
+        "note": "Framing check before the drag: side-on view along z, beam across the frame. Is the source at the left, the red slit wall with its two blue channels left of centre, and the green plate to their right with room to its right for a 40-pixel slide?"
+      }
+    },
+    {
+      "hand": "setCamera",
+      "args": {
+        "orbit": {
+          "azimuth": 180,
+          "elevation": 0,
+          "roll": 0,
+          "distance": 520,
+          "target": {
+            "x": 210,
+            "y": 200,
+            "z": 0
+          }
+        }
+      }
+    },
+    {
+      "hand": "see",
+      "args": {
+        "everyTicks": 5,
+        "stopAt": {
+          "ticks": 250
+        },
+        "fps": 10,
+        "note": "Framing check after flipping the camera to azimuth 180: is the source cloud now at the LEFT, the red slit wall left of centre, and the green heat-map plate to its RIGHT with clear black space to the plate's right for a 40-pixel slide?"
+      }
+    },
+    {
+      "hand": "dragTo",
+      "args": {
+        "name": "screen",
+        "to": [
+          365,
+          200,
+          0
+        ],
+        "ticks": 150,
+        "settle": 150,
+        "everyTicks": 5,
+        "fps": 10,
+        "note": "The one change: the detector plate slides 40 pixels along +x (to the right in this view), from centre [325, 200, 0] to [365, 200, 0], widening the gap from the slit wall's back face from 155 to 195 pixels. Does the plate travel square-on and keep its painted bands, and does the gap visibly widen?"
+      }
+    }
+  ],
+  "prediction": "the hand returns from centre [325, 200, 0] (rect [315, 0, -77, 20, 400, 154]) to centre [365, 200, 0] (rect [355, 0, -77, 20, 400, 154]), 60 frames, 6.0 seconds. In the footage I expect the side-on view to hold steady — source cloud at the left, the three red slabs with their two blue slit channels left of centre — while the green plate slides steadily to the RIGHT across the frame, keeping its height and its edge-on attitude (no shrinking and no turning, since it stays at z 0 and only x changes), and comes to rest about a second before the end. I expect the black gap between the back of the slit wall and the plate's near face to visibly widen as it goes, and the sparse yellow dots to go on arriving at the face throughout, with the painted heat map — the bright yellow-orange column at mid-height — travelling with the plate and still painted there in the last frames.",
+  "builderWords": "I checked the hand's result first, then opened all eight sampled frames of the clip (frame-00, 08, 16, 24, 32, 40, 48, 56 of 61, ticks 41826–42126), in order.\n\nTHE RESULT SAYS THE PART MOVED, AND BY HOW MUCH. `dragTo` returns from centre [325, 200, 0], rect [315, 0, -77, 20, 400, 154], to centre [365, 200, 0], rect [355, 0, -77, 20, 400, 154] — the exact centre I predicted, 40 pixels along +x with y and z unchanged, `zHeld: false` (nothing was clamped), 150 ticks of travel and 150 of settle, 61 frames, 6.1 seconds. So the plate's near face went from x 315 to x 355 and the leg from the slit wall's back face at x 160 grew from 155 to 195 pixels.\n\nWHAT THE FOOTAGE SHOWS. The side-on view holds steady the whole clip and nothing but the plate and the quanta changes. At the left edge stands a thin white-outlined panel with the dense yellow source cloud crowded against it, knotted thickest at mid-height. Left of centre are the three dark-red slabs — tall at the top, short across the middle, tall at the bottom — with the two bright blue channels in the gaps between them, their mouths facing me. Beyond them a wide black stretch with sparse yellow dots drifting across it, and the green plate standing on edge with its painted face toward me.\n\nThe plate travels. In frame-00 its painted face sits with a clear black gap of its own width or so between it and the back of the red slabs. Through frames 08, 16 and 24 it slides steadily to the RIGHT, away from the slit wall, and the black gap between the slabs' back face and the plate's near edge grows visibly wider — by frame-24 it is noticeably broader than at the start, with more of the sparse dot field visible inside it. From frame-32 onward the plate is at its new place and holds there: frames 32, 40, 48 and 56 show it in the same position, at rest, with a wider gap behind it than the clip began with. It keeps its full height from top to bottom of the frame throughout, stays edge-on, and does not shrink, tilt or turn — which is what I expected, since only x changed and it stayed at z 0.\n\nThe face goes on being painted as it travels. The heat map rides with the plate and stays legible all the way: a blue-green field with a bright column of yellow, orange and red cells at mid-height and darker stripes either side. The pattern does change over the clip, and I will say exactly what I saw rather than smooth it over: in frame-00 the hot region reads as one broad yellow-orange column, and from frame-08 onward it reads as two distinct red-orange bars standing side by side with a darker line between them, which stay as two bars through the settled frames to frame-56. The surrounding blue-green banding also looks more drawn-out vertically in the later frames. I am reporting that as what the frames show; I am not claiming to know why it took that form.\n\nWHETHER IT MATCHED MY PREDICTION. Yes, on every point I wrote down before the hand: the camera held still; the plate slid steadily to the right and came to rest about a second before the end; it kept its height and its square-on attitude with no shrinking or turning; the gap between the slit wall and the plate's near face visibly widened; the dots went on arriving at the face throughout; and the painted heat map travelled with the plate and is still painted there in the last frames. The result's `from` and `to` confirm the 40-pixel move rather than my merely reading it off pixels. The one thing I did not predict in detail is the hot column reading as two bars rather than one from frame-08 on — a change in the painted pattern, not in the geometry I was asked to build.\n\nTHE PLAN IS BUILT. The plan asked for one change, `screen` to centre [365, 200, 0], and named the hands `setCamera` and `dragTo`. I used `setCamera` twice: once to get off the down-the-barrel pose the scene opened on — where a Record memory of this same scene (`kb/GodsWorld/memories/mm-dse-tunnel-rebuild-p41c-seen.md`) says a +x move of this very plate read as the plate shrinking, and the x could not be read off the pixels at all — and once more to flip the view left-for-right, after the first framing clip showed me +x running to the left, so that the slide would read to the RIGHT as the plan's prediction says. Each pose was checked with a `see` before I committed, and the drag was the closing act, so the clip the Owl judges carries its own before-state, the travel, and the plate at rest at its new place. No hand was refused and no part was left unbuilt.",
+  "owl": {
+    "seen": {
+      "contact": "slit wall (three red slabs): left face, middle third — the dense yellow cloud banks against the middle slab; the two blue slit channels are met at the top and bottom edges of that middle third; detector plate: near (left) face, middle third, where the orange-red column is painted, in every frame; source panel far left: the cloud starts at it",
+      "after": "at the red wall the dots stop and bank up on the source side (back toward their source) — the cloud stays left of the wall all clip; what gets through the two blue channels goes straight on to the right across the black gap (x 280-390 in every frame); at the plate's near face the dots stop and deposit, the heat map brightening and sharpening through the clip",
+      "passes": "yes, twice: the part of the stream that goes through the two blue slit channels passes the slit wall instead of meeting it and crosses to the plate; and sparse dots sit right of the plate (x ~460-560) at all heights — present identically in frame 00 before the move, and pixels cannot say whether they are beyond the plate or nearer the camera. Nothing passes through the painted face where the outline has the stream land"
+    },
+    "verdict": "approve",
+    "reasons": [
+      "the plate and only the plate moves: the black gap from the fixed red wall (right edge x ~272) to the plate's near face widens monotonically 103 -> 110 -> 114 -> 117 -> 122 -> 124 -> 125 -> 128 px across the eight frames — farther from the slit wall, as the outline asks",
+      "direction is RIGHT as predicted: plate near edge x ~375 -> ~400, right edge ~425 -> ~458, ending closer to the fixed far-right panel at x ~568",
+      "no shrink and no turn: top edge y ~18 and bottom y ~375-378 in both first and last frame, still vertical and parallel to the slit wall; apparent width grows only ~50 -> ~58 px, ordinary perspective for a slab carried sideways",
+      "the heat map travels with the plate and is still painted at mid-height in the last frames: bright column x ~383-405 at frame 00 -> ~408-437 at frame 56, brighter and more structured at the end",
+      "dots go on arriving throughout: the stream crosses the gap and lands on the near face, middle third, in every frame — the scene still works after the move",
+      "source cloud, left panel, three red slabs and two blue slit channels hold still and stay left of centre, as both outline and prediction have them"
+    ],
+    "change": null,
+    "words": "# Owl — turn 8 (DRAG screen, ticks 41826–42126, 8 frames)\n\nI opened all eight frames (00, 08, 16, 24, 32, 40, 48, 56); every one loaded. Everything below is from\nthose pixels. I did not plan this and did not build it, and I have no other view of the scene.\n\n## ACCOUNT OF THE FOOTAGE\n\n**What is in frame, and what holds still.** Far left: a black-outlined panel (a parallelogram, seen at an\nangle) at about x 95–160, full height. Against it and to its right a dense yellow dot cloud, thickest at\nmid-height around x 130–200, y 150–280. Middle-left: three red slabs stacked top / middle / bottom,\ntogether spanning about x 190–272 — left of the frame's centre (x 300) in every frame. Between the slabs\nare two gaps, each lined with a pale blue surface: an upper channel at about y 125–150 and a lower one at\nabout y 240–265 (a third blue top shows on the bottom slab). Right of centre: the plate — a tall vertical\nslab, a painted blue/green heat field with a solid green band down its right side and a green top face.\nFar right at about x 568 another dark panel outline. Across all eight frames the left panel, the dot\ncloud's seat, the three red slabs and the two blue channels do not move; the red wall's right edge stays\nat about x 272 throughout.\n\n**The plate's travel.** Measuring the plate's near (left) edge against the fixed red wall:\n\n| frame | plate near edge | plate right edge | black gap, wall→plate |\n|---|---|---|---|\n| 00 | ~375 | ~425 | ~103 |\n| 08 | ~382 | ~428 | ~110 |\n| 16 | ~386 | ~435 | ~114 |\n| 24 | ~389 | ~443 | ~117 |\n| 32 | ~394 | ~449 | ~122 |\n| 40 | ~396 | ~451 | ~124 |\n| 48 | ~397 | ~453 | ~125 |\n| 56 | ~400 | ~458 | ~128 |\n\nSo: to the RIGHT, about 25 screen px over the clip, the gap widening from ~103 to ~128. The steps are\nfront-loaded — ~7, ~4, ~3, ~5, ~2, ~1, ~3 — fastest at the start and essentially settled from frame ~40\non; frames 40, 48 and 56 are near-identical in plate position. Height does not change: the plate's top\nedge sits at y ≈ 18 and its bottom at y ≈ 375–378 in both the first and last frame. It stays vertical,\nparallel to the slit wall, and never tilts; its total apparent width grows only slightly (~50 px → ~58 px),\nthe ordinary widening of an edge-on slab carried sideways in a perspective view, not a rotation.\n\n**The heat map.** In frame 00 the painted field is diffuse, with one bright yellow-orange column at\nmid-height at about x 383–405. It moves with the plate — by frame 56 the bright column sits at about\nx 408–437, still at mid-height, and it has sharpened into two red-cored vertical bands with finer banding\neither side. It is brighter and more structured in the last frames than in the first, and it is still\npainted there at frame 56.\n\n**contact.** The yellow stream leaves the far-left panel and first meets the slit wall on the LEFT face of\nthe red slabs, in the MIDDLE third — the dense cloud is banked against the middle slab. The two blue slit\nchannels are met at the top and bottom edges of that middle third. The detector plate is met on its NEAR\n(left) face, in the MIDDLE third vertically — that is where the orange-red column is painted, in every\nframe.\n\n**after.** At the red wall the dots do not continue: they stop and bank up on the source side, the dense\ncloud staying left of the wall through the whole clip (back toward its source). What gets through the two\nblue channels goes STRAIGHT ON to the right, scattered across the black gap at x 280–390 in every frame.\nAt the plate's near face the dots stop and deposit — the heat map brightens and sharpens as the clip runs.\n\n**passes.** Yes, in two places. (1) By design of the scene, the part of the stream that goes through the\ntwo blue slit channels passes the slit wall instead of meeting it, and crosses the gap to the plate.\n(2) Sparse yellow dots sit to the RIGHT of the plate, roughly x 460–560, at all heights — but they are\nthere in frame 00 as well, before the plate moves, and are equally sparse at the end; from pixels alone I\ncannot tell whether they are beyond the plate or in front of it at a nearer depth. Nothing passes *through*\nthe painted face where the outline has the stream land.\n\n## THE OUTLINE, PART BY PART\n\n- *the 3D double slit* — present: source panel and cloud at the left, three red slabs with two blue slit\n  channels left of centre, detector plate at the right. ✔\n- *the detector screen moved …* — the plate and only the plate moves; wall, slits and source are fixed. ✔\n- *… farther from the slit wall* — the black gap grows monotonically, ~103 → ~128 px; the plate ends\n  closer to the far-right panel than it began. Right is away from the wall here. ✔\n- *40 pixels* — I cannot read world units off pixels; ~25 screen px of travel at that depth is consistent\n  with a 40-unit move and is plainly a move, not a nudge. ✔ (as far as pixels can carry it)\n- The scene still works after the move: the stream still reaches the face and still paints there. ✔\n\n## THE PREDICTION, ITEM BY ITEM\n\n- \"side-on view holds steady — source cloud at the left, three red slabs with two blue slit channels left\n  of centre\" — matches; those parts are fixed in all eight frames. ✔\n- \"green plate slides steadily to the RIGHT across the frame\" — direction matches. \"Steadily\" is the one\n  loose word: the travel is eased, about a third of it in the first eight frames and almost none in the\n  last sixteen. ✔ in direction, approximate in pacing.\n- \"keeping its height and its edge-on attitude (no shrinking and no turning)\" — matches: same top and\n  bottom edge, still vertical, no tilt; only the slight perspective widening noted above. ✔\n- \"comes to rest about a second before the end\" — close but early: it is effectively at rest from frame 40\n  of 60, about 1.5–2 s before the end rather than ~1 s. Near-match.\n- \"the black gap … visibly widens as it goes\" — matches, and measurably: ~103 → ~128 px. ✔\n- \"sparse yellow dots go on arriving at the face throughout\" — matches; dots cross the gap in every frame\n  and the painted field keeps gaining structure. ✔\n- \"the painted heat map — the bright yellow-orange column at mid-height — travelling with the plate and\n  still painted there in the last frames\" — matches; the column stays at mid-height, moves with the plate\n  from x ~383–405 to x ~408–437, and is brighter at frame 56 than at frame 00. ✔\n\nEvery part of the outline is in the footage as asked, and no item of my account contradicts it. The two\nsoft spots are pacing words in the prediction, not parts of the outline: the slide is eased rather than\nsteady, and it settles a little earlier than predicted. I note the sparse dots right of the plate for the\nrecord; they are unchanged from the first frame and are not something the outline asked to change."
+  },
+  "threads": {
+    "designer": "local minimaxi/out/turns/mmolc2/01-designer.md",
+    "builder": "local minimaxi/out/turns/mmolc2/02-builder.md, minimaxi/out/turns/mmolc2/03-builder.md, minimaxi/out/turns/mmolc2/04-builder.md, minimaxi/out/turns/mmolc2/05-builder.md, minimaxi/out/turns/mmolc2/06-builder.md, minimaxi/out/turns/mmolc2/07-builder.md",
+    "owl": "local minimaxi/out/turns/mmolc2/08-owl.md"
+  },
+  "rounds": 1,
+  "filmed": [
+    {
+      "clip": "clip-01.mp4",
+      "hand": "see",
+      "firstTick": 21965,
+      "lastTick": 22215
+    },
+    {
+      "clip": "clip-02.mp4",
+      "hand": "see",
+      "firstTick": 36286,
+      "lastTick": 36536
+    },
+    {
+      "clip": "clip-03.mp4",
+      "hand": "dragTo",
+      "firstTick": 41826,
+      "lastTick": 42126
+    }
+  ]
+}

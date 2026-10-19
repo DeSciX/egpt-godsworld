@@ -13,7 +13,7 @@ plan:
 
 | role | agent | is | asks with KB (platform) | persona | reads (local agent) | hands off |
 |---|---|---|---|---|---|---|
-| the Designer | `maxi-designer` | Maxi, the orchestrator | `GodsWorld` | yes | the memories in kb/GodsWorld/memories (INDEX.md first; <id>-card, <id>-build, <id>-seen) | ONE ```json:plan``` block |
+| the Designer | `maxi-designer` | Maxi, the orchestrator | `GodsWorld` | yes | the knowledge base kb/GodsWorld: the memories in kb/GodsWorld/memories (INDEX.md first; <id>-card, <id>-build, <id>-seen) and the documents beside them | ONE ```json:plan``` block for an outline, or ONE ```json:answer``` block for a question (the answer block, then the plan block, for both), its FIRST line `THIS IS: …` reading the message |
 | the Builder | `maxi-builder` | the Builder, the implementer | `GodsWorld` | yes | the SDK's shipped docs (kb/GodsWorldSDK, the published package's own words) and the body CLI `node minimaxi/hand.mjs --bridge <url> <hand> '<json>'` for reading hands (inventory, sceneSource) | ONE ```json:call:<hand>``` block with its `PREDICTION:` line before it, or ONE ```json:done``` block |
 | the Owl | `maxi-owl` | the Owl, the verifier | `General` | no | ONLY the frame images named in the turn file — never the memories, the sketches or the plan | ONE ```json:verdict``` block, its `seen` account of the footage first |
 
@@ -24,6 +24,11 @@ Every role is told the same world frame (`WORLD_FRAME`): the Designer and the Bu
 WORLD FRAME section), the Owl, who runs without the persona, in its first turn:
 
 > THE WORLD, AS BLOCKS: think of the FRQTL universe the way a player thinks of Minecraft. Every frame is a block, and every frame is a container of frames: a block built of smaller blocks, layer inside layer, down to the fundamental dimension. Translate between this block world and the real one as a player does: pixels and ticks carry no units and no absolute scale, like a Minecraft block, so a pixel is whatever the scene takes it to be. FRQTL packages its own physics: what you see emerges from how frame primitives are arranged and from the universe's level-0 settings (the fundamental dimension it is created on), never from force equations.
+
+The Designer reads every message first. `THIS IS: an outline` plans and builds as above. `THIS IS: a question` ends at its answer:
+the report's `answer` holds the words and the memory files they named, `outcome` reads `answered in words …: no
+build, no Record`, and no Builder, Owl, Record or memory follows. On MiniMaxi an answer naming a file that is not
+under kb/GodsWorld stops the run by name. `THIS IS: a question and an outline` answers first, then builds as an outline does.
 
 <!-- ROLES:END -->
 
@@ -83,16 +88,18 @@ file (sampled from the clip, in order); the agents open each with Read. Then wai
   result or refusal, each round's clip, prediction and verdict, the threads (interaction ids or turn files)
   and, on the platform, each thread's summed usage. The platform run also prints the cost per thread.
 - Clips and frames: under `minimaxi/out/` (the body's paths, named in each footage hand's result).
-- On approve: a seen-memory DRAFT `kb/GodsWorld/memories/mm-<scene>-<run>-seen.md`, with its clip and three
-  stills in `site/memories/mm-<scene>-<run>/`, written by `scripts/gen-memories-seen.mjs` only with a look:
-  its `looked:` line names, by role, who looked at the stills. On the local brain the approving Owl is that look
-  (`maxi-owl`, its frames, its turn file and seen account). On the platform brain the approve writes NO memory, only
-  `minimaxi/out/runs/<run>.record.json` and, in the report's `awaitingLook`, the stills and the command a human
-  (or the seat) runs after looking: `node scripts/gen-memories-seen.mjs <record> --looked-by human:<role>
-  --stills <N> --account "<contact, after, passes>"`, where `<role>` is a role in lowercase kebab words
-  (`lab-owner`, `godsworld-seat-author`), never a person's name. The platform brain is never a looker. Run the memory
-  gate (`node --test "scripts/**/*.test.mjs"`) before keeping it. It is a draft: whether it joins the KB is
-  the owner's call.
+- On approve: the round's Record folder `minimaxi/out/<run>/record/` (`record-01/`, `record-02/`, …, one per booted
+  world; lab.json names the hand-back Record and clip), and the seen memory of the hand-back Record, written by
+  `scripts/gen-memories-seen.mjs` only with a look: its `looked:` line names, by role, who looked at the stills. Only a
+  COMPLETE Record is published, as `kb/GodsWorld/memories/mm-<scene>-<run>-seen.md` with the whole Record folder served in
+  `site/memories/mm-<scene>-<run>/`; an incomplete one is refused by name, and its memory is a draft at `minimaxi/out/<run>/memory/` only. On the
+  local brain the approving Owl is that look (`maxi-owl`, its frames, its turn file and seen account). On the platform
+  brain the approve writes NO memory, only, in the report's `awaitingLook`, the stills and the command a human (or the
+  seat) runs after looking: `node scripts/gen-memories-seen.mjs minimaxi/out/<run>/record --looked-by human:<role>
+  --stills <N> --account "<contact, after, passes>"` (with `--draft` while the Record is incomplete), where `<role>` is a
+  role in lowercase kebab words (`lab-owner`, `godsworld-seat-author`), never a person's name. The platform brain is
+  never a looker. Run the memory gate (`node --test "scripts/**/*.test.mjs"`) before keeping it. A published memory is a
+  draft until its id joins the roster: whether it joins the KB is the owner's call.
 - A stop is loud: exit 1, the reason on stderr, and the report's `outcome` reads `STOPPED: …`. A malformed
   hand-off, a clip the Builder never described, a `json:done` before any clip, a clip outside 5–10 s, too many
   Builder replies in a round, or a revise on every round all stop it. The turn order and these rules are

@@ -16,6 +16,9 @@
   header select, header button { background: #111a24; color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; font: inherit; }
   header button[aria-pressed="true"] { border-color: var(--cyan); color: var(--cyan); }
   header button:disabled { opacity: .5; }
+  header button { display: inline-flex; align-items: center; gap: 4px; }
+  header button svg.icon { width: 16px; height: 16px; flex: none; fill: currentColor; }
+  header button#btn-record svg.icon { fill: var(--err); }
   #status { color: var(--dim); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60vw; }
   main { flex: 1; display: flex; min-height: 0; }
   #stage { flex: 1; position: relative; min-width: 0; background: #000; }
@@ -27,6 +30,12 @@
   #demo .demo-head span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #demo video { width: 100%; background: #000; border-radius: 4px; display: block; }
   #demo pre { margin: 6px 0 0; max-height: 120px; overflow: auto; white-space: pre-wrap; font-size: 11px; color: var(--ink); }
+  #demo-teach { margin: 6px 0 0; display: flex; flex-direction: column; gap: 4px; }
+  #demo-teach[hidden] { display: none; }
+  #demo-teach label { font-size: 11px; color: var(--ink); opacity: .8; }
+  #demo-teach textarea { width: 100%; box-sizing: border-box; min-height: 3.2em; resize: vertical; background: #0b1118; color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; font: 13px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; }
+  #demo-teach button { align-self: flex-end; background: #111a24; color: var(--cyan); border: 1px solid var(--cyan); border-radius: 4px; padding: 3px 10px; font: inherit; }
+  #demo-teach button:disabled, #demo-teach textarea:disabled { opacity: .5; }
   aside#talk { width: min(380px, 100vw); border-left: 1px solid var(--line); background: var(--bar); display: flex; flex-direction: column; min-height: 0; }
   aside#talk .talk-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; color: var(--cyan); border-bottom: 1px solid var(--line); }
   aside#talk .talk-head span { flex: 1; }
@@ -47,33 +56,109 @@
   form#imagine { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); }
   form#imagine input { flex: 1; min-width: 0; background: #05070a; color: var(--ink); border: 1px solid var(--cyan); border-radius: 6px; padding: 8px 10px; font: 13px/1.3 system-ui, -apple-system, Segoe UI, sans-serif; }
   form#imagine input:disabled { opacity: .55; border-color: var(--line); }
+  form#imagine button { flex: none; background: #111a24; color: var(--cyan); border: 1px solid var(--cyan); border-radius: 6px; padding: 8px 14px; font: 600 13px/1.3 system-ui, -apple-system, Segoe UI, sans-serif; }
+  form#imagine button:disabled { opacity: .55; border-color: var(--line); color: var(--dim); }
+  header button#btn-fullscreen { display: none; }
   aside#code[hidden] { display: none; }
   aside#code { width: min(420px, 100vw); border-left: 1px solid var(--line); background: var(--bar); display: flex; flex-direction: column; min-height: 0; }
   aside#code .code-head { padding: 6px 10px; color: var(--dim); border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   aside#code pre { margin: 0; padding: 10px; overflow: auto; flex: 1; font-size: 11.5px; line-height: 1.35; color: var(--ink); }
+  aside#info[hidden] { display: none; }
+  aside#info { width: min(420px, 100vw); border-left: 1px solid var(--line); background: var(--bar); display: flex; flex-direction: column; min-height: 0; }
+  aside#info .info-head { padding: 6px 10px; color: var(--cyan); border-bottom: 1px solid var(--line); }
+  #info-body { padding: 8px 12px 12px; overflow: auto; flex: 1; font: 13px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; }
+  #info-body h3 { margin: 12px 0 2px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+  #info-body p { margin: 0 0 6px; white-space: pre-wrap; }
+  #info-body p.info-tile { color: var(--cyan); font-style: italic; }
+  #info-body p.info-absent { color: var(--dim); }
   #says { padding: 6px 12px; border-top: 1px solid var(--line); background: var(--bar); color: var(--cyan); }
   #error { padding: 8px 12px; background: #1a0000; color: var(--err); border-top: 1px solid #b6161c; white-space: pre-wrap; font-size: 12px; }
-  @media (max-width: 720px) { main { flex-direction: column; } aside#talk { width: 100%; max-height: 40vh; border-left: 0; border-top: 1px solid var(--line); } aside#code { position: absolute; right: 0; top: 0; bottom: 0; z-index: 2; } #status { max-width: 100%; margin-left: 0; } }
+  @media (max-width: 720px), (pointer: coarse) and (max-height: 600px) {
+    html, body { height: 100dvh; }
+    body { min-height: 0; overflow: hidden; }
+    header { flex-wrap: nowrap; gap: 3px; padding: 4px 4px; overflow-x: auto; scrollbar-width: none; }
+    header strong, #status, header button .label { display: none; }
+    header select, header button { padding: 3px 5px; flex-shrink: 0; font-size: 11px; }
+    header button svg.icon { width: 18px; height: 18px; }
+    header select { min-width: 56px; max-width: 30vw; flex: 1 1 auto; }
+    header button#btn-fullscreen:not([hidden]) { display: inline-flex; order: -1; border-color: var(--cyan); color: var(--cyan); }
+    main { flex-direction: column; position: relative; }   /* the side panes (#code, #info) cover main, never the header that closes them */
+    #stage { min-height: 0; }
+    aside#talk { width: 100%; height: 34dvh; max-height: 34dvh; flex: none; border-left: 0; border-top: 1px solid var(--line); }
+    aside#code { position: absolute; right: 0; top: 0; bottom: 0; z-index: 2; }
+    aside#info { position: absolute; right: 0; top: 0; bottom: 0; z-index: 3; }
+    @media (orientation: landscape) {
+      main { flex-direction: row; }
+      aside#talk { width: min(340px, 42vw); height: auto; max-height: none; border-top: 0; border-left: 1px solid var(--line); }
+    }
+  }
 </style>
+<link rel="stylesheet" href="app-assets/maxi-intro.css">
+<!-- IMPORT-MAP:BEGIN generated by scripts/gen-import-maps.mjs from site/vendor/frqtl-web/PINNED.json -->
+<script type="importmap">
+{
+  "imports": {
+    "@descix/frqtl-web/parts": "./vendor/frqtl-web/0.6.0/dist/frqtl/parts/index.js",
+    "@descix/frqtl-web/parts/": "./vendor/frqtl-web/0.6.0/dist/frqtl/parts/",
+    "@descix/frqtl-web/shim/controls/registry.js": "./vendor/frqtl-web/0.6.0/dist/shim/controls/registry.js",
+    "@descix/frqtl-web/shim/render/sun-look.js": "./vendor/frqtl-web/0.6.0/dist/shim/render/sun-look.js",
+    "@descix/frqtl-web/compat/renderer/display-slot.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/compat/renderer/display-slot.js",
+    "@descix/frqtl-web/compat/renderer/orbit-bag.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/compat/renderer/orbit-bag.js",
+    "@descix/frqtl-web/objects/setup/_collisionMatrixLanes.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/setup/_collisionMatrixLanes.js",
+    "@descix/frqtl-web/compat/engine.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/compat/engine.js",
+    "@descix/frqtl-web/kinds": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/kinds-entry.js",
+    "@descix/frqtl-web/objects/objects/tagger.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/objects/tagger.js",
+    "@descix/frqtl-web/objects/schema/index.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/schema/index.js",
+    "@descix/frqtl-web/shim/render/heat-colormap.js": "./vendor/frqtl-web/0.6.0/dist/shim/render/heat-colormap.js",
+    "@descix/frqtl-web/objects/schema/valueNormalizer.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/schema/valueNormalizer.js",
+    "@descix/frqtl-web/objects/objects/Box.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/objects/Box.js",
+    "@descix/frqtl-web/objects/objects/QuantumEmitter.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/objects/QuantumEmitter.js",
+    "@descix/frqtl-web/shim/expr/ast-schema.js": "./vendor/frqtl-web/0.6.0/dist/shim/expr/ast-schema.js",
+    "@descix/frqtl-web/objects/objects/actionCompiler.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/objects/actionCompiler.js",
+    "@descix/frqtl-web/objects/v1-replacements.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/v1-replacements.js",
+    "@descix/frqtl-web/objects/objects/slitLinerScatter.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/objects/slitLinerScatter.js",
+    "@descix/frqtl-web/objects/setup/setupSphereEmitter3D.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/setup/setupSphereEmitter3D.js",
+    "@descix/frqtl-web/objects/objects/directedRedirectProgram.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/objects/directedRedirectProgram.js",
+    "@descix/frqtl-web/compat/renderer/lo-drawn-center.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/compat/renderer/lo-drawn-center.js",
+    "@descix/frqtl-web/objects/setup/setupTunnelPointExit.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/setup/setupTunnelPointExit.js",
+    "@descix/frqtl-web/objects/constants/WallBehaviors.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/constants/WallBehaviors.js",
+    "@descix/frqtl-web/objects/objects/absorbRadiation.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/objects/absorbRadiation.js",
+    "@descix/frqtl-web/objects/geometry/SlabFace.js": "./vendor/frqtl-web/0.6.0/dist/frqtl/objects/geometry/SlabFace.js",
+    "@descix/frqtl-web/boot": "./vendor/frqtl-web/0.6.0/dist/frqtl/experiments/_shared/doors.js",
+    "@descix/frqtl-web/registry": "./vendor/frqtl-web/0.6.0/dist/shim/registry/index.js",
+    "@descix/frqtl-web/project": "./vendor/frqtl-web/0.6.0/dist/shim/project/index.js",
+    "@descix/frqtl-web/host-view": "./vendor/frqtl-web/0.6.0/dist/shim/host/index.js"
+  }
+}
+</script>
+<!-- IMPORT-MAP:END -->
 </head>
 <body>
 <header>
   <strong>MAXI'S LAB</strong>
   <select id="scene-picker" aria-label="Scene"></select>
-  <button id="btn-run" type="button" disabled>Pause</button>
-  <button id="btn-restart" type="button" disabled>Restart</button>
-  <button id="btn-hand" type="button" aria-pressed="false" title="Hand tool: pick up and move objects (H; Esc leaves)" disabled>Hand</button>
-  <button id="btn-record" type="button" aria-pressed="false" title="Record a demonstration for Maxi: the clip and every change you make (R)" disabled>Record</button>
-  <button id="btn-code" type="button" aria-pressed="false">Scene code</button>
+  <button id="btn-run" type="button" aria-label="Pause" title="Pause or resume the scene's clock" disabled><span class="label">Pause</span></button>
+  <button id="btn-restart" type="button" aria-label="Restart" title="Run the scene again from its first tick" disabled><span class="label">Restart</span></button>
+  <button id="btn-hand" type="button" aria-pressed="false" aria-label="Hand" title="Hand tool: pick up and move objects (H; Esc leaves)" disabled><span class="label">Hand</span></button>
+  <button id="btn-record" type="button" aria-pressed="false" aria-label="Record" title="Record a demonstration for Maxi: the clip and every change you make (R)" disabled><span class="label">Record</span></button>
+  <button id="btn-code" type="button" aria-pressed="false" aria-label="Scene code" title="The scene's code: the sketch Maxi reads and edits"><span class="label">Scene code</span></button>
+  <button id="btn-info" type="button" aria-pressed="false" aria-label="Info" title="The scene's card: what you are seeing, why it is impossible the usual way, how FRQTL gets it"><span class="label">Info</span></button>
+  <button id="btn-fullscreen" type="button" aria-pressed="false" aria-label="Full screen" title="Full screen: the lab takes the whole phone screen" hidden><span class="label">Full screen</span></button>
   <span id="status">booting …</span>
 </header>
 <main>
   <div id="stage">
-    <!-- The demonstration card: what Record just handed Maxi (first clip + the change lines); his answer is on the strip. -->
+    <!-- The demonstration card: what Record just filmed (first clip + the change lines), handed to Maxi by its Send; his answer is on the strip. -->
     <div id="demo" hidden>
       <div class="demo-head"><span id="demo-title"></span><button id="demo-close" type="button" aria-label="close">×</button></div>
       <video id="demo-clip" controls muted playsinline></video>
       <pre id="demo-changes"></pre>
+      <!-- The human's words on a Record they just stopped: optional, asked with the clip by Send to Maxi (maxi-record.js send). -->
+      <form id="demo-teach" autocomplete="off" hidden>
+        <label for="demo-teach-text">Maxi reads this with the clip.</label>
+        <textarea id="demo-teach-text" rows="2" aria-label="What you are teaching Maxi with this demonstration (optional)"></textarea>
+        <button id="demo-send" type="submit">Send to Maxi</button>
+      </form>
     </div>
   </div>
   <!-- The conversation, WORDS only: Tony's outline, Maxi's plan, the Builder's "built — watch" with its clip,
@@ -81,18 +166,23 @@
   <aside id="talk" aria-live="polite">
     <div class="talk-head"><span>Maxi</span><button id="talk-new" type="button" title="Start a new conversation with Maxi">New conversation</button></div>
     <div id="talk-lines"></div>
-    <form id="imagine" autocomplete="off"><input id="imagine-text" type="text" placeholder="Imagine…" aria-label="Imagine: an outline for Maxi (Enter sends)" disabled></form>
+    <form id="imagine" autocomplete="off"><input id="imagine-text" type="text" placeholder="Imagine…" aria-label="Imagine: an outline for Maxi (Send or Enter sends it)" enterkeyhint="send" disabled><button id="imagine-send" type="submit" disabled>Send</button></form>
   </aside>
   <aside id="code" hidden>
     <div class="code-head" id="code-title"></div>
     <pre id="code-text"></pre>
   </aside>
+  <!-- The scene's card, read from the frqtl SDK's registry (app-assets/maxi-card.js); the Info button shows it. -->
+  <aside id="info" hidden aria-labelledby="info-title">
+    <div class="info-head" id="info-title"></div>
+    <div id="info-body"></div>
+  </aside>
 </main>
 <div id="says" hidden></div>
 <div id="error" hidden></div>
-<!-- The DeSciX bridge first (classic), then host-view.js (the one declarer: the whole frame, CodeSite, recorded on <html data-descix-view>), then the lab, which reads that record. -->
+<!-- The DeSciX bridge first (classic), then the lab; maxi-lab.js imports maxi-host-view.js, the one view declaration (NoChrome on a phone, CodeSite otherwise). -->
 <script src="DeSciXAppSDK.js"></script>
-<script type="module" src="app-assets/host-view.js"></script>
+<script type="module" src="app-assets/maxi-intro.js"></script>
 <script type="module" src="app-assets/maxi-lab.js"></script>
 </body>
 </html>

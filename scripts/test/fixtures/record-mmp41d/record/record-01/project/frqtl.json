@@ -1,0 +1,5 @@
+{
+  "name": "cl1a-mirror",
+  "kind": "scene",
+  "entry": "sketch.js"
+}

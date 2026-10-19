@@ -33,7 +33,7 @@
  * nothing here goes quiet.
  */
 
-import { writePosition } from './maxi-hands.js';
+import { writePosition, partRefusal } from './maxi-hands.js';
 
 /** The keys the lab binds (on its own window and on the scene window). */
 export const HAND_KEYS = Object.freeze({ toggle: 'KeyH', leave: 'Escape' });
@@ -63,10 +63,12 @@ export function handKeyAction(ev) {
 
 /**
  * Attach the hand to one booted scene.
- * @param {{runner:object, host:Element, win:Window, onError:function, onChange?:function}} spec
+ * @param {{runner:object, host:Element, win:Window, onError:function, endAct:function, onChange?:function}} spec
  *   runner — the FrqtlApp the scene document booted; host — the scene's mount element (#canvas-wrapper);
- *   win — the scene window; onError(err) — the lab's error bar; onChange(state) — status refresh.
- * @returns {{set(on:boolean):object, toggle():object, state():object, dispose():void, get enabled():boolean}}
+ *   win — the scene window; onError(err) — the lab's error bar; endAct() → Promise — the end of one act (a release
+ *   after a drag, a 3D drop): the lab writes it into the sketch (maxi-hands.js writeSketch), and a refusal by name
+ *   goes to the error bar; onChange(state) — status refresh.
+ * @returns {{set(on:boolean):object, toggle():object, state():object, dispose():Promise, get enabled():boolean}}
  */
 export function attachHandTool(spec) {
     if (!spec || !spec.runner || typeof spec.runner.pickObjectAtScreen !== 'function' || typeof spec.runner.setSelectHighlight !== 'function') {
@@ -78,6 +80,10 @@ export function attachHandTool(spec) {
     if (typeof spec.onError !== 'function') {
         throw new Error('[hand] attachHandTool needs onError(err) — the lab\'s error bar; a hand error has nowhere else to go.');
     }
+    if (typeof spec.endAct !== 'function') {
+        throw new Error('[hand] attachHandTool needs endAct() — every act ends written into the sketch (maxi-hands.js writeSketch); a move the sketch does not hold is lost on the next run.');
+    }
+    const endAct = spec.endAct;
     const runner = spec.runner;
     const host = spec.host;
     const win = spec.win;
@@ -193,6 +199,12 @@ export function attachHandTool(spec) {
         onError(err);
         onChange(state());
     }
+    /** The act is over: write it into the sketch; a refusal is shown by name, never swallowed. `acts` settles once every act's write has. */
+    let acts = Promise.resolve();
+    function actEnded() {
+        const written = Promise.resolve().then(endAct).catch(fail);
+        acts = acts.then(function () { return written; });
+    }
     /** Hover what the pointer hit, as the declared object it belongs to (null: not declared — it cannot move). */
     function setHover(hit) {
         const d = hit ? runner.declaredOf(hit) : null;
@@ -201,6 +213,7 @@ export function attachHandTool(spec) {
         st.refuse = null;
         if (hit && !d) { st.refuse = 'the object under the pointer is not declared by the scene (built with new, or a primitive) — only declared objects move'; }
         else if (d && runner.positionAuthorityOf(d) === null) { st.refuse = runner.noPositionAuthorityMessage(d); }
+        else if (d) { st.refuse = partRefusal(runner, d); }
     }
 
     // ── 2D pointer semantics ──
@@ -215,7 +228,7 @@ export function attachHandTool(spec) {
             if (!hit) { onChange(state()); return; }
             if (st.mode !== '2d') { onChange(state()); return; }   // 3D: the runner's aim + SPACE carry the object
             if (st.refuse) { throw new Error('[hand] cannot pick up "' + (st.hover || '(undeclared)') + '": ' + st.refuse + '.'); }
-            st.held = { name: st.hover, obj: hoverObj, startCenter: runner.centerOf(hoverObj).slice(), pw0: worldAt(p), pointerId: ev.pointerId, moved: false };
+            st.held = { name: st.hover, obj: hoverObj, startCenter: runner.centerOf(hoverObj).slice(), pw0: worldAt(p), pointerId: ev.pointerId, moved: false };   // press to release is ONE act: endAct writes it
             if (host.setPointerCapture) { try { host.setPointerCapture(ev.pointerId); } catch (e) { /* capture is a convenience; the move still tracks the host */ } }
             host.style.cursor = 'grabbing';
             ev.preventDefault();
@@ -231,7 +244,7 @@ export function attachHandTool(spec) {
                 const pw = worldAt(p);
                 const c0 = st.held.startCenter;
                 const to = inWorld([c0[0] + (pw.x - st.held.pw0.x), c0[1] + (pw.y - st.held.pw0.y), c0[2]]);
-                writePosition(runner, st.held.obj, { center: to }, { op: 'drag', by: 'human' });
+                writePosition(runner, st.held.obj, { center: to });
                 runner.repaint();   // STUDIO's drag: redraw the CURRENT state, no tick — a paused world shows the move now
                 st.held.moved = true;
                 return;
@@ -245,7 +258,9 @@ export function attachHandTool(spec) {
         if (!st.on || !st.held) { return; }
         if (st.held.pointerId !== undefined && ev.pointerId !== st.held.pointerId) { return; }
         if (host.releasePointerCapture) { try { host.releasePointerCapture(ev.pointerId); } catch (e) { /* already released */ } }
+        const moved = st.held.moved;
         st.held = null;
+        if (moved) { actEnded(); }
         host.style.cursor = hoverObj ? 'grab' : 'default';
         onChange(state());
     }
@@ -269,16 +284,26 @@ export function attachHandTool(spec) {
         try {
             if (!wasGrabbed && st.grabbed) {
                 const d = handleOf(st.grabbed);
-                carry = { name: st.grabbed, obj: d, from: { center: runner.centerOf(d).slice() } };
+                const why = partRefusal(runner, d);
+                if (why) {
+                    // the runner grabbed a part the sketch cannot hold: let go at once, inside the grab's own notice, before any
+                    // camera pose can carry it (a selection that is not the grabbed object releases the grab without a write)
+                    const name = st.grabbed;
+                    st.grabbed = null;
+                    runner.setSelectHighlight(null);
+                    throw new Error('[hand] cannot pick up "' + name + '": ' + why + ' — the grab was let go before anything moved.');
+                }
+                carry = { name: st.grabbed, obj: d };   // the drop writes it; the Record's row runs from where the act began (the package's baseline)
             } else if (wasGrabbed && !st.grabbed && carry) {
-                writePosition(runner, carry.obj, { center: runner.centerOf(carry.obj) }, { op: 'carry3d', by: 'human', from: carry.from });
+                writePosition(runner, carry.obj, { center: runner.centerOf(carry.obj) });
                 carry = null;
+                actEnded();
             }
         } catch (e) { carry = null; fail(e); return; }
         const name = aimSt.grabbed || aimSt.hover || null;
         hoverObj = name ? runner.getObjectByName(name) : null;
         st.hover = name;
-        st.refuse = aimSt.error || null;
+        st.refuse = aimSt.error || (hoverObj ? partRefusal(runner, hoverObj) : null);
         onChange(state());
     }
 
@@ -325,12 +350,13 @@ export function attachHandTool(spec) {
         return state();
     }
     function leave() {
-        // A live 3D carry is DROPPED first, through the one write (integer wire, logged as carry3d),
+        // A live 3D carry is DROPPED first, through the one write (integer wire, its act ended by endAct),
         // while the hand still listens: a throw here leaves the hand on and the carry held, never a
         // silent float position.
         if (carry) {
-            writePosition(runner, carry.obj, { center: runner.centerOf(carry.obj) }, { op: 'carry3d', by: 'human', from: carry.from });
+            writePosition(runner, carry.obj, { center: runner.centerOf(carry.obj) });
             carry = null;
+            actEnded();
         }
         host.removeEventListener('pointerdown', onPointerDown);
         host.removeEventListener('pointermove', onPointerMove);
@@ -351,6 +377,7 @@ export function attachHandTool(spec) {
         set: set,
         toggle: function () { return set(!st.on); },
         state: state,
-        dispose: function () { leave(); if (outline && outline.parentNode) { outline.parentNode.removeChild(outline); } outline = null; }
+        /** Leave and remove the outline; resolves once the last act (a live carry it dropped included) is written into the sketch. */
+        dispose: function () { leave(); if (outline && outline.parentNode) { outline.parentNode.removeChild(outline); } outline = null; return acts; }
     };
 }

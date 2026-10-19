@@ -3,7 +3,10 @@
 
 /**
  * loop.mjs — ONE MiniMaxi loop: Tony's outline → the Designer's plan → the Builder's hands and clip →
- * the Owl's verdict → a seen-memory draft (approve) or back to the Builder (revise), up to --max-rounds.
+ * the Owl's verdict → the round's Record and its seen memory (approve) or back to the Builder (revise), up to --max-rounds.
+ * A QUESTION (the Designer's reading, maxi-roles.js parseDesignerReply) ends at the Designer's answer: the report holds
+ * the answer and the memory files it named, its outcome says so, and no Builder, Owl, Record or memory follows. An
+ * answer naming a file that is not under kb/GodsWorld (listed once per run, kbFiles) stops the loop by name.
  *
  *   node minimaxi/loop.mjs --bridge <url> --brain platform|local --outline "<words>" [--max-rounds N]
  *                          [--max-steps N] [--frames N] [--answer-timeout S] [--run <id>]
@@ -15,11 +18,13 @@
  * one owner, shared with the lab page); the roles, their turns and parsers are maxi-roles.js. This file is
  * the node DRIVER only: it supplies the loop with a brain (the platform ask door or the local file
  * hand-off, a thread per role), a body (hand.mjs over the bridge; footage as file paths + stills), and
- * writes the run report and, on approve, the seen-memory draft: written at once when the approving Owl is the
- * LOCAL Owl (its look: the frames of its turn file, its seen account); on the platform brain the approve
- * writes only <run>.record.json beside the report and the command a human runs after looking at the stills,
- * naming the looker by role (lab-owner, godsworld-seat-author), never by a person's name
- * (scripts/gen-memories-seen.mjs refuses a memory without a look; the platform brain's word is not one).
+ * writes the run report and, on approve, the round's Record folder (<out>/<run>/record/) and the seen memory of its
+ * hand-back Record (scripts/gen-memories-seen.mjs writeSeenMemory): written at once when the approving Owl is the
+ * LOCAL Owl (its look: the frames of its turn file, its seen account) — published into kb/ and site/ only when the
+ * hand-back Record is complete and states its plan (handBackState: the generator's readRun decides), else a draft under
+ * <out>/<run>/memory/ whose INCOMPLETE line names every fault, the plan's too (report.record.planFaults); on the platform brain the approve writes no memory,
+ * only the command a human runs on the Record folder after looking at the stills, naming the looker by role
+ * (lab-owner, godsworld-seat-author), never by a person's name (the platform brain's word is not a look).
  *
  * --brain platform: each role is a thread of the egpt-godsworld app (the persona is its system prompt),
  *   asked through the body's ask door `hand.mjs --bridge <url> ask '{thread, knowledgebase_names,
@@ -28,7 +33,8 @@
  *   verdict: it sees outline + prediction + footage, nothing else).
  * --brain local: each turn is a FILE hand-off for a Claude Code agent (plugin/agents/maxi-<role>.md):
  *   the loop writes minimaxi/out/turns/<run>/<n>-<role>.md (the turn text, the frame paths sampled from
- *   the clip that rides with it) and waits for <n>-<role>.answer.md beside it.
+ *   the clip that rides with it) and waits for <n>-<role> + ANSWER_SUFFIX beside it; a local thread's id is LOCAL_THREAD +
+ *   its turn files (both the generator's, scripts/gen-memories-seen.mjs, which reads them back to serve the answers).
  *
  * Stops LOUDLY (exit 1, the reason on stderr, the report still written) whenever the loop stops (maxi-loop.js
  * names every rule: a malformed hand-off, an undescribed clip, json:done before any clip, --max-steps Builder
@@ -43,9 +49,11 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import * as roles from '../site/app-assets/maxi-roles.js';
 import { createLoop, LOOP_LIMITS } from '../site/app-assets/maxi-loop.js';
-import { CLIP_FACTS } from '../site/app-assets/maxi-hands.js';
-import { FOOTAGE_KEYS } from './body.mjs';
-import { writeSeenDraft, memoryId, LOOKERS } from '../scripts/gen-memories-seen.mjs';
+import { CLIP_FACTS, HANDS, reauthors } from '../site/app-assets/maxi-hands.js';
+import { FOOTAGE_KEYS, CHANGES_KEY } from './body.mjs';
+import { assembleLoopRecords, recordChainFaults, unavailableFields } from '../site/app-assets/maxi-record-folder.js';
+import { writeRecordFolder } from './record-folder.mjs';   // the package's node writer
+import { writeSeenMemory, readRun, owlLook, LOOKERS, stillsOf, LOCAL_THREAD, ANSWER_SUFFIX } from '../scripts/gen-memories-seen.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -92,7 +100,7 @@ export function parseArgs(argv) {
 export function bodyCall(bridge, op, args, env) {
     env = env || ENV;
     // every hand runs with --no-ask: the body films and keeps the clip; the LOOP puts it on the role's next turn
-    const argv = [env.handCli, '--bridge', bridge].concat(op === 'ask' ? [] : ['--no-ask'], [op, JSON.stringify(args)]);
+    const argv = [env.handCli, '--bridge', bridge].concat(op === 'ask' || op === 'record' ? [] : ['--no-ask'], [op, op === 'record' ? args : JSON.stringify(args)]);   // record's act is a word
     const r = spawnSync(process.execPath, argv, { cwd: env.root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
     if (r.error) { throw new Error('loop: could not run ' + env.handCli + ': ' + r.error.message); }
     const out = (r.stdout || '').trim();
@@ -103,7 +111,15 @@ export function bodyCall(bridge, op, args, env) {
         try { result = JSON.parse(out.slice(at)); } catch (e) { throw new Error('loop: hand.mjs ' + op + ' exited 0 but its stdout is not one JSON object (' + e.message + '): ' + out.slice(0, 400)); }
         return { ok: true, result: result };
     }
-    if (r.status === 1) { return { ok: false, error: (out || (r.stderr || '').trim()) }; }
+    if (r.status === 1) {   // a refusal: its words on stderr; stdout {changes} when the refused hand had already written
+        let changes = [];
+        if (out.startsWith('{')) {
+            try { changes = JSON.parse(out)[CHANGES_KEY]; } catch (e) { throw new Error('loop: hand.mjs ' + op + ' was refused and its stdout is not the {changes} object (' + e.message + '): ' + out.slice(0, 400)); }
+            if (!Array.isArray(changes)) { throw new Error('loop: hand.mjs ' + op + ' was refused with a stdout object that carries no `' + CHANGES_KEY + '` array.'); }
+            return { ok: false, error: (r.stderr || '').trim(), changes: changes };
+        }
+        return { ok: false, error: (out || (r.stderr || '').trim()), changes: changes };
+    }
     throw new Error('loop: hand.mjs ' + op + ' exited ' + r.status + ' (neither a result nor a refusal): ' + (r.stderr || out).slice(0, 800));
 }
 
@@ -147,7 +163,7 @@ function localBrain(a, report, env) {
         n += 1;
         const stem = String(n).padStart(2, '0') + '-' + role;
         const turnFile = path.join(dir, stem + '.md');
-        const answerFile = path.join(dir, stem + '.answer.md');
+        const answerFile = path.join(dir, stem + ANSWER_SUFFIX);   // the generator's thread format: it serves these answers
         const frames = clip ? sampleFrames(clip.frames, a.frames) : [];
         const body = [
             '# MiniMaxi turn ' + n + ' — ' + roles.ROLES[role].title + ' (agent maxi-' + role + ', thread ' + thread + ')',
@@ -194,7 +210,7 @@ function nodeBrain(a, report, env, save) {
                 get id() {
                     const t = report.threads[name];
                     if (!t) { throw new Error('loop: no thread ' + name + ' in the report — a memory names only threads that answered.'); }
-                    return t.interaction_ids ? t.interaction_ids[t.interaction_ids.length - 1] : ('local ' + t.turn_files.join(', '));
+                    return t.interaction_ids ? t.interaction_ids[t.interaction_ids.length - 1] : (LOCAL_THREAD + t.turn_files.join(', '));
                 },
                 ask: async function (text, clip) {
                     const reply = ask(role, name, text, clip);
@@ -211,25 +227,63 @@ function nodeBrain(a, report, env, save) {
 function nodeBody(a, env) {
     return {
         omit: [FOOTAGE_KEYS.clip, FOOTAGE_KEYS.stills],
+        reauthors: (hand) => Object.prototype.hasOwnProperty.call(HANDS, hand) && reauthors(HANDS, hand),
         run: async function (hand, args) {
             const r = bodyCall(a.bridge, hand, args, env);
-            if (!r.ok) { return { ok: false, error: r.error }; }
+            if (!r.ok) { return { ok: false, error: r.error, changes: r.changes }; }
+            const changes = r.result[CHANGES_KEY];
+            if (!Array.isArray(changes)) { throw new Error('loop: ' + hand + ' answered without `' + CHANGES_KEY + '` (the writes it made) — the body is older than this loop. Stopped.'); }
+            delete r.result[CHANGES_KEY];   // the writes ride to the Record, never into the Builder's turn
             const filmed = r.result && r.result[FOOTAGE_KEYS.clip];
             if (filmed && !Array.isArray(r.result[FOOTAGE_KEYS.stills])) { throw new Error('loop: ' + hand + ' filmed ' + filmed + ' but its result carries no `' + FOOTAGE_KEYS.stills + '` still paths. Stopped.'); }
             return {
-                ok: true, result: r.result,
+                ok: true, result: r.result, changes: changes,
                 clip: filmed ? {
                     path: path.resolve(env.root, filmed),
                     frames: r.result[FOOTAGE_KEYS.stills].map((f) => path.resolve(env.root, f)),
-                    label: r.result[CLIP_FACTS.label], seconds: r.result[CLIP_FACTS.seconds]
+                    label: r.result[CLIP_FACTS.label], seconds: r.result[CLIP_FACTS.seconds],
+                    firstTick: r.result[CLIP_FACTS.firstTick], lastTick: r.result[CLIP_FACTS.lastTick]
                 } : null
             };
         }
     };
 }
 
+/** Where an answer's memory files must exist: Maxi's knowledge base, listed once per run. */
+export const KB_DIR = 'kb/GodsWorld';
+
+/** Every file under <root>/kb/GodsWorld, as KB-relative paths ('memories/x-card.md', 'robotic-imagination.md'). THROWS when the KB is absent. */
+export function kbFiles(root) {
+    const dir = path.join(root, KB_DIR);
+    if (!fs.existsSync(dir)) { throw new Error('loop: no knowledge base at ' + dir + ' — an answer\'s memory files are checked against it.'); }
+    return fs.readdirSync(dir, { recursive: true }).map(String).filter((f) => fs.statSync(path.join(dir, f)).isFile()).map((f) => f.split(path.sep).join('/'));
+}
+
+/**
+ * The memory files an answer names that do not exist in the KB listing `files`: a bare name matches a file of that name
+ * anywhere under kb/GodsWorld; a path matches a KB-relative path (a leading 'kb/GodsWorld/' is the KB itself).
+ */
+export function ghostMemories(memories, files) {
+    const bases = new Set(files.map((f) => f.slice(f.lastIndexOf('/') + 1)));
+    const paths = new Set(files);
+    return memories.filter((m) => m.indexOf('/') === -1 ? !bases.has(m) : !paths.has(m.indexOf(KB_DIR + '/') === 0 ? m.slice(KB_DIR.length + 1) : m));
+}
+
+/**
+ * One of the page's Record doors through the body (hand.mjs record <act>): begin the loop's chain, begin it again after a
+ * revise, end it (→ the round's closed Records) or let it go. THROWS the body's refusal verbatim.
+ */
+export function recordCall(bridge, act, env) {
+    const r = bodyCall(bridge, 'record', act, env);
+    if (!r.ok) { throw new Error('loop: the body refused record ' + act + ': ' + r.error); }
+    return r.result;
+}
+
 export async function runLoop(a, env) {
     env = env || ENV;
+    const kb = kbFiles(env.root);   // listed once per run: an answer naming a file outside it stops the loop
+    const recordDir = path.join(env.out, a.run, 'record');
+    if (fs.existsSync(recordDir)) { throw new Error('loop: run ' + a.run + ' already has a Record folder (' + path.relative(env.root, recordDir) + ') — a Record is never overwritten; pick another --run before the loop runs.'); }
     const report = { run: a.run, brain: a.brain, outline: a.outline, bridge: a.bridge, started: new Date().toISOString(), threads: {}, turns: [], rounds: [], outcome: null };
     const reportPath = path.join(env.out, 'runs', a.run + '.json');
     fs.mkdirSync(path.dirname(reportPath), { recursive: true });
@@ -237,50 +291,100 @@ export async function runLoop(a, env) {
     const roundOf = (n) => report.rounds.find((r) => r.round === n) || (report.rounds.push({ round: n, steps: [], verdict: null }), report.rounds[report.rounds.length - 1]);
     const onEvent = (e) => {
         if (e.role === 'designer' && e.kind === 'plan') { report.plan = e.plan; report.designerWords = e.words; save(); }
+        else if (e.role === 'designer' && e.kind === 'answer') {
+            report.answer = { reading: e.reading, words: e.words, memories: e.memories }; save();
+            const ghosts = ghostMemories(e.memories, kb);   // the page checks the format only (maxi-roles.js); node can list the KB
+            if (ghosts.length) { throw new Error('the Designer\'s answer names ' + ghosts.join(', ') + ', which ' + (ghosts.length > 1 ? 'are' : 'is') + ' not in ' + KB_DIR + ' — an answer draws only on memories that exist.'); }
+        }
         else if (e.role === 'builder' && e.kind === 'working') {
             const step = { hand: e.hand, args: e.args, prediction: e.prediction, ok: e.ok };
             if (e.ok) { step.result = e.result; } else { step.error = e.error; }
             roundOf(e.round).steps.push(step); save();
+        } else if (e.role === 'builder' && e.kind === 'done-refused') {
+            const rr = roundOf(e.round);
+            (rr.doneRefused = rr.doneRefused || []).push({ words: e.words, refusal: e.refusal }); save();
         } else if (e.role === 'owl' && e.kind !== 'asking') {
             const rr = roundOf(e.round);
             rr.verdict = e.verdict;
             rr.clip = { path: path.relative(env.root, e.clip.path), label: e.clip.label, prediction: e.prediction };
             save();
+            if (e.kind === 'revise') { recordCall(a.bridge, 'next', env); }   // the next round records anew: its chain begins before its first hand
         }
     };
     const loop = createLoop({ roles: roles, brain: nodeBrain(a, report, env, save), body: nodeBody(a, env), onEvent: onEvent, limits: { rounds: a.maxRounds, builderTurns: a.maxSteps } });
+    let recording = false;
     try {
+        recordCall(a.bridge, 'begin', env);   // the world's Record closes and the round's first opens (the page's chain)
+        recording = true;
         const out = await loop.imagine(a.outline);
-        const rec = {
-            id: memoryId(out.plan.scene, a.run), date: new Date().toISOString().slice(0, 10), brain: a.brain, outline: a.outline, plan: out.plan,
-            designerWords: out.designerWords, steps: out.steps, clip: out.clip, prediction: out.prediction,
-            builderWords: out.builderWords, owl: out.owl, threads: out.threads
-        };
+        if (out.answered) {   // a question: answered in words, nothing built — no Record, no memory
+            recordCall(a.bridge, 'abandon', env); recording = false;
+            report.outcome = 'answered in words (' + out.reading + '), drawing on ' + out.answered.memories.join(', ') + ': no build, no Record';
+            save();
+            return report;
+        }
+        const chain = recordCall(a.bridge, 'end', env);
+        recording = false;
+        report.record = writeLoopRecord(out, chain, a, env);
+        save();
+        const hb = handBackState(recordDir);   // the generator's call: the chain holds, then completeness, then the plan
+        report.record.handBackComplete = hb.complete;
+        report.record.planFaults = hb.planFaults;
+        const draft = !hb.complete;
+        const why = hb.planFaults.length ? ' (the Record does not state its plan: ' + hb.planFaults.join(' · ') + ')' : '';
         if (a.brain === 'local') {
-            const owlTurn = String(out.threads.owl).replace(/^local /, '').split(', ').pop();
-            const account = 'turn file ' + owlTurn + '; contact: ' + out.owl.seen.contact + '; after: ' + out.owl.seen.after + '; passes: ' + out.owl.seen.passes;
-            report.memory = writeSeenDraft(rec, { by: 'local-owl', who: 'maxi-owl', stills: sampleFrames(out.clip.frames, a.frames).length, account: account }, env.root);
-            report.outcome = 'approved in round ' + out.rounds;
+            report.memory = writeSeenMemory(recordDir, owlLook(readRun(recordDir), sampleFrames(out.clip.frames, a.frames).length, { draft: draft }), { root: env.root, draft: draft });
+            report.outcome = 'approved in round ' + out.rounds + (draft ? '; the Record is incomplete, so the memory is a draft under ' + path.dirname(report.memory.draft) + '/' + why : '');
         } else {
-            const recordPath = path.join(env.out, 'runs', a.run + '.record.json');
-            fs.writeFileSync(recordPath, JSON.stringify(rec, null, 2) + '\n');
             report.awaitingLook = {
-                record: path.relative(env.root, recordPath), stills: out.clip.frames.map((f) => path.relative(env.root, f)),
-                command: 'node scripts/gen-memories-seen.mjs ' + path.relative(env.root, recordPath) + ' --looked-by <' + LOOKERS.filter((k) => k !== 'local-owl').join('|') +
-                    '>:<role> --stills <N looked at> --account "<contact, after, passes, in your words>"'
+                record: path.relative(env.root, recordDir), stills: out.clip.frames.map((f) => path.relative(env.root, f)),
+                command: 'node scripts/gen-memories-seen.mjs ' + path.relative(env.root, recordDir) + ' --looked-by <' + LOOKERS.filter((k) => k !== 'local-owl').join('|') +
+                    '>:<role> --stills <N looked at> --account "<contact, after, passes, in your words>"' + (draft ? ' --draft' : '')
             };
-            report.outcome = 'approved in round ' + out.rounds + ' by the platform Owl: no memory written until a human or the seat looks at the stills (' + report.awaitingLook.command + ')';
+            report.outcome = 'approved in round ' + out.rounds + ' by the platform Owl: no memory written until a human or the seat looks at the stills (' + report.awaitingLook.command + ')' + why;
         }
         save();
         return report;
     } catch (e) {
         report.outcome = 'STOPPED: ' + e.message;
+        if (recording) {   // the stopped round's chain is let go; a refusal to let go is reported beside the stop, never swallowed
+            try { recordCall(a.bridge, 'abandon', env); } catch (e2) { report.outcome += ' (and the body refused to let the chain go: ' + e2.message + ')'; }
+        }
         save();
         e.report = reportPath;
         throw e;
     }
 }
 
+/**
+ * The approve's Records under <out>/<run>/record/record-NN: each the package's closed Record (the page's chain, `chain` =
+ * hand.mjs record end) plus lab.json, assembled by maxi-record-folder.js, the hand-back with its three stills, each written
+ * by the package's writer. Returns where they went, whether each is complete, and every field a placeholder holds (none is
+ * written; the owner refuses one by name).
+ */
+export function writeLoopRecord(out, chain, a, env) {
+    const stills = stillsOf(out.clip.frames).map((f) => new Uint8Array(fs.readFileSync(f)));
+    if (!chain || !Array.isArray(chain.worlds)) { throw new Error('loop: the body ended the chain without its closed Records — no Record to write.'); }
+    const recs = assembleLoopRecords(out, { worlds: chain.worlds, unheld: chain.unheld, stills: stills, run: a.run, brain: a.brain });
+    const chainFaults = recordChainFaults(recs);
+    if (chainFaults.length) { throw new Error('loop: the round\'s Records do not chain — ' + chainFaults.join('; ')); }
+    const dir = path.join(env.out, a.run, 'record');
+    if (fs.existsSync(dir)) { throw new Error('loop: ' + dir + ' already exists — a Record is never overwritten.'); }
+    const records = recs.map((rec) => ({ name: rec.name, files: writeRecordFolder({ files: rec.files }, path.join(dir, rec.name)).slice().sort(), complete: rec.complete, faults: rec.faults, unavailable: unavailableFields(rec.files) }));
+    return { folder: path.relative(env.root, dir), records: records, handBack: recs[0].lab.handBack };
+}
+/**
+ * Whether the run's memory is published or drafted is the generator's call, never the loop's (scripts/gen-memories-seen.mjs
+ * readRun): the chain holds (recordChainFaults), the hand-back Record is complete, and it states its plan (recordPlanFaults,
+ * run there after the chain check, so the chain's order is its folders'). A plan fault drafts the memory: a published memory
+ * whose Record does not state its plan cannot be repaired after publishing. Returns {complete, faults, planFaults}; each
+ * Record's own `complete` stays in report.record.records.
+ */
+export function handBackState(recordDir) {
+    const run = readRun(recordDir);
+    if (!Array.isArray(run.planFaults)) { throw new Error('loop: scripts/gen-memories-seen.mjs readRun returned no `planFaults` — the generator no longer checks the plan, so the loop will not decide publish or draft.'); }
+    return { complete: run.complete, faults: run.faults, planFaults: run.planFaults };
+}
 /** The token cost per thread, as a table. */
 export function costTable(report) {
     const rows = Object.keys(report.threads).map((th) => {
@@ -296,7 +400,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     let a;
     try { a = parseArgs(process.argv.slice(2)); } catch (e) { console.error(e.message); process.exit(2); }
     runLoop(a).then((report) => {
-        console.log(JSON.stringify({ run: report.run, outcome: report.outcome, memory: report.memory, awaitingLook: report.awaitingLook, report: path.relative(REPO, path.join(OUT, 'runs', report.run + '.json')) }));
+        if (!report.record) { console.log(JSON.stringify({ run: report.run, outcome: report.outcome, answer: report.answer, report: path.relative(REPO, path.join(OUT, 'runs', report.run + '.json')) })); return; }
+        report.record.records.filter((r) => !r.complete).forEach((r) => { console.error('[loop] the Record ' + report.record.folder + '/' + r.name + ' is INCOMPLETE (not a §6 Record yet):\n- ' + r.faults.join('\n- ')); });
+        if (report.record.planFaults.length) { console.error('[loop] the hand-back Record ' + report.record.folder + '/' + report.record.handBack.record + ' does not state its plan, so its memory is a DRAFT:\n- ' + report.record.planFaults.join('\n- ')); }
+        console.log(JSON.stringify({ run: report.run, outcome: report.outcome, memory: report.memory, awaitingLook: report.awaitingLook, record: { folder: report.record.folder, records: report.record.records.map((r) => r.name), handBack: report.record.handBack, handBackComplete: report.record.handBackComplete, planFaults: report.record.planFaults }, report: path.relative(REPO, path.join(OUT, 'runs', report.run + '.json')) }));
         if (a.brain === 'platform') { console.log(costTable(report)); }
     }, (e) => {
         console.error('[loop] ' + e.message + (e.report ? '\n[loop] report: ' + path.relative(REPO, e.report) : ''));

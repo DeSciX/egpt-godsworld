@@ -1,0 +1,27 @@
+{
+  "_purpose": "The ONE pin of the Material icons the lab header draws. The DeSciX app SDK (@descix/app-sdk 0.3.3) depends on @mui/icons-material ^6.4.8, which resolves to 6.5.0; that published package ships each icon as a React module whose one SVG element (a path or a circle, in a 24x24 viewBox) the lab reads by shape (site/app-assets/maxi-icons.js) and draws inline, so no React runs here. Each file under <version>/ is the tarball entry package/<file> copied unchanged, with the package LICENSE (MIT) and package.json beside them. Every field is read by scripts/test/mui-icons.test.mjs: the tarball (npm cache, addressed by the integrity) against its sha256, shasum, integrity and byte count, each vendored file against its sha256 here and against the tarball, the directory against this file list, and maxi-icons.js ICON_FILES against this list. Re-vendor: npm pack the new version into an empty scratch dir, copy the files, re-record here, delete the old version directory in the same change.",
+  "name": "@mui/icons-material",
+  "version": "6.5.0",
+  "npm": {
+    "tarball": "https://registry.npmjs.org/@mui/icons-material/-/icons-material-6.5.0.tgz",
+    "shasum": "26bfa7c8574cc4e57c2f2835bfd6b1efa7f310fa",
+    "integrity": "sha512-VPuPqXqbBPlcVSA0BmnoE4knW4/xG6Thazo8vCLWkOKusko6DtwFV6B665MMWJ9j0KFohTIf3yx2zYtYacvG1g=="
+  },
+  "tarballSha256": "2d8df65eb08331aa758f547bb5d65186cac24bd89c6472bfbcda4ba974fe8561",
+  "tarballBytes": 1700802,
+  "license": "LICENSE",
+  "files": {
+    "LICENSE": "f776953f07d3086635fd33953bcde47ba66fedaeb9a7cbc6ece2d4cb03cc56f8",
+    "package.json": "23058660ed0a35b5ffbd0606f0f7178c3cb0b83138f0abf3f8c501631fccee74",
+    "esm/Code.js": "0ae41de258fc126701fe7b39abbd051e52ed09f33a81a6527e04d584c79fb11c",
+    "esm/FiberManualRecord.js": "480d7af278b169caa3de1b086abdd80cd38f558a22dc0e023882254d5b7477ed",
+    "esm/Fullscreen.js": "8247973e95dff0493a3732ae35e6f0e83acc9995ec1c68aa0aa75ea115c88da1",
+    "esm/FullscreenExit.js": "a875bc50d2df20b738d6dae7c83856056c154f24f13d50ee0e7ae40690a4b11c",
+    "esm/Info.js": "a2d141801848f2c5127fdd932866945bb7685fb0d3481716e8696b123de6ce98",
+    "esm/PanTool.js": "3c8750b20da03598d85972866155ccc527297e13e119886c62c791a3b134a868",
+    "esm/Pause.js": "bcd2fc06da7bffa74e8e4f717b057b1829fb050201858fb08a8b9da9fd8e6de1",
+    "esm/PlayArrow.js": "bfec64d146f53fed25387c5576da530d0acdbe145c15959097f003cd93529859",
+    "esm/RestartAlt.js": "d3b30d89c030671eb4a8839cf2b6d754979ce3134bc34a533c05795de96a9089",
+    "esm/Stop.js": "c1cf33ec7834172b90f70935ab2c57ec75c32e34fdf658b3c88906af8df76074"
+  }
+}

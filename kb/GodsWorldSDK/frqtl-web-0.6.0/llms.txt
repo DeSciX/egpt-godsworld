@@ -1,0 +1,23 @@
+# @descix/frqtl-web
+
+> A discrete cellular-automata physics engine (compiled Rust → WASM) for the browser: interference,
+> blackbody spectra and binding emerge from per-pixel rules (1 px/tick, single occupancy, momentum).
+> 0.6.0 on npm dist-tag `latest`. Node twin: @descix/frqtl-node.
+
+- Install: `npm install @descix/frqtl-web`
+- Live page (claude.ai artifact-safe): https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.0/dist/artifact/double-slit.html
+- One-file form (global FRQTL): https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.0/dist/frqtl-web.min.js — example https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.0/dist/artifact/sun.html
+- A scene is an ES module: `export default function buildExperiment(exp)`, first statement
+  `exp.createCanvas(w, h, cfg)` (2D, p5) or `exp.createScene(w, h, d, cfg)` (3D, three); parts from
+  `@descix/frqtl-web/parts`. Example: https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.0/dist/frqtl/scenes/double-slit.js
+- Doors (`@descix/frqtl-web/boot`): `bootScene(mount, buildExperiment, opts)`;
+  `bootProject(mount, { files: { 'sketch.js': text }, entry: 'sketch.js' }, opts)` or `{ url, entry }`; a folder whose
+  `frqtl.json` names its entry boots as `{ files }` or `{ url }` with no `entry`.
+- `./project`: `FRQTL_WEB_SPECIFIERS`, `libPathOf`, `importMapFor`, `pageImportMapFor`, `FRQTL_WEB_HOST_SPECIFIERS`, `linkProject`, `sketchProject`, `SKETCH_ENTRY`, `projectIdentity`, `MANIFEST_FILE`, `MANIFEST_KEYS`, `normalizeManifest`, `parseManifest`, `serializeManifest`, `manifestFor` (the owner of `frqtl.json`), `RECORD_FILES`, `RECORD_KEYS`, `CHANGE_KEYS`, `OPS`, `BY`, `CLIP_SECONDS`, `CLIP_NAME`, `clipName`, `jsonText`, `recordFolderFaults` (the owner of a Record folder's shape; `recordFolderFaults(files)` is `[]` for a complete Record).
+- `./registry`: walk-through rungs and `projectOf(id, { mode })` → `{ manifest, files, renderState }` (boot it with `bootProject(mount, { files }, { renderState })`).
+- `./kinds`: `registerKind`, `kindNamed`, `kindOf`, `registeredKinds` (a composed fork registers its renamed class).
+- `./host-view`: `declareHostView`, `HOST_VIEW_OUTCOMES`, `CONTRACT_VIOLATIONS`, `HOST_SDK_SCRIPT` (an app asks its DeSciX shell for a view, once: `declareHostView({ sdk: window.DeSciX, mode, fallback })`; the outcome is on the html element's dataset).
+- `await recipeContext.fork(name, NewKind, { by })`: copies the `parts` entry's part file into the folder as `parts/<NewKind>.js` (class renamed, imports rewritten to package specifiers) and re-runs the scene in place.
+- API reference: https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.0/dist/sdk.html
+- Full agent guide: https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.0/CLAUDE.md
+- Acceptance is visual; no CLI ships. No account, credits or tokens are needed.

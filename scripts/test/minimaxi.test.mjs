@@ -35,6 +35,7 @@ import { ASK, buildAskParams, createThread, footageUserInput } from '../../site/
 import { createAskDoor, askThread, sampleIndices, writeStills, parseCliOutput, readThreads } from '../../minimaxi/ask-door.mjs';
 import { bridgeHandler, assertHand, assertPortFree, withFootage, FORBIDDEN_PORTS } from '../../minimaxi/body.mjs';
 import { parseArgs, requestOf } from '../../minimaxi/hand.mjs';
+import { PINNED } from '../frqtl-web-pin.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'minimaxi-test-'));
@@ -61,7 +62,7 @@ async function call(handler, method, url, body) {
 test('the bridge refuses a hand not in HANDS by name, runs a table hand, and serialises', async () => {
     const ran = [];
     let release;
-    const body = { brain: 'none', stills: 8, current: null, runHand: async (h, a) => { ran.push(h); if (h === 'see') { await new Promise((r) => { release = r; }); } return { ok: { hand: h, args: a } }; } };
+    const body = { brain: 'none', stills: 8, current: null, runHand: async (h, a) => { ran.push(h); if (h === 'see') { await new Promise((r) => { release = r; }); } if (h === 'pause') { return { error: 'pause: refused after a write', changes: [{ tick: 3, name: 'm', op: 'moveObject', by: 'maxi', from: { rect: [1, 2, 3, 4] }, to: { rect: [5, 2, 3, 4] } }] }; } if (h === 'resume') { return { ok: {} }; } return { ok: { hand: h, args: a }, changes: [] }; } };
     const h = bridgeHandler(body);
 
     const bad = await call(h, 'POST', '/bridge/hand', { hand: 'fly', args: {} });
@@ -74,7 +75,7 @@ test('the bridge refuses a hand not in HANDS by name, runs a table hand, and ser
     // control: a table hand runs, with its args
     const ok = await call(h, 'POST', '/bridge/hand', { hand: 'inventory' });
     assert.equal(ok.status, 200);
-    assert.deepEqual(ok.body.result, { hand: 'inventory', args: {} });
+    assert.deepEqual(ok.body.result, { hand: 'inventory', args: {}, changes: [] }, 'every result carries the writes the hand made (CHANGES_KEY)');
 
     // one at a time
     const first = call(h, 'POST', '/bridge/hand', { hand: 'see', args: {} });
@@ -84,6 +85,13 @@ test('the bridge refuses a hand not in HANDS by name, runs a table hand, and ser
     assert.match(second.body.error, /busy: hand "see" is still running/);
     release();
     assert.equal((await first).status, 200);
+    // a refusal carries the writes the refused hand had already made; a page answer without them is a body bug
+    const refused = await call(h, 'POST', '/bridge/hand', { hand: 'pause' });
+    assert.equal(refused.status, 422);
+    assert.deepEqual([refused.body.error, refused.body.changes.length], ['pause: refused after a write', 1]);
+    const deaf = await call(h, 'POST', '/bridge/hand', { hand: 'resume' });
+    assert.equal(deaf.status, 500);
+    assert.match(deaf.body.error, /without `changes`/);
 
     const asked = await call(h, 'POST', '/bridge/ask', { thread: 't', user_input: 'x' });
     assert.equal(asked.status, 409);
@@ -251,16 +259,45 @@ test('maxi-ask: words-only turns, explicit [] media refused, per-thread KBs, res
     await assert.rejects(refused.ask({ op: 'designer', userInput: 'plan' }), /^Error: designer: the question was NOT answered — no$/);
 });
 
-// ── 8. playwright is declared, pinned EQUAL to the eyes' own dependency ───────────────────────
+// ── 8. the FRQTL packages are the pinned release; playwright is pinned EQUAL to the eyes' own dependency ──
+
+/** The eyes package: @descix/frqtl-node (its ./eyes entry pulls playwright). */
+export const EYES_PACKAGE = PINNED.node.name;
+
+/**
+ * THROWS unless minimaxi installs @descix/frqtl-web and @descix/frqtl-node at exactly the pinned version, from the
+ * registry, with the lock's integrity equal to the one PINNED.json recorded from the gated tarballs.
+ */
+export function assertFrqtlPinned(pkg, lock, pin = PINNED) {
+    for (const [name, rec] of [[pin.name, pin], [pin.node.name, pin.node]]) {
+        assert.equal(pkg.dependencies && pkg.dependencies[name], pin.version, 'minimaxi/package.json must declare ' + name + ' EXACTLY at the pinned ' + pin.version + ' (site/vendor/frqtl-web/PINNED.json), got ' + JSON.stringify(pkg.dependencies && pkg.dependencies[name]));
+        const got = lock && lock.packages && lock.packages['node_modules/' + name];
+        assert.ok(got, 'package-lock.json installs no ' + name);
+        assert.equal(got.version, pin.version, 'package-lock.json installs ' + name + '@' + got.version + ', the pin ' + pin.version);
+        assert.equal(got.resolved, rec.npm.tarball, name + ' must resolve from the registry tarball the pin names');
+        assert.equal(got.integrity, rec.npm.integrity, name + ': the lock\'s integrity is not the pinned one — the install is not the gated release');
+    }
+    return true;
+}
 
 /** THROWS unless minimaxi declares playwright at exactly the version the eyes package depends on. */
 export function assertPlaywrightPinMatchesEyes(pkg, lock) {
-    const eyes = lock && lock.packages && lock.packages['node_modules/@descix/frqtl-sdk'];
-    assert.ok(eyes && eyes.dependencies && typeof eyes.dependencies.playwright === 'string', 'package-lock.json records no playwright dependency of @descix/frqtl-sdk');
+    const eyes = lock && lock.packages && lock.packages['node_modules/' + EYES_PACKAGE];
+    assert.ok(eyes && eyes.dependencies && typeof eyes.dependencies.playwright === 'string', 'package-lock.json records no playwright dependency of ' + EYES_PACKAGE);
     const ours = pkg.dependencies && pkg.dependencies.playwright;
-    assert.equal(ours, eyes.dependencies.playwright, 'minimaxi/package.json must declare playwright EXACTLY at the eyes\' own pin (@descix/frqtl-sdk ' + eyes.version + ' depends on playwright ' + eyes.dependencies.playwright + '), got ' + JSON.stringify(ours));
+    assert.equal(ours, eyes.dependencies.playwright, 'minimaxi/package.json must declare playwright EXACTLY at the eyes\' own pin (' + EYES_PACKAGE + ' ' + eyes.version + ' depends on playwright ' + eyes.dependencies.playwright + '), got ' + JSON.stringify(ours));
     return ours;
 }
+
+test('minimaxi installs @descix/frqtl-web and @descix/frqtl-node at the pin, by the pinned integrity (a wrong pin is red)', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'minimaxi', 'package.json'), 'utf8'));
+    const lock = JSON.parse(fs.readFileSync(path.join(REPO, 'minimaxi', 'package-lock.json'), 'utf8'));
+    assert.equal(assertFrqtlPinned(pkg, lock), true);
+    assert.throws(() => assertFrqtlPinned(pkg, lock, { ...PINNED, version: PINNED.version + '-not' }), (e) => e.message.includes('EXACTLY at the pinned ' + PINNED.version + '-not'));
+    const wrongIntegrity = { ...PINNED, node: { ...PINNED.node, npm: { ...PINNED.node.npm, integrity: 'sha512-AAAA' } } };
+    assert.throws(() => assertFrqtlPinned(pkg, lock, wrongIntegrity), /@descix\/frqtl-node: the lock's integrity is not the pinned one/);
+    assert.throws(() => assertFrqtlPinned({ dependencies: { ...pkg.dependencies, '@descix/frqtl-web': '^' + PINNED.version } }, lock), /frqtl-web EXACTLY at the pinned/);
+});
 
 test('minimaxi declares playwright at exactly the eyes package\'s own pin (a wrong pin is red)', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'minimaxi', 'package.json'), 'utf8'));

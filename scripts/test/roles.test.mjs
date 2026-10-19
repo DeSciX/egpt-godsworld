@@ -24,6 +24,16 @@
  *      changed constant is red), so the Designer's and the Builder's agents carry it once through the embedded
  *      persona and their first turns never; the Owl's first turn carries it once, its agent never; the skill
  *      once; no other tracked file types a copy;
+ *   8. THE P1 PARADIGM (the sketch's `export const parts` block is the one region a hand rewrites): the Designer's
+ *      preface names setDeclared {name, patch} for a parameter, a move for a placement, openSketch (closing the
+ *      Record) for a re-authoring, code-declared parts as untouchable and a rename as a new key or a fork, and no
+ *      longer says sceneSource-then-openSketch; the Builder's prefers setDeclared, films every change, and answers a
+ *      refusal in words naming the part and key; every hand either preface names is a HANDS key; a refused hand's
+ *      turn asks for those words and claims nothing moved of its own (planted prefaces and a planted turn are red);
+ *   9. THE LAST CLIP (maxi-roles.js LAST_CLIP, LAST_CLIP_RULE): the Owl judges a round's last clip only, so the Designer's
+ *      and the Builder's prefaces carry the rule's words once each (a preface without them is red), and parsePlan refuses
+ *      hands that close with `see` straight after `dragTo` (negative controls: see-only, see after setDeclared or
+ *      setCamera, and a plan ending on dragTo pass);
  *   7. LOOK, NOT ASK: the rule's words live in the persona's BUILDING FROM AN OUTLINE once; the Designer's preface
  *      points at it by maxi-roles.js LOOK_RULE and restates none of it.
  */
@@ -32,28 +42,41 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
     ROLES, ROLE_ORDER, parsePlan, parseBuilderReply, parseVerdict, designerTurn, builderTurn, owlTurn, PARSERS, SEEN_ACCOUNT,
-    stageOf, emptyStage, stageWords, extentWords, planOnStage, LOADING_HANDS, PLAN_REFUSED_KEYS, loadArgsOf
+    stageOf, emptyStage, stageWords, extentWords, planOnStage, LOADING_HANDS, PLAN_REFUSED_KEYS, loadArgsOf, REFUSAL_ASK,
+    parseDesignerReply, readingOf, READING_LINE, DESIGNER_READINGS, PLAN_KEYS, ANSWER_KEYS, TALK_RULE, HANDOFF_TAGS, LAST_CLIP, LAST_CLIP_RULE
 } from '../../site/app-assets/maxi-roles.js';
-import { HANDS, INVENTORY_KEYS, inventoryOf } from '../../site/app-assets/maxi-hands.js';
+import { HANDS, INVENTORY_KEYS, SKETCH_KEYS, inventoryOf } from '../../site/app-assets/maxi-hands.js';
 import { fakeRunner, sdkCameraControl } from './fake-runner.mjs';
 import { renderAll, agentPath, PERSONA, TOOL_NEEDS, toolsFor } from '../gen-plugin-agents.mjs';
 import { SECTIONS, spliceBlock, renderPersona } from '../gen-hands-section.mjs';
 import * as rolesModule from '../../site/app-assets/maxi-roles.js';
 import { execFileSync } from 'node:child_process';
+import './site-import-map.mjs';   // the vendored cl1a-mirror imports the package by specifier: resolve it as the page does
+import { sceneFile } from '../frqtl-web-pin.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+// cl1a-mirror's emitter, as the vendored scene declares it in its parts table (the one owner of its name and centre)
+const { SphereEmitter } = await import('@descix/frqtl-web/parts');
+const MIRROR_PARTS = (await import(pathToFileURL(path.join(REPO, sceneFile('scenes/mirror.js'))).href)).parts;
+const EMITTERS = Object.keys(MIRROR_PARTS).filter((k) => MIRROR_PARTS[k][0] === SphereEmitter);
+assert.equal(EMITTERS.length, 1, 'cl1a-mirror declares ' + EMITTERS.length + ' SphereEmitter parts, the fixture needs one: ' + JSON.stringify(Object.keys(MIRROR_PARTS)));
+const EMITTER = EMITTERS[0];
+const EMITTER_AT = MIRROR_PARTS[EMITTER][1].center.slice(0, 2).concat([0]);
+const reText = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const fence = (tag, body) => '```' + tag + '\n' + body + '\n```';
-const PLAN = { scene: 'cl1a-mirror', registryMode: null, changes: [{ object: 'mirror', param: 'orientationDeg', value: 30, why: 'the outline asks 30 degrees' }], hands: ['sceneSource', 'openSketch', 'see'], prediction: 'the beam leaves the mirror at 60 degrees' };
+const PLAN = { scene: 'cl1a-mirror', registryMode: null, changes: [{ object: 'mirror', param: 'orientationDeg', value: 30, why: 'the outline asks 30 degrees' }], hands: ['setDeclared', 'see'], prediction: 'the beam leaves the mirror at 60 degrees' };
 
 /** An inventory as the hand returns it (maxi-hands.js inventoryOf). */
 const INV_2D = { tick: 40, scene: '1A · Mirror', id: 'cl1a-mirror', mode: null, modes: [], renderer: 'p5', dimensions: 2, canvas: [600, 400], camera: null, viewer: null,
-    objects: [{ name: 'sphere emitter 0', kind: 'SphereEmitter', authority: 'center', center: [90, 200, 0] }, { name: 'mirror', kind: 'Wall', authority: 'rect', center: [370, 200, 0], rect: [360, 80, 20, 240] }] };
+    objects: [{ name: EMITTER, kind: 'SphereEmitter', authority: 'center', center: EMITTER_AT }, { name: 'mirror', kind: 'Wall', authority: 'rect', center: [370, 200, 0], rect: [360, 80, 20, 240] }],
+    parts: { [EMITTER]: ['SphereEmitter', { center: EMITTER_AT.slice(0, 2) }], mirror: ['Wall', { rect: [360, 80, 20, 240], orientationDeg: 45 }] } };
 const INV_3D = { tick: 12, scene: '1A · Mirror (3D)', id: 'cl1a-mirror-3d', mode: null, modes: [], renderer: 'three', dimensions: 3, canvas: [600, 400, 600], camera: { azimuth: 45, elevation: 45, distance: 900, roll: 0, target: null }, viewer: { toward: '+z', away: '-z' },
-    objects: [{ name: 'mirror', kind: 'Wall', authority: 'rect', center: [370, 200, 0], rect: [360, 80, -80, 20, 240, 160] }] };
+    objects: [{ name: 'mirror', kind: 'Wall', authority: 'rect', center: [370, 200, 0], rect: [360, 80, -80, 20, 240, 160] }],
+    parts: { mirror: ['Wall', { rect: [360, 80, -80, 20, 240, 160] }] } };
 const STAGE = stageOf(INV_2D);
 
 test('roles: three, in order, each with its own KB list, preface and parser', () => {
@@ -86,11 +109,18 @@ test('designer: a plan parses with its words for Tony; malformed plans throw', (
 
 test('the stage: read by INVENTORY_KEYS, shown in words, and a plan for another scene must load it (negative controls)', () => {
     assert.deepEqual(STAGE, { label: '1A · Mirror', id: 'cl1a-mirror', mode: null, modes: [], renderer: 'p5', dimensions: 2, canvas: [600, 400], camera: null, viewer: null,
-        objects: [{ name: 'sphere emitter 0', kind: 'SphereEmitter', center: [90, 200, 0], rect: null }, { name: 'mirror', kind: 'Wall', center: [370, 200, 0], rect: [360, 80, 20, 240] }] });
-    for (const k of INVENTORY_KEYS) {
+        objects: [{ name: EMITTER, kind: 'SphereEmitter', center: EMITTER_AT, rect: null, inParts: true }, { name: 'mirror', kind: 'Wall', center: [370, 200, 0], rect: [360, 80, 20, 240], inParts: true }] });
+    for (const k of INVENTORY_KEYS.concat([SKETCH_KEYS.parts])) {
         const cut = Object.assign({}, INV_2D); delete cut[k];
-        assert.throws(() => stageOf(cut), new RegExp('lacks ' + k + ' \\(maxi-hands\\.js INVENTORY_KEYS\\)'), 'an inventory without ' + k + ' is no stage');
+        assert.throws(() => stageOf(cut), new RegExp('lacks ' + k + ' \\(maxi-hands\\.js INVENTORY_KEYS and SKETCH_KEYS\\.parts\\)'), 'an inventory without ' + k + ' is no stage');
     }
+    // P1: a part outside the sketch's parts block is declared in the scene's code, and the stage line SAYS no hand can change it
+    // (negative control: the same object inside the block carries no mark)
+    const codeDeclared = stageWords(stageOf(Object.assign({}, INV_2D, { parts: { mirror: INV_2D.parts.mirror } })));
+    assert.ok(codeDeclared.includes(EMITTER + ' (SphereEmitter; declared in the scene\'s code: no hand can change it): centre') && codeDeclared.includes('mirror (Wall): spans'), codeDeclared);
+    assert.doesNotMatch(stageWords(STAGE), /declared in the scene's code/);
+    assert.match(stageWords(stageOf(Object.assign({}, INV_2D, { parts: null }))), /mirror \(Wall; declared in the scene's code: no hand can change it\)/, 'a sketch with no block: every part is code-declared');
+    assert.throws(() => stageOf(Object.assign({}, INV_2D, { parts: [] })), /parts must be the sketch's parts block/);
     assert.throws(() => stageOf(Object.assign({}, INV_2D, { canvas: [600] })), /canvas must have one size per dimension \(2\)/);
     assert.throws(() => stageOf(Object.assign({}, INV_2D, { dimensions: '3d' })), /dimensions must be 2 or 3 \(maxi-hands\.js worldShape\), got "3d"/);
     assert.throws(() => stageOf(Object.assign({}, INV_2D, { dimensions: 3 })), /one size per dimension \(3\)/, 'dimensions and canvas that disagree are a body bug');
@@ -144,15 +174,16 @@ test('the 3D stage says which way is toward the viewer (off the camera) and ever
     const wall = () => ({ name: 'mirror', _schemaKind: 'Wall', rect: { left: 360, top: 80, z: -80, w: 20, h: 240, d: 160 } });
     const scAt = (azimuth) => ({ label: '1A · Mirror (3D)', id: 'cl1a-mirror-3d', mode: null, modes: [], renderer: 'three', tick: () => 1, recipeContext: { world: { w: 600, h: 400, d: 600 } },
         runner: fakeRunner([wall()], { cameraControl: sdkCameraControl({ azimuth: azimuth, elevation: 45, distance: 900 }, 600, 400) }) });
-    assert.match(stageWords(stageOf(inventoryOf(scAt(45)))), /azimuth 45°, elevation 45°; toward the viewer is \+z, away is -z/);
-    assert.match(stageWords(stageOf(inventoryOf(scAt(225)))), /azimuth 225°, elevation 45°; toward the viewer is -z, away is \+z/, 'the planted mirrored pose flips the words');
+    const handInv = (sc) => Object.assign(inventoryOf(sc), { [SKETCH_KEYS.parts]: { mirror: ['Wall', {}] } });   // the inventory HAND adds the block (SKETCH_KEYS)
+    assert.match(stageWords(stageOf(handInv(scAt(45)))), /azimuth 45°, elevation 45°; toward the viewer is \+z, away is -z/);
+    assert.match(stageWords(stageOf(handInv(scAt(225)))), /azimuth 225°, elevation 45°; toward the viewer is -z, away is \+z/, 'the planted mirrored pose flips the words');
     assert.match(stageWords(stageOf(Object.assign({}, INV_3D, { camera: { azimuth: 90, elevation: 20 }, viewer: { toward: null, away: null } }))),
         /azimuth 90°, elevation 20°, across z: neither z direction is toward the viewer/);
     // extents: a centre-placed part gives its centre; a 2D rect spans x and y only; fractions are rounded, not hidden
-    assert.equal(extentWords({ name: 'sphere emitter 0', kind: 'SphereEmitter', center: [90, 200, 0], rect: null }, 3), 'sphere emitter 0 (SphereEmitter): centre [90, 200, 0]');
+    assert.equal(extentWords({ name: EMITTER, kind: 'SphereEmitter', center: EMITTER_AT, rect: null }, 3), EMITTER + ' (SphereEmitter): centre [' + EMITTER_AT.join(', ') + ']');
     assert.equal(extentWords({ name: 'mirror', kind: 'Wall', center: [370, 200, 0], rect: [360, 80, 20, 240] }, 2), 'mirror (Wall): spans x 360..380, y 80..320; centre [370, 200]');
     assert.equal(extentWords({ name: 'w', kind: 'Wall', center: null, rect: [0, 0, 1.5, 10, 10, 2.25] }, 3), 'w (Wall): spans x 0..10, y 0..10, z 1.5..3.75');
-    assert.match(stageWords(STAGE), /declared objects: sphere emitter 0 \(SphereEmitter\): centre \[90, 200\]; mirror \(Wall\): spans x 360\.\.380, y 80\.\.320; centre \[370, 200\]\.$/);
+    assert.match(stageWords(STAGE), new RegExp(reText('declared objects: ' + EMITTER + ' (SphereEmitter): centre [' + EMITTER_AT.slice(0, 2).join(', ') + ']; mirror (Wall): spans x 360..380, y 80..320; centre [370, 200].') + '$'));
     assert.doesNotMatch(stageWords(STAGE), /toward the viewer|azimuth/, 'a 2D stage has no depth and no viewer axis');
     // negative controls: a 3D inventory without a derived viewer, or with a malformed one, is a body bug; 2D carries none
     for (const bad of [null, {}, { toward: '+z', away: '+z' }, { toward: 'near', away: 'far' }, { toward: '-z' }]) {
@@ -209,9 +240,9 @@ test('owl: approve and revise parse with the account; a missing verdict, account
 
 test('turns: each role sees only its own inputs', () => {
     const d = designerTurn({ outline: 'a laser hitting a mirror at 30 degrees', stage: STAGE });
-    assert.ok(d.startsWith(ROLES.designer.preface + '\n\n' + stageWords(STAGE) + '\n\nTONY\'S OUTLINE: a laser hitting a mirror at 30 degrees'), 'preface, then THE STAGE, then the outline');
+    assert.ok(d.startsWith(ROLES.designer.preface + '\n\n' + stageWords(STAGE) + '\n\nTONY\'S MESSAGE: a laser hitting a mirror at 30 degrees'), 'preface, then THE STAGE, then the message (labelled a message: reading it is the Designer\'s first move)');
     const later = designerTurn({ outline: 'x', first: false, stage: STAGE });
-    assert.equal(later, stageWords(STAGE) + '\n\nTONY\'S OUTLINE: x', 'a later Designer turn carries no second preface, and the stage again');
+    assert.equal(later, stageWords(STAGE) + '\n\nTONY\'S MESSAGE: x', 'a later Designer turn carries no second preface, and the stage again');
     assert.throws(() => designerTurn({ outline: 'x' }), /designerTurn needs the stage/);
     const b1 = builderTurn({ plan: PLAN, stage: STAGE });
     assert.match(b1, /"orientationDeg"/);
@@ -424,4 +455,165 @@ test('LOOK, NOT ASK: the rule lives once in the persona\'s BUILDING FROM AN OUTL
     for (const id of ['builder', 'owl']) assert.ok(!ROLES[id].preface.includes(L), 'only the Designer plans, so only it is pointed at the rule (' + id + ')');
     // negative control: the pointer without the rule in the persona is red
     assert.equal(text.replace(rule + '\n', '').split('\n').findIndex((l) => l.startsWith(L + '. ')), -1);
+});
+
+/** THE P1 PARADIGM in a role's preface: each clause a regex; returns the clauses that are missing. */
+export const P1_DESIGNER = {
+    'the parts block is the one region a hand rewrites': /`export const parts = \{…\}` block is the one region a hand\s+'?\s*rewrites/,
+    'a parameter is a setDeclared {name, patch}, one Record row': /setDeclared \{name, patch\}: one row in the\s+'?\s*Record/,
+    'a placement is a move': /a placement is a move: moveObject or resize, or dragTo/,
+    'a re-authoring is openSketch, which closes the Record': /openSketch, which\s+'?\s*closes the Record and opens a new one/,
+    'a code-declared part cannot be touched': /a part the scene declares in its code \(the stage line marks it\) cannot be touched by any hand/,
+    'a rename is a new key or a fork': /never renamed: a new name is a new key \(addObject\) or a fork \(openSketch\)/
+};
+export const P1_BUILDER = {
+    'setDeclared over re-authoring': /changes\s+'?\s*with setDeclared\{name, patch\}, never by re-authoring the sketch/,
+    'setDeclared re-runs the world: film after it': /setDeclared runs the scene again from its tick 0/,
+    'film every change: the Record refuses a change no clip shows': /FILM EVERY CHANGE[\s\S]*The Record refuses a change no clip shows, and the Owl needs a clip of each/,
+    'a refusal is answered in words, part and key, never retried unchanged': /A REFUSED HAND comes back verbatim\. Before your next block, say in words which part and which key it refused\s+'?\s*and why; never send the same hand again unchanged/,
+    'a refused part and key are named in the hand-back': /name that part and key in your json:done/
+};
+const STALE = [/sceneSource to read it, then openSketch with the edited source/, /change the value\s+there and boot the whole edited sketch/];
+/** Sentences of a preface that teach the P0 path in any words: one sentence naming both sceneSource and openSketch (neither preface needs sceneSource at all). */
+export const p0Sentences = (pre) => pre.replace(/\n/g, ' ').split(/(?<=[.!?])\s+/)
+    .filter((t) => /\bsceneSource\b/.test(t) && /\bopenSketch\b/.test(t));
+const missingOf = (pre, clauses) => Object.keys(clauses).filter((k) => !clauses[k].test(pre));
+const flat = (pre) => pre.replace(/\n/g, ' ');
+
+test('the P1 paradigm: the Designer plans setDeclared/moves/openSketch over the parts block; the Builder prefers setDeclared, films every change, answers a refusal in words (planted prefaces are red)', () => {
+    assert.deepEqual(missingOf(flat(ROLES.designer.preface), P1_DESIGNER), [], 'the Designer preface lacks P1 clauses');
+    assert.deepEqual(missingOf(flat(ROLES.builder.preface), P1_BUILDER), [], 'the Builder preface lacks P1 clauses');
+    for (const id of ['designer', 'builder']) for (const re of STALE) assert.doesNotMatch(flat(ROLES[id].preface), re, 'the ' + id + ' preface still teaches the P0 re-author-for-a-parameter path');
+    for (const id of ['designer', 'builder']) assert.deepEqual(p0Sentences(ROLES[id].preface), [], 'the ' + id + ' preface names sceneSource and openSketch in one sentence: the P0 re-author teaching, in other words');
+    // negative controls: the old teaching paraphrased beside the new text is red, whatever its words and punctuation
+    for (const [id, plant] of [
+        ['designer', 'To change a part\'s angle, read its text with sceneSource and boot the edited copy with openSketch.'],
+        ['builder', 'A part\'s own parameter changes only in its sketch: sceneSource{id} gives you the sketch text; change the value there and boot it with openSketch{source}.'],
+        ['builder', 'To tilt the mirror, read its sketch with sceneSource, then boot the edited text with openSketch.']]) {
+        assert.equal(p0Sentences(ROLES[id].preface + '\n' + plant).length, 1, 'the paraphrase stayed green: ' + plant);
+    }
+    // negative controls: a Designer preface without setDeclared, a Builder preface whose refusal clause is gone
+    assert.deepEqual(missingOf(flat(ROLES.designer.preface).replace(/setDeclared \{name, patch\}/g, 'openSketch'), P1_DESIGNER), ['a parameter is a setDeclared {name, patch}, one Record row']);
+    assert.ok(missingOf(flat(ROLES.builder.preface).replace(/A REFUSED HAND[^.]*\./, ''), P1_BUILDER).includes('a refusal is answered in words, part and key, never retried unchanged'));
+    // every hand the Builder's preface names in its call shape (`hand{args}`) is a HANDS key (a renamed hand is red here, not in a run)
+    const named = [...new Set([...ROLES.builder.preface.matchAll(/(?<![:\w])([a-z][A-Za-z]+)\{/g)].map((m) => m[1]))];
+    assert.ok(named.includes('setDeclared') && named.includes('loadScene'), 'the Builder names setDeclared and loadScene in their call shape: ' + named.join(', '));
+    assert.deepEqual(named.filter((h) => !Object.prototype.hasOwnProperty.call(HANDS, h)), [], 'the Builder preface names a hand that is not in HANDS');
+    assert.ok(Object.prototype.hasOwnProperty.call(HANDS, 'setDeclared'), 'setDeclared is a hand');
+    // the plan template still quotes the generator's change shape {object, param, value, why}
+    assert.match(ROLES.designer.preface, /"changes": \[\{"object": "<a part of the scene's parts block>", "param": "<a field of its entry, or rect\/center>", "value": <new value>, "why": "<one line>"\}\]/);
+});
+
+test('a refused hand\'s turn asks for the part and key in words and adds no claim of its own; a refused json:done goes back verbatim; `said` is the words before PREDICTION', () => {
+    const refusal = 'setDeclared: the sketch text did not take this hand — "mirror" name (setDeclared): the key is the name. The world changed, but the sketch does not say so.';
+    const t = builderTurn({ results: [{ hand: 'setDeclared', ok: false, error: refusal }], footageAttached: false });
+    assert.ok(t.startsWith('YOUR HAND `setDeclared` WAS REFUSED, verbatim:\n' + refusal + '\n' + REFUSAL_ASK), t);
+    assert.doesNotMatch(t, /Nothing moved/, 'the turn never says nothing moved: a sketch that did not take a hand says the world changed');
+    assert.match(REFUSAL_ASK, /which part and which key it refused and why/);
+    const d = builderTurn({ doneRefused: 'json:done after 1 change(s) your last clip does not show (the first: setDeclared of mirror)' });
+    assert.match(d, /^YOUR json:done WAS REFUSED, verbatim:\njson:done after 1 change\(s\) your last clip does not show \(the first: setDeclared of mirror\)\nFilm it/);
+    assert.throws(() => builderTurn({ doneRefused: '  ' }), /doneRefused must be a non-empty string/);
+    const call = parseBuilderReply('The mirror key was refused: a rename.\nPREDICTION: the mirror turns\n' + fence('json:call:setDeclared', '{"name":"mirror","patch":{"orientationDeg":30}}'));
+    assert.equal(call.said, 'The mirror key was refused: a rename.');
+    assert.equal(parseBuilderReply('PREDICTION: x\n' + fence('json:call:see', '{}')).said, '', 'a reply that is only its PREDICTION says nothing');
+    assert.equal(parseBuilderReply('Done.\n' + fence('json:done', '{}')).said, 'Done.');
+});
+
+// ── the Designer reads the message first: an outline plans, a question answers ───────────────
+
+const READ = (k) => READING_LINE + ' ' + DESIGNER_READINGS[k];
+const ANSWER_WORDS = 'The card dse-tunnel-rebuild-card.md says Feynman called it impossible to explain in any classical way; that is its claim.';
+const ANSWER_BLOCK = fence(HANDOFF_TAGS.answer, JSON.stringify({ memories: ['dse-tunnel-rebuild-card.md'] }));
+const PLAN_BLOCK = fence(HANDOFF_TAGS.plan, JSON.stringify(PLAN));
+
+test('designer: the first line reads the message; an outline parses its plan, a question its answer naming the memory files, both the answer then the plan (planted replies are red, each by name)', () => {
+    assert.equal(PARSERS.designer, parseDesignerReply, 'the Designer\'s one parser reads the message first');
+    assert.deepEqual(Object.keys(DESIGNER_READINGS), ['outline', 'question', 'both']);
+    // the three shapes
+    const o = parseDesignerReply(READ('outline') + '\nTony, I will start from the mirror.\n' + PLAN_BLOCK, STAGE);
+    assert.deepEqual([o.reading, o.answer, o.plan, o.words], ['outline', null, PLAN, 'Tony, I will start from the mirror.']);
+    const q = parseDesignerReply(READ('question') + '\n' + ANSWER_WORDS + '\n' + ANSWER_BLOCK, STAGE);
+    assert.deepEqual([q.reading, q.answer, q.plan, q.words], ['question', { words: ANSWER_WORDS, memories: ['dse-tunnel-rebuild-card.md'] }, null, null]);
+    const b = parseDesignerReply(READ('both') + '\n' + ANSWER_WORDS + '\n' + ANSWER_BLOCK + '\nNow the build: the mirror at 30 degrees.\n' + PLAN_BLOCK, STAGE);
+    assert.deepEqual([b.reading, b.answer.memories, b.plan, b.words], ['both', ['dse-tunnel-rebuild-card.md'], PLAN, 'Now the build: the mirror at 30 degrees.']);
+    assert.equal(readingOf('  \n' + READ('question') + '.\nwords').reading, 'question', 'leading blank lines and a closing full stop are read');
+    assert.throws(() => parseDesignerReply(READ('question') + '\nFrom dse-tunnel-rebuild-card: the claim.\n' + ANSWER_BLOCK, STAGE), /the answer's words never name dse-tunnel-rebuild-card\.md/, 'a file is named by its whole file name, extension included');
+    // the name check is a whole-token match, never a substring (planted substring matches are red here)
+    const named = (words, file) => parseDesignerReply(READ('question') + '\n' + words + '\n' + fence(HANDOFF_TAGS.answer, JSON.stringify({ memories: [file] })), STAGE).answer.memories;
+    assert.throws(() => named('The card says so.', 'card.md'), /never name card\.md/, '"card" does not name card.md');
+    assert.throws(() => named('I have a view.', 'a.md'), /never name a\.md/, '"a" does not name a.md');
+    assert.throws(() => named('See my-card.md for it.', 'card.md'), /never name card\.md/, 'my-card.md does not name card.md');
+    assert.throws(() => named('See card.mdx for it.', 'card.md'), /never name card\.md/, 'card.mdx does not name card.md');
+    for (const ok of ['See card.md.', '(card.md)', '`card.md`', 'kb/GodsWorld/memories/card.md says so', 'card.md, then']) { assert.deepEqual(named(ok, 'card.md'), ['card.md'], JSON.stringify(ok) + ' names card.md'); }
+    assert.deepEqual(parseDesignerReply(READ('question') + '\nkb/GodsWorld/robotic-imagination.md says so.\n' + fence(HANDOFF_TAGS.answer, '{"memories": ["kb/GodsWorld/robotic-imagination.md"]}'), STAGE).answer.memories, ['kb/GodsWorld/robotic-imagination.md'], 'a kb-relative path is a file name');
+    // the reading line
+    assert.throws(() => parseDesignerReply('Tony, I will start from the mirror.\n' + PLAN_BLOCK, STAGE), /^Error: \[designer → reading\]: the reply's first line must read the message — one of "THIS IS: an outline", "THIS IS: a question", "THIS IS: a question and an outline" — got "Tony, I will start from the mirror\."/);
+    assert.throws(() => parseDesignerReply(READING_LINE + ' a request\n' + PLAN_BLOCK, STAGE), /\[designer → reading\]: .* got "THIS IS: a request"/);
+    // the blocks disagree with the reading
+    assert.throws(() => parseDesignerReply(READ('question') + '\n' + ANSWER_WORDS + '\n' + ANSWER_BLOCK + PLAN_BLOCK, STAGE), /^Error: \[designer → question\]: "THIS IS: a question" ends with ONE json:answer block and no json:plan block, found 1 json:answer and 1 json:plan/);
+    assert.throws(() => parseDesignerReply(READ('question') + '\nI would build the mirror.\n' + PLAN_BLOCK, STAGE), /\[designer → question\]: .*found 0 json:answer and 1 json:plan/, 'a question forced into a plan is refused');
+    assert.throws(() => parseDesignerReply(READ('outline') + '\n' + ANSWER_WORDS + '\n' + ANSWER_BLOCK + PLAN_BLOCK, STAGE), /\[designer → outline\]: .*found 1 json:answer and 1 json:plan/);
+    assert.throws(() => parseDesignerReply(READ('both') + '\n' + PLAN_BLOCK + '\n' + ANSWER_WORDS + '\n' + ANSWER_BLOCK, STAGE), /\[designer → both\]: the answer comes first/);
+    assert.throws(() => parseDesignerReply(READ('both') + '\n' + ANSWER_WORDS + '\n' + ANSWER_BLOCK, STAGE), /\[designer → both\]: .*found 1 json:answer and 0 json:plan/);
+    // the answer: names a memory file, carries no plan
+    const answer = (body, words) => parseDesignerReply(READ('question') + '\n' + (words === undefined ? ANSWER_WORDS : words) + '\n' + fence(HANDOFF_TAGS.answer, JSON.stringify(body)), STAGE);
+    assert.throws(() => answer({ memories: [] }), /^Error: \[designer → answer\]: an answer names the memory files it drew on — `memories` must be a non-empty array of file names, got \[\]/);
+    assert.throws(() => answer({}), /`memories` must be a non-empty array of file names, got undefined/);
+    assert.throws(() => answer({ memories: ['the double slit card'] }), /`memories` holds file names of the knowledge base \(<name>\.md\), got "the double slit card"/);
+    assert.throws(() => answer({ memories: ['dse-tunnel-rebuild-card.md'], scene: 'dse-tunnel-rebuild', hands: ['see'] }), /^Error: \[designer → answer\]: an answer carries no plan — `scene`, `hands` are plan fields; a message that also asks for a build is "THIS IS: a question and an outline"/);
+    for (const k of PLAN_KEYS.concat(Object.keys(PLAN_REFUSED_KEYS))) {
+        assert.throws(() => answer({ memories: ['dse-tunnel-rebuild-card.md'], [k]: null }), new RegExp('an answer carries no plan — `' + k + '` is a plan field'), 'the plan key ' + k);
+    }
+    assert.throws(() => answer({ memories: ['dse-tunnel-rebuild-card.md'], confidence: 1 }), /a json:answer block carries only memories, got `confidence`/);
+    assert.deepEqual(ANSWER_KEYS, ['memories']);
+    assert.throws(() => answer({ memories: ['dse-tunnel-rebuild-card.md', 'r2-wave-card.md'] }), /the answer's words never name r2-wave-card\.md — a memory an answer draws on is named in its words/);
+    assert.throws(() => answer({ memories: ['dse-tunnel-rebuild-card.md'] }, ''), /the answer is the words before the json:answer block, and there are none/);
+    assert.throws(() => parseDesignerReply(READ('question') + '\n' + ANSWER_WORDS + '\n' + fence(HANDOFF_TAGS.answer, "{memories: ['x.md']}"), STAGE), /\[designer → answer\]: the block body is not strict JSON/);
+    // the plan keeps parsePlan's checks inside a reading
+    assert.throws(() => parseDesignerReply(READ('outline') + '\n' + fence(HANDOFF_TAGS.plan, JSON.stringify(Object.assign({}, PLAN, { hands: ['teleport'] }))), STAGE), /names no such hand: teleport/);
+    assert.deepEqual(Object.keys(o.plan), PLAN_KEYS, 'a plan carries exactly PLAN_KEYS');
+});
+
+test(TALK_RULE + ': the rule lives once in the persona, as its own section; the Designer\'s preface points at it by name and gives only the reply\'s shape (negative controls: a missing section, a restated clause)', () => {
+    const text = fs.readFileSync(path.join(REPO, PERSONA), 'utf8');
+    const lines = text.split('\n');
+    assert.equal(lines.filter((l) => l === TALK_RULE).length, 1, PERSONA + ' carries the section ' + TALK_RULE + ' once');
+    const sec = lines.indexOf(TALK_RULE);
+    const next = lines.findIndex((l, i) => i > sec && /^[A-Z][A-Z ,'’—()-]+$/.test(l) && l.length > 8);
+    const body = lines.slice(sec + 1, next).join(' ');
+    assert.match(body, /To imagine is to build/);
+    assert.match(body, /To talk is to answer in words/);
+    assert.match(body, /name the file each part of the answer came from/);
+    assert.match(body, /dse-tunnel-rebuild-card\.md/, 'the worked example names the double slit\'s card memory');
+    const pre = ROLES.designer.preface;
+    assert.ok(pre.includes(TALK_RULE + ', in your persona'), 'the Designer preface points at the section by name');
+    for (const k of Object.keys(DESIGNER_READINGS)) { assert.ok(pre.includes('  ' + READ(k)), 'the preface lists the reading line ' + READ(k)); }
+    assert.ok(pre.includes('```' + HANDOFF_TAGS.answer), 'the preface shows the answer block');
+    const repeats = restated(body, pre);
+    assert.deepEqual(repeats, [], 'the Designer preface restates the persona\'s section: ' + repeats.join(' | '));
+    assert.notDeepEqual(restated(body, pre + '\nA "what happens if" is answered by building it and watching, never by guessing.'), [], 'negative control: a restated clause is red');
+    assert.equal(text.replace('\n' + TALK_RULE + '\n', '\n').split('\n').indexOf(TALK_RULE), -1, 'negative control: without the section the pointer points at nothing');
+    for (const id of ['builder', 'owl']) assert.ok(!ROLES[id].preface.includes(TALK_RULE), 'only the Designer reads the message (' + id + ')');
+});
+
+test('the last clip is the one the Owl judges: both prefaces carry the rule once; a plan closing with see straight after dragTo is refused (negative controls pass)', () => {
+    assert.deepEqual(LAST_CLIP, { shows: 'dragTo', looks: 'see' });
+    for (const h of Object.values(LAST_CLIP)) assert.ok(Object.prototype.hasOwnProperty.call(HANDS, h), h + ' is a hand');
+    assert.match(LAST_CLIP_RULE, /^THE LAST CLIP IS THE ONE THE OWL JUDGES: .*SHOWS the change\. A dragTo films its own change.*a see straight after it hides that change behind a clip with no before-state.*never as the closing act after a dragTo\.$/);
+    const once = (t) => t.split(LAST_CLIP_RULE).length - 1;
+    assert.equal(once(ROLES.designer.preface), 1, 'the Designer preface carries the last-clip rule once');
+    assert.equal(once(ROLES.builder.preface), 1, 'the Builder preface carries the last-clip rule once');
+    assert.equal(once(ROLES.owl.preface), 0, 'the Owl preface is unchanged: it carries no rule about the Builder\'s acts');
+    assert.match(ROLES.designer.preface, /Your `hands` end the same way: a plan whose hands close with see straight after dragTo is refused\./);
+    assert.match(ROLES.builder.preface, /When the dragTo's clip shows the plan built, your next block is json:done\./);
+    // negative control: a preface with the rule taken away is red by the same count
+    assert.equal(once(ROLES.designer.preface.replace(LAST_CLIP_RULE, '')), 0);
+    const P3D = { scene: 'cl1a-mirror', registryMode: null, changes: [{ object: 'mirror', param: 'center', value: [370, 200], why: 'moved' }], prediction: 'the mirror slides right' };
+    const plan = (hands) => parsePlan(fence('json:plan', JSON.stringify(Object.assign({}, P3D, { hands }))), STAGE);
+    for (const hands of [['inventory', 'see', 'dragTo', 'see'], ['dragTo', 'see'], ['see', 'dragTo', 'see', 'see']]) {
+        assert.throws(() => plan(hands), new RegExp('^Error: \\[designer → plan\\]: the plan\'s hands \\[' + reText(hands.join(', ')) + '\\] close with see straight after dragTo, so the Owl would judge a clip with no before-state — end on the dragTo'), JSON.stringify(hands));
+    }
+    for (const hands of [['see'], ['see', 'see'], ['inventory', 'see', 'dragTo'], ['dragTo', 'setDeclared', 'see'], ['dragTo', 'setCamera', 'see'], ['setDeclared', 'see'], ['see', 'dragTo', 'dragTo']]) {
+        assert.deepEqual(plan(hands).plan.hands, hands, 'allowed: ' + JSON.stringify(hands));
+    }
 });

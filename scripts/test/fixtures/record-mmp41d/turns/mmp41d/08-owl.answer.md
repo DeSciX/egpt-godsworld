@@ -1,0 +1,5 @@
+In every frame a pale band of dots runs left to right along the middle of the frame into a steep orange slab, tilted well past 45 degrees from the horizontal. Where the band meets the slab an orange column rises up and to the left, more steeply in the last frames. Across the frames the slab sits further left each time and the meeting point moves left with it. From the middle of the clip on, a looser pale band appears to the right of the slab and moves on to the right.
+
+```json:verdict
+{"seen": {"contact": "the pale band meets the orange slab in its middle third", "after": "up and to the left, back over the band, steeper in the last frames", "passes": "during the slide a looser pale band is to the right of the slab and moves on to the right"}, "verdict": "approve", "reasons": ["a pale beam meets a mirror tilted steeper than 45 degrees and leaves up and back toward its source, as a 30 degree mirror should", "the slab moves left along the beam across the frames and the meeting point moves with it", "the pale band to the right is the part of the beam that was already past the slab when it moved; it does not contradict the outline"], "change": null}
+```

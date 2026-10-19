@@ -171,10 +171,11 @@ export function plainWords(text) {
 /**
  * ONE thread with Maxi, owned by the page.
  *   call(command, params) → Promise — the shell's command door (window.DeSciX.call), injected;
- *   onTurn({phase:'asking'|'answered'|'refused', op, note, userInput, media, answer?, error?, interaction_id?}) — the strip;
+ *   onTurn({phase:'asking'|'answered'|'refused', op, note, teaching, userInput, media, answer?, error?, interaction_id?}) — the strip
+ *     (`teaching`: the human's words a Record demonstration was asked with, else null);
  *   knowledgebaseNames — optional, the thread's KB list (knowledgebaseNamesOf);
  *   resume — optional {interaction_id, turns}: continue a thread a previous process kept (minimaxi's threads.json).
- * ask({op, userInput, media?, note?}) — media omitted = a words-only turn — resolves {asked:true, interaction_id, answer, answer_excerpt, usage, model}.
+ * ask({op, userInput, media?, note?, teaching?}) — media omitted = a words-only turn — resolves {asked:true, interaction_id, answer, answer_excerpt, usage, model}.
  */
 export function createThread(spec) {
     if (!spec || typeof spec.call !== 'function') { throw new Error('[ask] createThread needs call(command, params) — the shell\'s command door.'); }
@@ -195,7 +196,7 @@ export function createThread(spec) {
         ask: async function (q) {
             const op = q.op || 'ask';
             const params = buildAskParams({ op: op, userInput: q.userInput, media: q.media, previousInteractionId: st.id, knowledgebaseNames: kbs });
-            const turn = { op: op, note: (typeof q.note === 'string' && q.note) ? q.note : q.userInput, userInput: q.userInput, media: (params.media || []).map(function (m) { return { mime_type: m.mime_type, label: m.label || null, bytes: base64Bytes(m.data, op) }; }) };
+            const turn = { op: op, note: (typeof q.note === 'string' && q.note) ? q.note : q.userInput, teaching: (typeof q.teaching === 'string' && q.teaching) ? q.teaching : null, userInput: q.userInput, media: (params.media || []).map(function (m) { return { mime_type: m.mime_type, label: m.label || null, bytes: base64Bytes(m.data, op) }; }) };
             onTurn(Object.assign({ phase: 'asking' }, turn));
             let got;
             try {
@@ -217,8 +218,23 @@ export function createThread(spec) {
     };
 }
 
-/** The user_input of a footage question: the note that rides with the clip, then the question. ONE composition. */
-export function footageUserInput(note) {
+/** How the human's teaching words open in a demonstration question (their words follow, as typed). */
+export const TEACHING_HEAD = 'The human says this demonstration teaches you, in their own words:';
+/** What a demonstration question with teaching words asks after the look. Words only, like the look. */
+export const TEACHING_QUESTION =
+    'Then, in words only, say what you take the human to be teaching you, and where the footage shows it and where it does not.';
+
+/**
+ * The user_input of a footage question: the note that rides with the clip, then the question. ONE composition.
+ * `teaching` — the human's words on their Record demonstration (maxi-record-folder.js teachingOf: trimmed, or undefined when
+ * they typed none). Given, they ride after the note, verbatim, and the question asks what Maxi takes them to teach;
+ * omitted, the question is the look alone. A blank or non-string `teaching` THROWS: an empty blurb is omitted, never sent.
+ */
+export function footageUserInput(note, teaching) {
     if (typeof note !== 'string' || !note.trim()) { throw new Error('[ask] a footage question needs the note that says what was filmed.'); }
-    return note.trim() + '\n\n' + LOOK_QUESTION;
+    if (teaching === undefined || teaching === null) { return note.trim() + '\n\n' + LOOK_QUESTION; }
+    if (typeof teaching !== 'string' || !teaching.trim()) {
+        throw new Error('[ask] the teaching words are the human\'s typed words, got ' + JSON.stringify(teaching) + ' — an empty blurb is omitted (the question is the look alone), never sent. Nothing was asked.');
+    }
+    return note.trim() + '\n\n' + TEACHING_HEAD + '\n' + teaching.trim() + '\n\n' + LOOK_QUESTION + '\n' + TEACHING_QUESTION;
 }

@@ -26,15 +26,21 @@ import { fileURLToPath } from 'node:url';
 
 import * as roles from '../../site/app-assets/maxi-roles.js';
 import { createLoop, refuseWhileWorking } from '../../site/app-assets/maxi-loop.js';
-import { attachRecorder, clipUrlLedger, paintCard } from '../../site/app-assets/maxi-record.js';
-import { fakeRunner } from './fake-runner.mjs';
+import { attachRecorder, clipUrlLedger, paintCard, recordKeyAction, RECORD_KEYS } from '../../site/app-assets/maxi-record.js';
+import { handKeyAction, HAND_KEYS } from '../../site/app-assets/maxi-hand-tool.js';
+import { fakeRunner, withSketch } from './fake-runner.mjs';
+import { manifestFor, serializeManifest } from '../../site/app-assets/frqtl-web-project.js';
+import { distUrl } from '../frqtl-web-pin.mjs';
+
+/** The package's one writer of a Record folder (what a world's Record runs at stop). */
+const { serializeRecordFolder } = await import(distUrl('shim/project/record-format.js'));
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LAB_SRC = fs.readFileSync(path.join(HERE, '..', '..', 'site', 'app-assets', 'maxi-lab.js'), 'utf8');
 const B64 = Buffer.from('fake mp4 bytes, ftyp isom').toString('base64');
 const alive = (url) => resolveObjectURL(url) !== undefined;
 
-const INVENTORY = { tick: 1, scene: '1A · Mirror', id: 'cl1a-mirror', mode: null, modes: [], renderer: 'p5', dimensions: 2, canvas: [600, 400], camera: null, viewer: null, objects: [] };
+const INVENTORY = { tick: 1, scene: '1A · Mirror', id: 'cl1a-mirror', mode: null, modes: [], renderer: 'p5', dimensions: 2, canvas: [600, 400], camera: null, viewer: null, objects: [], parts: {} };   // the inventory HAND's shape: INVENTORY_KEYS plus the sketch's parts block (SKETCH_KEYS)
 
 /** A loop whose Designer answers only when the test says so: `answer(text)` settles the pending turn. */
 function heldLoop(extra) {
@@ -42,7 +48,7 @@ function heldLoop(extra) {
     let release = null;
     const asked = [];
     const brain = { thread: (role) => ({ id: 'held-' + role, turns: 0, ask: (text) => { asked.push(role); return new Promise((r) => { release = r; }); } }) };
-    const loop = createLoop(Object.assign({ roles, brain, body: { run: async (hand) => ({ ok: true, result: hand === 'inventory' ? INVENTORY : {}, clip: null }), omit: [] }, onEvent: (e) => events.push(e) }, extra || {}));
+    const loop = createLoop(Object.assign({ roles, brain, body: { run: async (hand) => ({ ok: true, result: hand === 'inventory' ? INVENTORY : {}, clip: null }), omit: [], reauthors: () => false }, onEvent: (e) => events.push(e) }, extra || {}));
     return { loop, events, asked, answer: (t) => release(t) };
 }
 
@@ -103,6 +109,48 @@ test('the scene picker goes through pickScene: refused by name while Maxi works 
     assert.doesNotThrow(() => refuseWhileWorking(h.loop, 'the scene picker'));
 });
 
+/** The page's onHandKey and guardBusy (their own source, `src` for a plant) over a lab whose world is booting: no scene, no hand. */
+function bootingKeys(src, loop) {
+    const bodyOf = (name) => { const at = src.indexOf('\nfunction ' + name + '('); assert.ok(at !== -1, 'maxi-lab.js has no function ' + name + '()'); return src.slice(at + 1, src.indexOf('\n}\n', at) + 2); };
+    const painted = [];
+    const toggled = [];
+    const deps = {
+        state: { scene: null, hand: null, loop }, refuseWhileWorking, recordKeyAction, handKeyAction,
+        showError: (err, owner) => painted.push({ text: err ? String(err.message || err) : null, owner }),
+        toggleRecord: () => { toggled.push('record'); return Promise.resolve(); }, humanSetHand: () => toggled.push('hand'), setHand: () => toggled.push('setHand'),
+        console: { error: () => {} }
+    };
+    const fn = new Function(...Object.keys(deps), bodyOf('guardBusy') + bodyOf('onHandKey') + '\nreturn onHandKey;')(...Object.values(deps));
+    const key = (code) => { const ev = { code, target: null, prevented: false, preventDefault() { ev.prevented = true; } }; fn(ev); return ev; };
+    return { key, painted, toggled };
+}
+
+test('R and H pressed while a world boots inside Maxi\'s work (the Builder\'s loadScene / openSketch: no scene, no hand) are refused by name, never dropped (negative controls: an idle lab stays silent; the planted early return drops them)', async () => {
+    const h = heldLoop();
+    const run = h.loop.imagine('a laser hitting a mirror');
+    await new Promise((r) => setImmediate(r));
+    const b = bootingKeys(LAB_SRC, h.loop);
+    assert.ok(b.key(RECORD_KEYS.toggle).prevented && b.key(HAND_KEYS.toggle).prevented);
+    assert.deepEqual(b.painted.map((p) => p.owner), ['loop', 'loop']);
+    assert.match(b.painted[0].text, /^Record \(R\) is refused while Maxi is working/);
+    assert.match(b.painted[1].text, /^the Hand \(H\) is refused while Maxi is working/);
+    assert.ok(!b.key(HAND_KEYS.leave).prevented && b.painted.length === 2, 'leaving the hand is never refused (and there is none to leave)');
+    assert.deepEqual(b.toggled, [], 'nothing toggles while the world boots');
+    // negative control: the page's old first line (no scene → return) drops both keys in silence
+    const planted = LAB_SRC.replace('function onHandKey(ev) {\n', 'function onHandKey(ev) {\n    if (!state.scene) { return; }\n');
+    assert.notEqual(planted, LAB_SRC, 'the plant took');
+    const d = bootingKeys(planted, h.loop);
+    d.key(RECORD_KEYS.toggle); d.key(HAND_KEYS.toggle);
+    assert.deepEqual(d.painted, [], 'the planted early return drops R and H unrefused');
+    h.answer('no plan here');
+    await assert.rejects(run, /Maxi stopped:/);
+    // an idle lab mid-boot: nothing to refuse, nothing toggles
+    const idle = bootingKeys(LAB_SRC, h.loop);
+    idle.key(RECORD_KEYS.toggle); idle.key(HAND_KEYS.toggle);
+    assert.deepEqual(idle.painted, []);
+    assert.deepEqual(idle.toggled, []);
+});
+
 /** A running scene on the fake runner whose recorder films until it is aborted. */
 function recordingLab() {
     const runner = fakeRunner([{ name: 'mirror', _schemaKind: 'Wall', rect: { left: 360, top: 80, w: 20, h: 240 } }], { isRunning: true });
@@ -111,14 +159,29 @@ function recordingLab() {
             o.signal.addEventListener('abort', () => resolve({ track: { frames: [{ tick: 1 }, { tick: 2 }] }, encoded: { mime: 'video/mp4', bytes: B64 }, truncated: false }), { once: true });
         })
     };
-    const sc = { label: 'mirror', id: 'cl1a-mirror', mode: null, renderer: 'p5', runner, tick: () => 1, win: { FrqtlVision: { attach: () => vision } } };
-    return { scene: () => sc, ask: async () => ({ asked: true, interaction_id: 't', answer_excerpt: 'x' }) };
+    let tick = 0;   // climbs on every read, so Stop finishes the band's minimum at once
+    const sc = withSketch({ label: 'mirror', id: 'cl1a-mirror', mode: null, renderer: 'p5', runner, tick: () => (tick += 100), win: { MaxiScene: { FrqtlVision: { attach: () => vision } } } });
+    sc.record = { tick: 0 };
+    let chain = null;
+    const close = () => {   // the world's Record closed by the package's own writer, over the clips the scene noted
+        const out = serializeRecordFolder({ changes: [], clips: sc.filmed.map((f, i) => ({ bytes: Buffer.from('clip' + i), firstTick: f.span.first, lastTick: f.span.last })),
+            partsBefore: {}, partsAfter: {}, project: { 'frqtl.json': serializeManifest(manifestFor({ name: 'mirror', entry: 'sketch.js' })), 'sketch.js': 'export default function buildExperiment(exp) {}\n' } });
+        const filmed = sc.filmed.map((f) => f.hand); sc.filmed.length = 0;
+        return out.empty ? null : { folder: out, filmed: filmed, carried: 0, scene: { label: sc.label, id: sc.id, mode: sc.mode, renderer: sc.renderer } };
+    };
+    return {
+        scene: () => sc, ask: async () => ({ asked: true, interaction_id: 't', answer_excerpt: 'x' }),
+        beginChain: async (p) => { close(); chain = { producer: p, worlds: [], unheld: [] }; },
+        endChain: async () => { const w = close(); const ch = chain; chain = null; return { producer: ch.producer, worlds: w ? [w] : [], unheld: [] }; },
+        abandonChain: () => { chain = null; },
+        chainState: () => ({ records: chain ? 1 : 0, rows: 0 })
+    };
 }
 
 test('the loop refuses to start while a Record segment is open; the Designer is never asked (negative control: Record off, it starts)', async () => {
     const rec = attachRecorder({ lab: recordingLab(), onError() {} });
     const h = heldLoop({ recorder: rec });
-    rec.start();
+    await rec.start();
     assert.equal(rec.recording, true);
     const refused = h.loop.imagine('a laser hitting a mirror');
     refused.catch(() => {});   // asserted below, after a wrongly started loop is settled
@@ -128,14 +191,15 @@ test('the loop refuses to start while a Record segment is open; the Designer is 
     assert.deepEqual(h.asked, [], 'the Designer was asked while Record was on');
     assert.equal(h.loop.running, false);
     assert.deepEqual(h.events.map((e) => e.role + ':' + e.kind), ['loop:refused'], 'the refusal is shown in the conversation, nothing else');
-    await rec.dispose();
+    await rec.stop();
     assert.equal(rec.recording, false);
     const run = h.loop.imagine('a laser hitting a mirror');
     await new Promise((r) => setImmediate(r));
     assert.deepEqual(h.asked, ['designer'], 'with Record off the loop starts');
     h.answer('no plan here');
     await assert.rejects(run, /Maxi stopped:/);
-    assert.throws(() => createLoop({ roles, brain: { thread() {} }, body: { run() {}, omit: [] }, onEvent() {}, recorder: {} }), /recorder must be the human's Record/);
+    assert.throws(() => createLoop({ roles, brain: { thread() {} }, body: { run() {}, omit: [], reauthors() { return false; } }, onEvent() {}, recorder: {} }), /recorder must be the human's Record/);
+    assert.throws(() => createLoop({ roles, brain: { thread() {} }, body: { run() {}, omit: [] }, onEvent() {} }), /createLoop needs a body \{run\(hand, args\), omit\[\], reauthors\(hand\)\}/, 'a body that cannot say which hands boot a new world could not close a Record');
 });
 
 test('the loop refuses to start while the human\'s Hand is on, by name; the outline is not taken (negative controls: Hand off starts; Hand and Record both named)', async () => {
@@ -150,9 +214,9 @@ test('the loop refuses to start while the human\'s Hand is on, by name; the outl
     assert.deepEqual(h.events.map((e) => e.role + ':' + e.kind), ['loop:refused'], 'no tony event: the outline was not taken, so the page keeps it in the box');
     const rec = attachRecorder({ lab: recordingLab(), onError() {} });
     const both = heldLoop({ hand: { enabled: true }, recorder: rec });
-    rec.start();
+    await rec.start();
     await assert.rejects(both.loop.imagine('x'), /Record is on \(a segment is rolling\).*; and the Hand is on/);
-    await rec.dispose();
+    await rec.stop();
     view.enabled = false;   // the page passes a LIVE view: putting the hand down lifts the refusal
     const run = h.loop.imagine('a laser hitting a mirror');
     await new Promise((r) => setImmediate(r));
@@ -160,7 +224,7 @@ test('the loop refuses to start while the human\'s Hand is on, by name; the outl
     assert.equal(h.events[1].role + ':' + h.events[1].kind, 'tony:said', 'a started loop takes the outline');
     h.answer('no plan here');
     await assert.rejects(run, /Maxi stopped:/);
-    assert.throws(() => createLoop({ roles, brain: { thread() {} }, body: { run() {}, omit: [] }, onEvent() {}, hand: {} }), /hand must be a live view of the human's Hand tool/);
+    assert.throws(() => createLoop({ roles, brain: { thread() {} }, body: { run() {}, omit: [], reauthors() { return false; } }, onEvent() {}, hand: {} }), /hand must be a live view of the human's Hand tool/);
 });
 
 test('the page empties the Imagine box only when the loop takes the outline — a refused outline stays (negative control: the submit handler clears nothing)', () => {
@@ -187,7 +251,7 @@ test('inline clip URLs are freed when New conversation clears the strip; a card\
     assert.ok(fnBody('inlineClip').includes('inlineUrls.make('), 'an inline clip must take its URL from the ledger');
     assert.ok(!LAB_SRC.includes('clipObjectUrl'), 'maxi-lab.js makes a clip URL outside the ledger');
 
-    const card = { root: { hidden: true }, video: { dataset: {}, src: '' }, title: {}, lines: {} };
+    const card = { root: { hidden: true }, video: { dataset: {}, src: '' }, title: {}, lines: {}, teach: { hidden: true }, teachText: {}, send: {} };
     paintCard(card, { mime: 'video/mp4', base64: B64, title: 'one', lines: 'l' });
     const first = card.video.src;
     assert.ok(alive(first));

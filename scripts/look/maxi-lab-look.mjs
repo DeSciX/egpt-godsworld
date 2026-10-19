@@ -19,6 +19,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
+import { sceneFile } from '../frqtl-web-pin.mjs';
+
+/** Where a registry row's sketch is served, relative to the site root. */
+const servedRel = (scenesRel) => sceneFile(scenesRel).slice('site/'.length);
 
 function argOf(flag, dflt) { const i = process.argv.indexOf(flag); return i === -1 ? dflt : process.argv[i + 1]; }
 const URL_ = argOf('--url', null);
@@ -121,9 +125,8 @@ async function takeMedia(page) {
 }
 async function verifierStill(page, name) {
     const dataUrl = await page.evaluate(() => {
-        const win = document.getElementById('scene-frame').contentWindow;
-        const ms = win.MaxiScene;
-        return win.FrqtlVision.attach(ms.runner).getStill().then((still) => win.FrqtlVision.toDataURL(still));
+        const ms = document.getElementById('scene-frame').contentWindow.MaxiScene;
+        return ms.FrqtlVision.attach(ms.runner).getStill().then((still) => ms.FrqtlVision.toDataURL(still));
     });
     return saveDataUrl(name, dataUrl);
 }
@@ -141,7 +144,7 @@ try {
     page.on('console', (m) => { if (m.type() === 'error') { consoleErrors.push(m.text()); } });
     page.on('pageerror', (e) => consoleErrors.push('pageerror: ' + e.message));
 
-    // 1. Open: the lab must land on its 2D opening scene with the hands registered.
+    // 1. Open: the lab must land on its opening scene, the 3D double slit, with the hands registered.
     await page.goto(URL_, { waitUntil: 'load' });
     const opening = await page.evaluate(() => window.MaxiLab.ready.then((r) => r));
     note('opened on', summarize(opening));
@@ -149,21 +152,23 @@ try {
     note('host mode', host);
     await page.screenshot({ path: path.join(OUT, '01-opening.png') });
     const inv0 = await must(page, 'inventory', {});
-    if (inv0.renderer !== 'p5' || inv0.canvas.length !== 2) { throw new Error('the opening scene is not 2D: ' + JSON.stringify({ renderer: inv0.renderer, canvas: inv0.canvas })); }
+    if (inv0.id !== 'dse-tunnel-rebuild' || inv0.mode !== '3d' || inv0.renderer !== 'three' || inv0.canvas.length !== 3) { throw new Error('the opening scene is not the 3D double slit: ' + JSON.stringify({ id: inv0.id, mode: inv0.mode, renderer: inv0.renderer, canvas: inv0.canvas })); }
 
     // 2. sceneSource equals the served sketch bytes.
     const src = await must(page, 'sceneSource', { id: 'cl1a-mirror' });
-    const sdkVersion = await page.evaluate(() => window.MaxiLab.sdkVersion);
-    const servedUrl = new URL('vendor/frqtl-sdk/' + sdkVersion + '/dist/' + src.path, URL_).href;
+    const servedUrl = new URL(servedRel(src.path), URL_).href;
     const served = await (await fetch(servedUrl)).text();
     if (served !== src.source) { throw new Error('sceneSource differs from the served bytes at ' + servedUrl); }
     note('sceneSource == served bytes', { path: src.path, bytes: served.length });
 
-    // 3. openSketch fails loud: a factory hand-off the GAME roster does not carry, and a syntax error.
+    // 3. openSketch fails loud: the retired dual-mode form, a sketch importing the retired vendored path, and a syntax error.
     const r1 = await hand(page, 'openSketch', { source: "function buildExperiment(exp) { exp.createCanvas(300, 200, { dimension: 0 }); setupDoubleSlit(exp.universe, {}); }\nwindow.buildExperiment = buildExperiment;" });
-    note('openSketch factory hand-off', r1);
-    if (r1.ok) { throw new Error('openSketch accepted a sketch calling an unloaded factory'); }
-    const r2 = await hand(page, 'openSketch', { source: 'function buildExperiment(exp) { exp.createCanvas(300, 200, {}) ' });
+    note('openSketch dual-mode (no default export)', r1);
+    if (r1.ok) { throw new Error('openSketch accepted a dual-mode sketch with no default export'); }
+    const r1b = await hand(page, 'openSketch', { source: "import { bootRecipe } from '../vendor/frqtl-sdk/0.5.1/dist/esm/index.js';\nexport default function buildExperiment(exp) { exp.createCanvas(300, 200, {}); }\n" });
+    note('openSketch importing the retired vendored path', r1b);
+    if (r1b.ok || !/frqtl-sdk\/0\.5\.1/.test(r1b.error)) { throw new Error('openSketch did not refuse the retired vendored path by name'); }
+    const r2 = await hand(page, 'openSketch', { source: 'export default function buildExperiment(exp) { exp.createCanvas(300, 200, {}) ' });
     note('openSketch syntax error', r2);
     if (r2.ok || !/SyntaxError/.test(r2.error)) { throw new Error('openSketch did not relay the SyntaxError verbatim'); }
 
@@ -208,6 +213,28 @@ try {
         await framesFromClip(page, m[0].data, '07-flyby-2d', 6);
     }
 
+    // 6b. THE 3D MIRROR: see, then drag the mirror while filming (the 3D look of the switch).
+    await must(page, 'loadScene', { id: 'cl1a-mirror-3d' });
+    await page.waitForTimeout(1500);
+    const inv3 = await must(page, 'inventory', {});
+    if (inv3.renderer !== 'three') { throw new Error('cl1a-mirror-3d did not boot three: ' + inv3.renderer); }
+    await verifierStill(page, '07b-mirror3d-before.png');
+    const see3 = await must(page, 'see', {});
+    const see3Media = await takeMedia(page);
+    const see3Mp4 = saveB64('07c-mirror3d-see.mp4', see3Media[0].data);
+    note('3D see clip', { file: see3Mp4, bytes: fs.statSync(see3Mp4).size, isMp4: isMp4(see3Mp4), frames: see3.frames, seconds: see3.seconds });
+    await framesFromClip(page, see3Media[0].data, '07c-mirror3d-see', 4);
+    const m3 = inv3.objects.find((o) => o.name === 'mirror');
+    const drag3 = await must(page, 'dragTo', { name: 'mirror', to: [m3.center[0] - 60, m3.center[1]], ticks: 100 });
+    const drag3Media = await takeMedia(page);
+    const drag3Mp4 = saveB64('07d-mirror3d-drag.mp4', drag3Media[0].data);
+    note('3D dragTo clip', { file: drag3Mp4, bytes: fs.statSync(drag3Mp4).size, isMp4: isMp4(drag3Mp4), frames: drag3.frames, seconds: drag3.seconds, from: drag3.from, to: drag3.to });
+    await framesFromClip(page, drag3Media[0].data, '07d-mirror3d-drag', 6);
+    const inv3b = await must(page, 'inventory', {});
+    note('3D mirror moved', { before: m3.center, after: inv3b.objects.find((o) => o.name === 'mirror').center });
+    await page.screenshot({ path: path.join(OUT, '07e-lab-mirror3d.png') });
+    await must(page, 'release', {});
+
     // 7. The opening scene (DSE 2D): drag the detector screen while filming.
     await must(page, 'loadScene', { id: 'dse-tunnel-rebuild', mode: '2d' });
     await page.waitForTimeout(2500);
@@ -242,7 +269,7 @@ try {
         note('showMemory', mem);
         const mm = await takeMedia(page);
         note('showMemory media', mm.map((m) => ({ mime: m.mime_type, label: m.label, base64Length: m.base64Length })));
-    } finally { fs.rmSync(path.dirname(memDir), { recursive: true, force: true }); }
+    } finally { fs.rmSync(memDir, { recursive: true, force: true }); }   // only the fixture folder: site/memories/ holds the published clips
 
     // 10. Every EXHIBITS id boots and inventories (3D included — loadable, not tonight's proof).
     const exhibits = await page.evaluate(() => window.MaxiLab.exhibits());
@@ -257,10 +284,17 @@ try {
     }
 
     // 11. Negative control: a second boot in one scene document is refused by name.
-    const second = await page.evaluate(() => document.getElementById('scene-frame').contentWindow.MaxiScene.boot({ label: 'x', source: 'function buildExperiment(){}', renderState: null }).then(() => 'RESOLVED', (e) => String(e.message)));
+    const second = await page.evaluate(() => document.getElementById('scene-frame').contentWindow.MaxiScene.boot({ label: 'x', files: { 'frqtl.json': JSON.stringify({ name: 'x', kind: 'scene', entry: 'sketch.js' }), 'sketch.js': 'export default function buildExperiment(exp){}' }, renderState: null }).then(() => 'RESOLVED', (e) => String(e.message)));
     note('second boot in one document', second);
 
     note('console errors during the run', consoleErrors);
+
+    // 11b. The front page (static: no scene boots there) and its way into the lab.
+    const front = await ctx.newPage();
+    await front.goto(new URL('index.html', URL_).href, { waitUntil: 'load' });
+    await front.screenshot({ path: path.join(OUT, '25-front-page.png') });
+    note('front page', { title: await front.title(), labLink: await front.evaluate(() => !!document.querySelector('a[href="app.html"]')) });
+    await front.close();
 
     // 12. Standalone (no shell): hands register; see throws naming the ingress; inventory works.
     const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 800 } });

@@ -15,10 +15,22 @@
  * Every hand is a THIN adapter over the SDK runner the scene document booted (an FrqtlApp: the
  * declared registry — declared / getObjectByName / kindOf / positionAuthorityOf / centerOf / envelopeOf
  * — and its writes — placeDeclaredAt / updateObjectProperty / removeObject — plus addTickListener /
- * setSelectHighlight / restart / start / stop / cameraControl) and over `FrqtlVision` + `CameraPath`.
- * Only what the scene DECLARED (exp.addObject) is read or moved. A hand
+ * setSelectHighlight / restart / start / stop / cameraControl), over the scene's facade (exp.addObject,
+ * exp.setDeclared, exp.toSketch) and over `FrqtlVision` + `CameraPath`.
+ *
+ * THE RECORD. Every booted world holds an open Record (the package's `exp.startRecord()`, opened by the lab): it writes
+ * the change rows of every act from the writer's own edits (toSketch / setDeclared, each naming who acted: `by`), counts
+ * its own clock and keeps every FrqtlVision recording as one of its 5–10 s clips. The hands write no row and keep no
+ * change log: a hand's rows are the Record's (maxi-lab.js actRows), and its clip's span is read on the Record's clock.
+ * Only what the scene DECLARED (exp.declare(parts), exp.addObject) is read or moved. A hand
  * returns a small JSON result or THROWS naming what is missing — no silent fallback, no warning
  * string, no retry.
+ *
+ * THE SKETCH. The scene is a sketch whose `export const parts` block is its declared parts (the sketch-projects
+ * design §2). EVERY hand ends with `await exp.toSketch()` (writeSketch, run by the adapter): the package writes the
+ * hand into the block, and a refusal comes back by name as the hand's error — never swallowed. A property change is
+ * `exp.setDeclared(name, patch)` (the setDeclared hand): the block entry changes and the scene runs again in the same
+ * page. No door renames a part: the key is the name (a rename is a new key).
  *
  * Maxi's eyes are VIDEO: every reading is an MP4 clip filmed through FrqtlVision's mediabunny recorder,
  * and the video and the hands are the whole exercise, so neither is ever stood in for by stills, numbers
@@ -31,8 +43,14 @@
  *
  * The `lab` a hand runs against (app-assets/maxi-lab.js):
  *   host()                      → 'shell' | 'standalone' | 'embedded-no-bridge' | 'pending'
- *   scene(op)                   → { label, kind, id, mode, modes, renderer, win, runner, recipeContext, tick() } or THROWS
+ *   scene(op)                   → { label, kind, id, mode, modes, renderer, win, runner, recipeContext, record, tick(),
+ *                                 recordTickOf(t), readyToFilm(op), noteFilmed(hand, span) } or THROWS; `record` is the
+ *                                 world's open Record, tick() ITS clock (every tick since it opened, climbing across
+ *                                 re-runs), recordTickOf(t) a frame's runner tick placed on it; readyToFilm refuses a
+ *                                 clip the Record cannot hold (MAX_SEGMENTS) and noteFilmed names the hand that filmed a
+ *                                 clip (lab.json `filmed`); win.MaxiScene.entry() / partsOf(project) read the sketch (sketchOf)
  *   loadScene / sceneSource / openSketch (async) — the registry + the one boot door (a frame per load)
+ *   current()                   → the loaded scene, or null when none is (the adapter writes the sketch after a hand on it)
  *   restart (async)             — the runner's own restart(), in the same frame
  *   inventory()                 → the declared scene graph: inventoryOf(scene) below (INVENTORY_KEYS)
  *   ask(op, {note, media[]})    → the question command with the footage (maxi-ask.js createThread) →
@@ -45,9 +63,12 @@
 
 'use strict';
 
+import { TEACHING_HEAD } from './maxi-ask.js';
+import { CLIP_SECONDS, BY } from './frqtl-web-project.js';
+
 export const RECT_CONVENTION =
-    'World pixels, origin at the top-left, y down. Only what the scene DECLARED (exp.addObject) is listed or ' +
-    'moved; a thing a scene built with `new` runs and draws but has no handle here. Every declared object that ' +
+    'World pixels, origin at the top-left, y down. Only what the scene DECLARED is listed, and only the parts of ' +
+    'its `export const parts` block are moved; a thing a scene built with `new` runs and draws but has no handle here. Every declared object that ' +
     'can move has a CENTER [x, y, z] (z is 0 in a 2D scene): where it is placed. A wall or tunnel also has a ' +
     'rect, the box it occupies: [left, top, w, h] in a 2D scene or [left, top, z, w, h, d] in a 3D one, handed ' +
     'to the SDK unchanged (its refusals come back verbatim); an emitter has only its center. A point `to` is ' +
@@ -64,11 +85,11 @@ export const SEE_DEFAULTS = Object.freeze({
 export const DRAG_DEFAULTS = Object.freeze({ ticks: 150, settle: 150, everyTicks: 5, fps: 10 });
 
 /**
- * Every clip a hand films lasts 5 to 10 seconds of playback (the clip band: long enough to watch an
- * effect unfold). Duration = frames / fps. A hand refuses BEFORE filming when its own plan falls outside the
- * band, and refuses to hand over a clip that came out outside it.
+ * Every clip lasts the package's CLIP_SECONDS of playback (@descix/frqtl-web ./project: a Record's clip band, long enough
+ * to watch an effect unfold). Duration = frames / fps. A hand refuses BEFORE filming when its own plan falls outside the
+ * band, and refuses to hand over a clip that came out outside it; the open Record refuses such a recording too.
  */
-export const CLIP_SECONDS = Object.freeze({ min: 5, max: 10 });
+export { CLIP_SECONDS };
 const CLIP_BAND = CLIP_SECONDS.min + '–' + CLIP_SECONDS.max + ' s';
 
 /** Frames a recording will hold: a frame on the first tick, then every `everyTicks`, bounded by maxFrames. */
@@ -168,6 +189,12 @@ export function spansOf(rect) {
         : { x: [rect[0], rect[0] + rect[2]], y: [rect[1], rect[1] + rect[3]] };
 }
 
+/** A box tuple's centre, the midpoint of each of its spans (spansOf): [x, y] in 2D, [x, y, z] in 3D. THROWS as spansOf does. */
+export function centerOfRect(rect) {
+    const sp = spansOf(rect);
+    return ['x', 'y', 'z'].filter(function (a) { return sp[a]; }).map(function (a) { return (sp[a][0] + sp[a][1]) / 2; });
+}
+
 /**
  * Where a DECLARED object is, read off the runner: `{center}` (the point it is placed at, always
  * [x, y, z]), plus `{rect}` (the box it occupies) when a rect is its position authority. THROWS —
@@ -198,7 +225,7 @@ function rowOf(runner, d) {
  */
 export function inventoryObjects(runner) {
     if (!runner || !Array.isArray(runner.declared) || typeof runner.kindOf !== 'function') {
-        throw new Error('inventory: the runner publishes no declared registry (runner.declared + kindOf) — not an @descix/frqtl-sdk FrqtlApp.');
+        throw new Error('inventory: the runner publishes no declared registry (runner.declared + kindOf) — not an @descix/frqtl-web FrqtlApp.');
     }
     return runner.declared.map(function (d) { return rowOf(runner, d); });
 }
@@ -292,8 +319,29 @@ function findByName(runner, name, op) {
     return d;
 }
 
-function takeGrab(lab, runner, name, op) {
+/**
+ * THE ONE answer to "can a hand change this declared object?": null when it is one of the sketch's `parts` block (the
+ * census field `inParts`), else why not, by name. A part the scene declares in its own code runs and can be read, but the
+ * sketch cannot hold a hand on it, so every changer — Maxi's hands (findPart) and the human's hand, 2D pick and 3D grab
+ * (maxi-hand-tool.js) — refuses BEFORE the world moves (exp.toSketch would refuse it after it had already moved).
+ */
+export function partRefusal(runner, d) {
+    if (d && d.inParts === true) { return null; }
+    return '"' + (d && d.name) + '" is declared in the scene\'s code, not in its `export const parts` block, so the sketch cannot hold a change to it';
+}
+
+function findPart(runner, name, op) {
     const d = findByName(runner, name, op);
+    const why = partRefusal(runner, d);
+    if (why) {
+        const parts = runner.declared.filter(function (x) { return partRefusal(runner, x) === null; }).map(function (x) { return x.name; });
+        throw new Error(op + ': ' + why + ' — nothing moved. Parts a hand can change: [' + parts.join(', ') + '].');
+    }
+    return d;
+}
+
+function takeGrab(lab, runner, name, op) {
+    const d = findPart(runner, name, op);
     const baseline = placementOf(runner, d);
     runner.setSelectHighlight(d);
     lab.state.grab = { name: name, obj: d, baseline: baseline };
@@ -316,25 +364,20 @@ function requireGrab(lab, op) {
  * not by each caller (hand-supplied tuples are refused upstream when fractional). Only WHERE is
  * rounded — a centre, or a rect's left/top(/z); a rect's extent is written as given (it is the
  * hand's integers, or the scene's own size read back by revert, never derived). The pre-write
- * position is read here too; a failed read THROWS naming the object — nothing is written. Every
- * write is announced ONCE to the `onWrite` listeners (the Record change log) as
- * {runner, obj, name, op, by, key, from, to} with `from`/`to` in the written key; `meta` names the op
- * and who moved (`by`: 'maxi' | 'human'; `from` overrides the pre-write placement when the caller
- * knows an earlier origin). Returns what the write left: {center, zHeld} for a centre write (the
- * SDK's answer), {rect} for a rect write.
+ * position is read here too; a failed read THROWS naming the object — nothing is written. The write is
+ * a HAND on the runner (its device doors mark it); the Record's row is written when the act ends
+ * (writeSketch: exp.toSketch), from the package's own diff. Returns what the write left: {center, zHeld}
+ * for a centre write (the SDK's answer), {rect} for a rect write.
  */
-export function writePosition(runner, d, pos, meta) {
+export function writePosition(runner, d, pos) {
     if (!pos || (!pos.center === !pos.rect)) { throw new Error('writePosition: a position bag is {center} or {rect}, got ' + JSON.stringify(pos) + '.'); }
-    meta = meta || {};
     const key = pos.center ? 'center' : 'rect';
     const name = (d && typeof d.name === 'string') ? d.name : null;
-    let from = meta.from || null;
-    if (!from) {
-        try { from = placementOf(runner, d); }
-        catch (e) {
-            throw new Error('writePosition: cannot read where "' + name + '" is before moving it (' + String((e && e.message) || e) +
-                ') — an object with no position authority is not written; nothing moved.');
-        }
+    let from;
+    try { from = placementOf(runner, d); }
+    catch (e) {
+        throw new Error('writePosition: cannot read where "' + name + '" is before moving it (' + String((e && e.message) || e) +
+            ') — an object with no position authority is not written; nothing moved.');
     }
     if (!from[key]) {
         throw new Error('writePosition: "' + name + '" is placed by its ' + (from.rect ? 'rect' : 'center') + ', so a ' + key +
@@ -349,39 +392,92 @@ export function writePosition(runner, d, pos, meta) {
         runner.updateObjectProperty(d, 'rect', tuple);
         left = { rect: tuple };
     }
-    const was = {}; was[key] = from[key];
-    const to = {}; to[key] = (key === 'center') ? left.center.slice() : tuple;
-    const notice = { runner: runner, obj: d, name: name, op: meta.op || 'write', by: meta.by || 'maxi', key: key, from: was, to: to };
-    WRITE_LISTENERS.slice().forEach(function (fn) { fn(notice); });
     return left;
 }
 
-const WRITE_LISTENERS = [];
+// ── the sketch: every hand ends written into it (exp.toSketch) ──────────────────────────────
 
-/** Hear every writePosition (the Record change log's ONE source). Returns the unsubscribe. */
-export function onWrite(fn) {
-    if (typeof fn !== 'function') { throw new Error('onWrite(fn) needs a listener function.'); }
-    WRITE_LISTENERS.push(fn);
-    return function () { const i = WRITE_LISTENERS.indexOf(fn); if (i !== -1) { WRITE_LISTENERS.splice(i, 1); } };
+/** The keys the `inventory` hand carries beside INVENTORY_KEYS: the parts block and the project as the sketch holds them now. A Record reads them by these names. */
+export const SKETCH_KEYS = Object.freeze({ parts: 'parts', project: 'project' });
+
+function refusalWords(x) { return '"' + x.name + '"' + (x.key ? ' ' + x.key : '') + ' (' + x.op + '): ' + x.reason; }
+
+/** Who acts, per row of a Record (the package's BY, by name): Maxi's hands and the human's. */
+export const MAXI = 'maxi';
+export const HUMAN = 'human';
+if (BY.indexOf(MAXI) === -1 || BY.indexOf(HUMAN) === -1) { throw new Error('[hands] the package\'s BY [' + BY.join(', ') + '] does not name "' + MAXI + '" and "' + HUMAN + '" — who acts cannot be written.'); }
+
+/**
+ * THE END OF AN ACT: `await exp.toSketch({ by })` on the loaded scene — the package writes what the act did into the
+ * sketch's `parts` block, reads it back and writes the act's rows into the world's open Record, naming who acted (`by`:
+ * MAXI for a hand, HUMAN for the human's hand). Resolves the package's {files, changes, refused} when nothing was refused;
+ * THROWS naming every refusal by part and key (a part declared in code, a rename, a value the text could not hold): the
+ * world moved, but its sketch does not say so. Never swallowed. The adapter runs it after every hand on a scene; the
+ * human's hand runs it at the end of each act (maxi-hand-tool.js endAct).
+ */
+export async function writeSketch(sc, op, by) {
+    const rc = sc && sc.recipeContext;
+    if (!rc || typeof rc.toSketch !== 'function') {
+        throw new Error(op + ': the loaded scene publishes no exp.toSketch() — the package\'s sketch writer is what keeps a hand in the sketch text.');
+    }
+    if (by !== MAXI && by !== HUMAN) { throw new Error(op + ': an act names who acted, "' + MAXI + '" or "' + HUMAN + '" (the Record\'s `by`), got ' + JSON.stringify(by) + '.'); }
+    const r = await rc.toSketch({ by: by });
+    if (!r || !r.files || typeof r.files !== 'object' || !Array.isArray(r.refused)) {
+        throw new Error(op + ': exp.toSketch() answered ' + JSON.stringify(r && Object.keys(r)) + ', not {files, changes, refused}.');
+    }
+    if (r.refused.length) {
+        throw new Error(op + ': the sketch text did not take this hand — ' + r.refused.map(refusalWords).join('; ') +
+            '. The world changed, but the sketch does not say so.');
+    }
+    return r;
+}
+
+/**
+ * The sketch as it stands after the hand is written: {parts: the block {name: [kind, props]} | null when the sketch
+ * declares its parts in code, project: {entry, files}}. THROWS (writeSketch) on a refused hand.
+ */
+export async function sketchOf(sc, op, by) {
+    const r = await writeSketch(sc, op, by);
+    const ms = sc.win && sc.win.MaxiScene;
+    if (!ms || typeof ms.entry !== 'function' || typeof ms.partsOf !== 'function') {
+        throw new Error(op + ': the scene document publishes no MaxiScene.entry() / partsOf(project) — maxi-scene.js reads the sketch\'s parts block.');
+    }
+    const entry = ms.entry();
+    if (typeof entry !== 'string' || typeof r.files[entry] !== 'string') {
+        throw new Error(op + ': the project the sketch holds has no entry ' + JSON.stringify(entry) + ' among its files [' + Object.keys(r.files).join(', ') + '].');
+    }
+    const project = { entry: entry, files: Object.assign({}, r.files) };
+    const parts = await ms.partsOf(project);
+    // the block is built in the SCENE document's realm; the Record and the hands live in this one, so it crosses as JSON
+    return { parts: parts === null ? null : JSON.parse(JSON.stringify(parts)), project: project };
 }
 
 // ── the eyes: FrqtlVision.record → the question command (lab.ask) ───────────────────────────
 
-function visionOf(sc, op) {
-    const FV = sc.win && sc.win.FrqtlVision;
+async function visionOf(sc, op) {
+    const FV = sc.win && sc.win.MaxiScene && sc.win.MaxiScene.FrqtlVision;
     if (!FV || typeof FV.attach !== 'function') {
-        throw new Error(op + ': the scene document publishes no window.FrqtlVision — the GAME roster did not inject objects/objects/FrqtlVision.js.');
+        throw new Error(op + ': the scene document publishes no window.MaxiScene.FrqtlVision — maxi-scene.js imports it from @descix/frqtl-web/parts.');
     }
     if (!sc.runner.isRunning) {
         throw new Error(op + ': the world is paused, so no tick will arrive to film (a recording samples by TICK, never by the clock) — resume{} first.');
     }
+    if (typeof sc.readyToFilm !== 'function') { throw new Error(op + ': the loaded scene publishes no readyToFilm(op) — whether the world\'s Record can hold another clip cannot be asked.'); }
+    await sc.readyToFilm(op);
     return FV.attach(sc.runner);
 }
 
-function clipOf(video, op) {
+/**
+ * A clip a hand filmed inside the world's open Record: its span on the RECORD'S clock (sc.recordTickOf — its frames carry
+ * the runner's ticks, which restart at 0 on a re-run), and the hand named for lab.json `filmed` (sc.noteFilmed).
+ */
+function clipOf(video, op, sc) {
     const frames = video && video.track && video.track.frames;
     if (!frames || !frames.length) { throw new Error(op + ': the recorder returned no frames.'); }
-    return { video: video, first: frames[0].tick, last: frames[frames.length - 1].tick, frames: frames };
+    if (!sc || typeof sc.recordTickOf !== 'function' || typeof sc.noteFilmed !== 'function') { throw new Error(op + ': the loaded scene publishes no recordTickOf(tick) / noteFilmed(hand, span) — a clip cannot be placed in the world\'s Record.'); }
+    const span = { first: sc.recordTickOf(frames[0].tick), last: sc.recordTickOf(frames[frames.length - 1].tick) };
+    sc.noteFilmed(op, span);
+    return { video: video, first: span.first, last: span.last, frames: frames };
 }
 
 /**
@@ -397,7 +493,7 @@ function askedOf(asked) {
 }
 
 /** The clip facts a footage hand's result carries, by name: `ferry` writes them; a reader imports these, never re-types them. */
-export const CLIP_FACTS = Object.freeze({ label: 'label', seconds: 'seconds', base64Length: 'base64Length' });
+export const CLIP_FACTS = Object.freeze({ label: 'label', seconds: 'seconds', base64Length: 'base64Length', firstTick: 'firstTick', lastTick: 'lastTick' });
 
 async function ferry(lab, op, clip, recordOpts, label, note) {
     assertClipSeconds(op, clip.frames.length, recordOpts.fps, 'the recorded clip came out');
@@ -407,7 +503,7 @@ async function ferry(lab, op, clip, recordOpts, label, note) {
     });
     return Object.assign({
         mime: clip.video.encoded.mime, codec: clip.video.encoded.codec, muxer: clip.video.encoded.muxer,
-        frames: clip.frames.length, firstTick: clip.first, lastTick: clip.last,
+        frames: clip.frames.length, [CLIP_FACTS.firstTick]: clip.first, [CLIP_FACTS.lastTick]: clip.last,
         everyTicks: recordOpts.everyTicks, fps: recordOpts.fps, [CLIP_FACTS.seconds]: clip.frames.length / recordOpts.fps,
         truncated: !!clip.video.truncated, [CLIP_FACTS.base64Length]: clip.video.encoded.bytes.length, [CLIP_FACTS.label]: label
     }, askedOf(asked));
@@ -419,6 +515,7 @@ function noteOr(a, dflt) { return (typeof a.note === 'string' && a.note) ? a.not
 
 export const HANDS = Object.freeze({
     loadScene: {
+        reauthors: true,   // boots a new world: the lab closes the world's Record, and the new world's opens (reauthors())
         args: { id: 'string, required — a registry scene id (the picker lists them); a 2D and a 3D scene are different ids, and whether the loaded world is 2D or 3D is read from the result\'s `dimensions`', mode: 'string, ONLY for a scene whose registry row declares modes (inventory `modes` lists them; most declare none and refuse any mode) — one of those declared modes, its default when omitted' },
         returns: 'the loaded scene: {scene, id, mode, modes, renderer, dimensions: 2|3, canvas, tick, objects:[names]}',
         example: { id: 'cl1a-mirror-3d' },
@@ -434,13 +531,14 @@ export const HANDS = Object.freeze({
         run: function (lab, a) { return lab.sceneSource({ id: req(a, 'id', 'string', 'sceneSource') }); }
     },
     openSketch: {
+        reauthors: true,
         args: {
-            source: 'string, required — a whole sketch: a buildExperiment(exp) module whose first statement is exp.createCanvas(w, h, cfg) (2D) or exp.createScene(w, h, d, cfg) (3D), ending with the dual-mode tail `if (typeof module !== "undefined" && module.exports) { module.exports = { buildExperiment }; } else if (typeof window !== "undefined") { window.buildExperiment = buildExperiment; }`',
+            source: 'string, required — a whole sketch as an ES module: it imports what it uses by `@descix/frqtl-web/...` specifier (parts from `@descix/frqtl-web/parts`), declares its parts as DATA in `export const parts = { name: [Kind, {props}], … }` (the key is the name; Kind the imported class), and its default export is `export default function buildExperiment(exp)`, whose first statement is exp.createCanvas(w, h, cfg) (2D) or exp.createScene(w, h, d, cfg) (3D), then exp.declare(parts). A part declared any other way runs, but no hand can change it. No default export, or an import the package does not offer, is refused by the package naming the specifier',
             renderer: '"p5" | "three", optional — the display to boot; derived from the sketch when omitted (createScene without createCanvas → three, else p5); a mismatch is refused by the SDK naming both',
             seed: 'number, optional — RNG seed (42 when omitted)'
         },
-        returns: 'the booted sketch: {scene, renderer, canvas, tick, objects:[names]}; a SyntaxError or a build throw comes back verbatim as the error',
-        example: { source: "function buildExperiment(exp) {\n  var SRC = { preset: 'particle-walk', is2D: true, center: [60, 240], orientationDeg: 0, chargeMode: 'positive', fundamentalDimension: 2, wavelength: 1, fundamentalWaveLength: 4, burstSize: 2, emitEveryTicks: 1 };\n  exp.createCanvas(480, 480, setupSphereEmitter3D.worldCfg(SRC));\n  exp.addObject('SphereEmitter', SRC);\n  exp.addObject('Wall', { rect: [300, 120, 20, 240], collisionBehavior: 'bounce', bounceDirection: 'reflect', orientationDeg: 45, name: 'mirror', color: [255, 120, 0], hooks: ['recolor'] });\n}\nif (typeof module !== 'undefined' && module.exports) { module.exports = { buildExperiment: buildExperiment }; } else if (typeof window !== 'undefined') { window.buildExperiment = buildExperiment; }" },
+        returns: 'the booted sketch: {scene, renderer, canvas, tick, objects:[names]}; a SyntaxError, a link refusal or a build throw comes back verbatim as the error',
+        example: { source: "import { SphereEmitter, Wall } from '@descix/frqtl-web/parts';\n\nexport const parts = {\n  source: [SphereEmitter, { preset: 'particle-walk', is2D: true, center: [60, 240], orientationDeg: 0, chargeMode: 'positive', fundamentalDimension: 2, wavelength: 1, fundamentalWaveLength: 4, burstSize: 2, emitEveryTicks: 1 }],\n  mirror: [Wall, { rect: [300, 120, 20, 240], collisionBehavior: 'bounce', bounceDirection: 'reflect', orientationDeg: 45, color: [255, 120, 0], hooks: ['recolor'] }]\n};\n\nexport default function buildExperiment(exp) {\n  exp.createCanvas(480, 480, SphereEmitter.worldCfg(parts.source[1]));\n  exp.declare(parts);\n}\n" },
         run: function (lab, a) {
             return lab.openSketch({ source: req(a, 'source', 'string', 'openSketch'), renderer: a.renderer, seed: a.seed });
         }
@@ -450,9 +548,9 @@ export const HANDS = Object.freeze({
             kind: 'string, required — a kind the SDK ObjectFactory builds (Wall, SphereEmitter, GraphingDetectorWall, LargeObject, LiveChart, …); an unknown kind is refused by the SDK naming the known ones',
             opts: 'object, required — the kind\'s declared props; opts.name (string) is REQUIRED so the object can be addressed afterwards'
         },
-        returns: '{added:name, kind, authority:"center"|"rect"|null, center?, rect?} — the object is declared, so inventory lists it and the hands can move it',
+        returns: '{added:name, kind, authority:"center"|"rect"|null, center?, rect?} — the object is declared and written into the sketch\'s `parts` block as its last key, so inventory lists it and the hands can move and setDeclared it',
         example: { kind: 'Wall', opts: { name: 'blocker', rect: [200, 150, 16, 100], collisionBehavior: 'block', color: [200, 200, 60] } },
-        run: function (lab, a) {
+        run: async function (lab, a) {
             const kind = req(a, 'kind', 'string', 'addObject');
             const opts = a.opts;
             if (!opts || typeof opts !== 'object' || Array.isArray(opts)) { throw new Error('addObject: `opts` (object) is required — the kind\'s declared props, with opts.name.'); }
@@ -460,17 +558,24 @@ export const HANDS = Object.freeze({
             const sc = lab.scene('addObject');
             sc.recipeContext.addObject(kind, opts);
             const row = rowOf(sc.runner, findByName(sc.runner, name, 'addObject'));
+            const sk = await sketchOf(sc, 'addObject', MAXI);   // the writer appends it to `parts` (the last key, plus its import line) and writes the Record's `add` row
+            const entry = sk.parts && sk.parts[name];
+            if (!entry) { throw new Error('addObject: "' + name + '" is in the world but not in the sketch\'s `parts` block after the write — the sketch does not hold it.'); }
             return Object.assign({ added: name }, row);
         }
     },
     removeObject: {
         args: { name: 'string, required — a declared object name' },
-        returns: '{removed:name}',
+        returns: '{removed:name} — the part is gone from the world and from the sketch\'s `parts` block',
         example: { name: 'blocker' },
-        run: function (lab, a) {
+        run: async function (lab, a) {
             const name = req(a, 'name', 'string', 'removeObject');
             const sc = lab.scene('removeObject');
-            sc.runner.removeObject(findByName(sc.runner, name, 'removeObject'));
+            const d = findPart(sc.runner, name, 'removeObject');
+            const sk = await sketchOf(sc, 'removeObject', MAXI);
+            const entry = sk.parts && sk.parts[name];
+            if (!entry) { throw new Error('removeObject: "' + name + '" has no entry in the sketch\'s `parts` block to remove — nothing was removed.'); }
+            sc.runner.removeObject(d);   // the adapter's writeSketch writes the `remove` row when the hand ends
             if (lab.state.grab && lab.state.grab.name === name) { lab.state.grab = null; }
             return { removed: name };
         }
@@ -483,8 +588,8 @@ export const HANDS = Object.freeze({
             const name = req(a, 'name', 'string', 'moveObject');
             const rect = integers(req(a, 'rect', 'array', 'moveObject'), 'rect', 'moveObject', [4, 6]);
             const sc = lab.scene('moveObject');
-            const d = findByName(sc.runner, name, 'moveObject');
-            writePosition(sc.runner, d, { rect: rect }, { op: 'moveObject', by: 'maxi' });
+            const d = findPart(sc.runner, name, 'moveObject');
+            writePosition(sc.runner, d, { rect: rect });
             return Object.assign({ moved: name }, placementOf(sc.runner, d));
         }
     },
@@ -496,7 +601,7 @@ export const HANDS = Object.freeze({
             const name = req(a, 'name', 'string', 'resize');
             const size = integers(req(a, 'size', 'array', 'resize'), 'size', 'resize', [2, 3]);
             const sc = lab.scene('resize');
-            const d = findByName(sc.runner, name, 'resize');
+            const d = findPart(sc.runner, name, 'resize');
             const pos = placementOf(sc.runner, d);
             if (!pos.rect) { throw new Error('resize: "' + name + '" is a ' + sc.runner.kindOf(d) + ' — it is placed by its center; it has no rect to resize.'); }
             const r = pos.rect;
@@ -504,8 +609,37 @@ export const HANDS = Object.freeze({
             const next = (r.length === 6)
                 ? [r[0], r[1], r[2], size[0], size[1], (size.length === 3 ? size[2] : r[5])]
                 : [r[0], r[1], size[0], size[1]];
-            writePosition(sc.runner, d, { rect: next }, { op: 'resize', by: 'maxi' });
+            writePosition(sc.runner, d, { rect: next });
             return Object.assign({ resized: name }, placementOf(sc.runner, d));
+        }
+    },
+    setDeclared: {
+        args: {
+            name: 'string, required — a part of the sketch\'s `export const parts` block (inventory `parts` lists them, with their props)',
+            patch: 'object, required — {field: value, …}: writable fields of the part\'s kind as the block spells them (orientationDeg, collisionBehavior, burstSize, rect, center, …). The package refuses an unwritable field or a bad value naming it, and `name`: the key is the name (a rename is a new part, never this hand)'
+        },
+        returns: '{set:name, from:{the patched fields before}, to:{after}, tick:0, kept:["seed", "cameraPose"?]} — the part\'s entry in `parts` changed and the scene ran again in the same page, with the same seed (and camera). `tick` is the RUNNER\'s tick, which restarts at 0; the Record\'s clock (inventory `tick`, a clip\'s firstTick/lastTick) keeps climbing and is the one to compare. Film it (see) to watch the effect',
+        example: { name: 'mirror', patch: { orientationDeg: 30 } },
+        run: async function (lab, a) {
+            const name = req(a, 'name', 'string', 'setDeclared');
+            const patch = a.patch;
+            if (!patch || typeof patch !== 'object' || Array.isArray(patch) || !Object.keys(patch).length) {
+                throw new Error('setDeclared: `patch` (object) is required — {field: value, …} with at least one field.');
+            }
+            const sc = lab.scene('setDeclared');
+            findPart(sc.runner, name, 'setDeclared');
+            if (typeof sc.recipeContext.setDeclared !== 'function') {
+                throw new Error('setDeclared: the loaded scene publishes no exp.setDeclared(name, patch, {by}) — the package\'s facade changes a part\'s declaration.');
+            }
+            await writeSketch(sc, 'setDeclared', MAXI);   // the package refuses a setDeclared over an unwritten hand; the adapter wrote the last one
+            const r = await sc.recipeContext.setDeclared(name, patch, { by: MAXI });   // the Record's `setDeclared` row is the package's
+            if (!r || r.set !== name || !r.from || !r.to || typeof r.from !== 'object' || typeof r.to !== 'object' || !Array.isArray(r.kept)) {
+                throw new Error('setDeclared: exp.setDeclared answered ' + JSON.stringify(r && Object.keys(r)) + ', not {set, from, to, tick, kept, files}.');
+            }
+            if (lab.state.grab) { lab.state.grab = null; }   // the scene ran again: the old handle is gone
+            // the package answers from the SCENE document's realm; the Record and this hand's result live in this one, so they cross as JSON
+            const from = JSON.parse(JSON.stringify(r.from)), to = JSON.parse(JSON.stringify(r.to));
+            return { set: r.set, from: from, to: to, tick: r.tick, kept: JSON.parse(JSON.stringify(r.kept)) };
         }
     },
     grab: {
@@ -524,7 +658,7 @@ export const HANDS = Object.freeze({
             to: 'array, required — the object\'s new CENTER [x, y] (or [x, y, z] in 3D), whole world pixels (integers; a fraction is refused); a point outside the world is refused by the SDK naming the world\'s bounds',
             name: 'string, optional — the object to drag (grabs it first); omitted = the object grab{} is holding',
             ticks: 'number, optional — world ticks the move takes (default ' + DRAG_DEFAULTS.ticks + '); the object steps every tick along a straight line. (ticks + settle) / everyTicks / fps must land in ' + CLIP_BAND,
-            settle: 'number, optional — ticks the clip keeps filming after arrival (default ' + DRAG_DEFAULTS.settle + ')',
+            settle: 'number, optional — ticks the clip keeps filming after arrival (default ' + DRAG_DEFAULTS.settle + '; at least everyTicks: the drag is written into the sketch, and its row into the Record, on arrival, so the clip films past it)',
             everyTicks: 'number, optional — frames every N ticks (default ' + DRAG_DEFAULTS.everyTicks + ')',
             fps: 'number, optional — playback rate (default ' + DRAG_DEFAULTS.fps + ')',
             note: 'string, optional — the note that rides with the clip'
@@ -540,6 +674,9 @@ export const HANDS = Object.freeze({
                 stopAt: { ticks: ticks + settle },
                 fps: posInt(a.fps, 'fps', 'dragTo', DRAG_DEFAULTS.fps)
             };
+            if (settle < recordOpts.everyTicks) {
+                throw new Error('dragTo: `settle` ' + settle + ' is less than everyTicks ' + recordOpts.everyTicks + ' — the drag is written into the sketch (and its row into the Record) on arrival, so the clip must film at least one frame past it; nothing moved.');
+            }
             const planned = plannedFrames(ticks + settle, recordOpts.everyTicks, Infinity, false);
             recordOpts.maxFrames = planned + 1;   // headroom: stopAt ends the clip, the bound only guards memory
             assertClipSeconds('dragTo', planned, recordOpts.fps, '(ticks ' + ticks + ' + settle ' + settle + ') / everyTicks ' + recordOpts.everyTicks + ' plans');
@@ -549,35 +686,41 @@ export const HANDS = Object.freeze({
             const from = placementOf(sc.runner, g.obj);
             const start = from.center;
             const dest = (to.length === 2) ? [to[0], to[1], start[2]] : to.slice();
-            const vision = visionOf(sc, 'dragTo');
+            const vision = await visionOf(sc, 'dragTo');
             // The drag is a per-tick placement on the runner's OWN tick seam (addTickListener), subscribed
             // BEFORE the recorder's listener so each frame is captured with that tick's position applied.
-            // On arrival it unsubscribes inside its own tick. A placement the SDK refuses (a point outside
-            // the world) stops the drag and the recording; the refusal comes back verbatim, nothing is sent.
+            // On arrival it unsubscribes inside its own tick and writes the drag into the sketch (exp.toSketch): the
+            // Record's row lands at the arrival, inside the clip, which films `settle` ticks more. A placement the SDK
+            // refuses (a point outside the world) stops the drag and the recording; the refusal comes back verbatim,
+            // nothing is sent.
             const abort = new AbortController();
             recordOpts.signal = abort.signal;
             let n = 0;
             let refused = null;
             let left = null;
             let subscribed = true;
+            let arrived = null;
             const unsub = sc.runner.addTickListener(function () {
                 n += 1;
                 const f = Math.min(1, n / ticks);
                 try {
-                    left = writePosition(sc.runner, g.obj, { center: start.map(function (v, i) { return v + (dest[i] - v) * f; }) }, { op: 'dragTo', by: 'maxi' });
+                    left = writePosition(sc.runner, g.obj, { center: start.map(function (v, i) { return v + (dest[i] - v) * f; }) });
                 } catch (e) { refused = e; }
                 if (n >= ticks || refused) { off(); }
                 if (refused) { abort.abort(); }
+                else if (n >= ticks && !arrived) { arrived = writeSketch(sc, 'dragTo', MAXI); arrived.catch(function () {}); }
             });
             function off() { if (subscribed) { subscribed = false; unsub(); } }
             let clip;
             try {
                 const video = await vision.record(recordOpts).catch(function (e) { if (refused) { return null; } throw e; });
                 if (refused) { throw refused; }
-                clip = clipOf(video, 'dragTo');
+                clip = clipOf(video, 'dragTo', sc);
             } finally {
                 off();
             }
+            if (!arrived) { throw new Error('dragTo: the clip ended before "' + g.name + '" arrived — the drag was not written into the sketch.'); }
+            await arrived;   // a refusal of the write is this hand's error, by name
             const label = 'DRAG ' + g.name + ' — ticks ' + clip.first + '-' + clip.last + ', ' + clip.frames.length + ' frames';
             const out = await ferry(lab, 'dragTo', clip, recordOpts, label,
                 noteOr(a, 'Maxi drags "' + g.name + '" to ' + JSON.stringify(to) + ' over ' + ticks + ' ticks and watches, ticks ' + clip.first + ' to ' + clip.last + '.'));
@@ -591,7 +734,7 @@ export const HANDS = Object.freeze({
         run: function (lab) {
             const g = requireGrab(lab, 'revert');
             const sc = lab.scene('revert');
-            writePosition(sc.runner, g.obj, g.baseline.rect ? { rect: g.baseline.rect } : { center: g.baseline.center }, { op: 'revert', by: 'maxi' });
+            writePosition(sc.runner, g.obj, g.baseline.rect ? { rect: g.baseline.rect } : { center: g.baseline.center });
             return Object.assign({ reverted: g.name }, placementOf(sc.runner, g.obj));
         }
     },
@@ -635,14 +778,17 @@ export const HANDS = Object.freeze({
         run: function (lab) { const sc = lab.scene('resume'); sc.runner.start(); return { running: true, tick: sc.tick() }; }
     },
     restart: {
-        args: {}, returns: 'the scene run again from tick 0 on the same page (same sketch, same declared names; everything moved goes back to where the sketch put it): {scene, …, tick, objects:[names]}', example: {},
+        args: {}, returns: 'the scene run again from its start on the same page (the sketch as it stands now, with every hand and setDeclared written into it; same seed): {scene, …, tick, objects:[names]}', example: {},
         run: function (lab) { lab.scene('restart'); return lab.restart(); }
     },
     inventory: {
         args: {},
-        returns: '{tick, scene, id, mode, modes:[declared registry modes], renderer, dimensions: 2|3 (the booted world: 3 when it has depth), canvas:[w,h] or [w,h,d], camera: pose|null, viewer: {toward:"+z"|"-z"|null, away} in 3D (read off the live camera: which z direction comes nearer on screen; null when it looks across z) | null in 2D, objects:[{name, kind, authority:"center"|"rect"|null, center?, rect?}]} — what the scene declared, nothing else (authority null: it cannot be moved)',
+        returns: '{tick (the Record\'s clock: every tick since the world\'s open Record opened — when the world booted, or when the last Record was handed back — climbing across restarts and setDeclared), scene, id, mode, modes:[declared registry modes], renderer, dimensions: 2|3 (the booted world: 3 when it has depth), canvas:[w,h] or [w,h,d], camera: pose|null, viewer: {toward:"+z"|"-z"|null, away} in 3D (read off the live camera: which z direction comes nearer on screen; null when it looks across z) | null in 2D, objects:[{name, kind, authority:"center"|"rect"|null, center?, rect?}], parts: the sketch\'s `parts` block {name: [kind, {props}]} (null when the sketch declares its parts in code; only these parts can be moved, resized, setDeclared or removed), project: {entry, files} — the sketch text as it stands, every hand written in} — what the scene declared, nothing else (authority null: it cannot be moved)',
         example: {},
-        run: function (lab) { return lab.inventory(); }
+        run: async function (lab) {
+            const sc = lab.scene('inventory');
+            return Object.assign(lab.inventory(), await sketchOf(sc, 'inventory', MAXI));
+        }
     },
     see: {
         args: {
@@ -656,7 +802,7 @@ export const HANDS = Object.freeze({
         example: {},
         run: async function (lab, a) {
             const sc = lab.scene('see');
-            const vision = visionOf(sc, 'see');
+            const vision = await visionOf(sc, 'see');
             const opts = {
                 everyTicks: posInt(a.everyTicks, 'everyTicks', 'see', SEE_DEFAULTS.everyTicks),
                 stopAt: a.stopAt !== undefined ? a.stopAt : SEE_DEFAULTS.stopAt,
@@ -668,8 +814,9 @@ export const HANDS = Object.freeze({
             const span = (typeof st.ticks === 'number') ? st.ticks
                 : (typeof st.tick === 'number' && typeof sc.tick() === 'number') ? st.tick - sc.tick() : null;
             if (span === null) { throw new Error('see: `stopAt` must be {ticks: K} or {tick: T} with a numeric value, got ' + JSON.stringify(st)); }
+            opts.stopAt = { ticks: span };   // {tick: T} is on the Record's clock (inventory tick); the recorder counts ticks from its first capture
             assertClipSeconds('see', plannedFrames(span, opts.everyTicks, opts.maxFrames, false), opts.fps, 'stopAt / everyTicks (capped by maxFrames) plans');
-            const clip = clipOf(await vision.record(opts), 'see');
+            const clip = clipOf(await vision.record(opts), 'see', sc);
             const label = 'SEE — ticks ' + clip.first + '-' + clip.last + ', ' + clip.frames.length + ' frames';
             return ferry(lab, 'see', clip, opts, label,
                 noteOr(a, 'Maxi looks: a ' + clip.frames.length + '-frame clip of the lab, ticks ' + clip.first + ' to ' + clip.last + '.'));
@@ -697,7 +844,7 @@ export const HANDS = Object.freeze({
             const everyTicks = posInt(a.everyTicks, 'everyTicks', 'record', RECORD_DEFAULTS.everyTicks);
             const lastAt = Math.max.apply(null, wps.map(function (w) { return Number(w && w.atTick); }));
             if (!isFinite(lastAt)) { throw new Error('record: every waypoint needs a numeric atTick.'); }
-            const vision = visionOf(sc, 'record');
+            const vision = await visionOf(sc, 'record');
             const opts = {
                 everyTicks: everyTicks,
                 stopAt: { path: { waypoints: wps } },
@@ -705,7 +852,7 @@ export const HANDS = Object.freeze({
                 fps: posInt(a.fps, 'fps', 'record', RECORD_DEFAULTS.fps)
             };
             assertClipSeconds('record', plannedFrames(lastAt, opts.everyTicks, opts.maxFrames, true), opts.fps, 'the flight (last atTick ' + lastAt + ') / everyTicks plans');
-            const clip = clipOf(await vision.record(opts), 'record');
+            const clip = clipOf(await vision.record(opts), 'record', sc);
             const label = 'RECORD — flight over ticks ' + clip.first + '-' + clip.last + ', ' + clip.frames.length + ' frames';
             const out = await ferry(lab, 'record', clip, opts, label,
                 noteOr(a, 'Maxi flies: a ' + clip.frames.length + '-frame camera flight, ticks ' + clip.first + ' to ' + clip.last + '.'));
@@ -739,8 +886,8 @@ export const HANDS = Object.freeze({
 
 /**
  * `window.DeSciX_Actions` from HANDS: one function per hand, taking the shell's single args object
- * and resolving to the result as JSON TEXT (what the shell relays back into the conversation).
- * A throw stays a throw — the error reaches Maxi verbatim.
+ * and resolving to the result as JSON TEXT (what the shell relays back into the conversation), after the
+ * hand is written into the sketch as Maxi's act (writeSketch, by MAXI). A throw stays a throw — the error reaches Maxi verbatim.
  */
 export function buildAdapter(hands, lab, gate) {
     if (gate !== undefined && typeof gate !== 'function') { throw new Error('buildAdapter: `gate` is a function gate(op) that THROWS to refuse a hand, got ' + typeof gate + '.'); }
@@ -749,10 +896,26 @@ export function buildAdapter(hands, lab, gate) {
         out[op] = function (args) {
             return Promise.resolve()
                 .then(function () { if (gate) { gate(op); } return hands[op].run(lab, bag(args)); })
-                .then(function (result) { return JSON.stringify(result); });
+                .then(async function (result) {
+                    // EVERY hand ends written into the sketch: a refusal is this hand's error, by name
+                    if (typeof lab.current !== 'function') { throw new Error(op + ': the lab publishes no current() — the adapter cannot write the hand into the sketch.'); }
+                    const sc = lab.current();
+                    if (sc) { await writeSketch(sc, op, MAXI); }
+                    return JSON.stringify(result);
+                });
         };
     });
     return Object.freeze(out);
+}
+
+/**
+ * Whether a hand boots a new world (`reauthors` on its row: loadScene, openSketch). A Record spans exactly ONE booted
+ * world (the design §6), so such a hand CLOSES the world's Record and the new world's opens; both loop bodies ask here.
+ * THROWS on a hand the table does not have.
+ */
+export function reauthors(hands, hand) {
+    if (!hands || !Object.prototype.hasOwnProperty.call(hands, hand)) { throw new Error('reauthors: no hand "' + hand + '" in the table.'); }
+    return hands[hand].reauthors === true;
 }
 
 /**
@@ -818,10 +981,19 @@ export const HANDS_PREAMBLE = [
     'thread, and you answer there, in words; your answer is shown to the human in the lab\'s conversation',
     'strip, and its first lines come back in the hand\'s result as answer_excerpt (with asked:true and the',
     'thread\'s interaction_id). When the human presses Record, the lab hands you the demonstration the same',
-    'way: the clip, plus the list of what was moved. Nothing reaches you as a chat attachment. Describe only',
+    'way: the clip, plus the list of what was moved; when the human wrote what they are teaching, the question',
+    'gives their own words after the line "' + TEACHING_HEAD + '"; answer to them and to the footage.',
+    'Nothing reaches you as a chat attachment. Describe only',
     'what the footage shows — what you remember about a scene is not what you saw; "I looked at the',
     'readings" is `inventory`; "I saw" is the answer you gave to the footage. A refused question comes back',
     'as the hand\'s error, verbatim: then you have NOT seen it, so say so.',
+    '',
+    'THE SKETCH. A scene is a sketch whose `export const parts = { name: [Kind, {props}] }` block is its parts',
+    '(inventory `parts` shows it, `project` the whole text). Every hand you use is written into that block when it ends,',
+    'so the sketch always says what the world shows; a hand the sketch cannot hold (a part the scene declares in its',
+    'code, a rename) is refused by name and comes back as the hand\'s error. To change how a part is DECLARED (its',
+    'angle, its behaviour, its burst), use `setDeclared`: the entry changes and the scene runs again. A part is never',
+    'renamed: the key is the name.',
     '',
     'COORDINATES. ' + RECT_CONVENTION
 ].join('\n');

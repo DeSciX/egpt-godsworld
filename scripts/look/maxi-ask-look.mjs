@@ -24,6 +24,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
+import { TEACHING_HEAD, TEACHING_QUESTION } from '../../site/app-assets/maxi-ask.js';
+
+/** The human's words on the Record demonstration, sent once with its clip. */
+const WORDS = 'The mirror moves up and left; watch where the beam meets it now.';
 
 function argOf(flag, dflt) { const i = process.argv.indexOf(flag); return i === -1 ? dflt : process.argv[i + 1]; }
 const URL_ = argOf('--url', null);
@@ -136,11 +140,11 @@ try {
         const see = await must(page, 'see', {});
         const drag = await must(page, 'dragTo', { name: 'probe', to: PROBE_TO, ticks: 150, settle: 150 });
         const mem = await must(page, 'showMemory', { id: 'cl1a-mirror' });
-        // a human Record: start, a move through the one write path, ≥ 5 s of world, Stop
+        // a human Record: start, a move through the one write path, ≥ 5 s of world, Stop, the card's Send with the human's words
         await page.evaluate(() => window.MaxiLab.toggleRecord());
         await must(page, 'moveObject', { name: 'mirror', rect: [300, 60, 20, 240] });
         await page.waitForTimeout(6500);
-        const demo = await page.evaluate(async () => { const d = await window.MaxiLab.toggleRecord(); return { asked: d.asked, interaction_id: d.interaction_id, answer_excerpt: d.answer_excerpt, clips: d.clips.length, changes: d.changes.length }; });
+        const demo = await page.evaluate(async (words) => { await window.MaxiLab.toggleRecord(); const rs = await window.MaxiLab.sendDemonstration(words); const d = rs[rs.length - 1]; return { teaching: d.lab.teaching, asked: !!d.lab.asked, interaction_id: d.lab.asked && d.lab.asked.interaction_id, answer_excerpt: d.lab.asked && d.lab.asked.answer_excerpt, clips: d.record.clips.length, changes: d.record.changes.length }; }, WORDS);
         note('Record demonstration', demo);
 
         const asks = await page.evaluate(() => window.__asks.map((a) => ({
@@ -156,8 +160,11 @@ try {
             'B: media[0].mime_type video/mp4, raw base64 of an MP4 (ftyp), every question', asks.map((a) => a.media.map((m) => [m.mime_type, m.base64Length, m.ftyp])));
         check(JSON.stringify(asks.map((a) => a.previous_interaction_id)) === JSON.stringify([null, 'stub-thread-1', 'stub-thread-2', 'stub-thread-3']),
             'B: previous_interaction_id chains across hands (one thread)', asks.map((a) => a.previous_interaction_id));
-        check(asks.every((a) => /Answer in words only, with no action block: this turn is for looking\.$/.test(a.user_input_tail)), 'B: user_input ends with the look question');
-        check(/^The human pressed Record in 1A/.test(asks[3] ? asks[3].user_input_head : '') && /moveObject \(maxi\) mirror/.test(await page.evaluate(() => window.__asks[3].params.user_input)), 'B: the Record question carries the change list', asks[3] && asks[3].user_input_head);
+        check(asks.slice(0, 3).every((a) => /Answer in words only, with no action block: this turn is for looking\.$/.test(a.user_input_tail)), 'B: a hand\'s user_input ends with the look question');
+        const recordInput = asks[3] ? await page.evaluate(() => window.__asks[3].params.user_input) : '';
+        check(/^The human pressed Record and made this demonstration in one world:\n/.test(recordInput) && /· move \(maxi\) mirror: rect /.test(recordInput), 'B: the Record question carries the change list', asks[3] && asks[3].user_input_head);
+        check(recordInput.split(WORDS).length === 2 && recordInput.includes('\n\n' + TEACHING_HEAD + '\n' + WORDS + '\n\n') && recordInput.endsWith('this turn is for looking.\n' + TEACHING_QUESTION) && demo.teaching === WORDS,
+            'B: the Record question carries the human\'s words once, verbatim, and asks what they teach; lab.json keeps them', { teaching: demo.teaching, tail: asks[3] && asks[3].user_input_tail });
         check(see.asked === true && see.interaction_id === 'stub-thread-1' && drag.interaction_id === 'stub-thread-2' && mem.interaction_id === 'stub-thread-3' && demo.interaction_id === 'stub-thread-4',
             'B: hand results carry {asked:true, interaction_id}', { see: see.interaction_id, drag: drag.interaction_id, mem: mem.interaction_id, demo: demo.interaction_id });
         check(!('delivered' in see) && !('delivered' in drag) && !('delivered' in mem), 'B: no `delivered` in hand results');
