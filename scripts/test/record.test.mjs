@@ -89,7 +89,7 @@ function recordLab(first, ask) {
         catch (e) { if (into) { into.unheld.push.apply(into.unheld, sc.record.rows); } return { refused: e.message }; }
         const filmed = sc.filmed.map((f) => f.hand);
         sc.record = { rows: [] }; sc.filmed.length = 0;
-        if (!out.empty && into) { into.worlds.push({ folder: out, filmed: filmed, carried: 0, scene: { label: sc.label, id: sc.id, mode: sc.mode, renderer: sc.renderer } }); }
+        if (!out.empty && into) { into.worlds.push({ folder: out, filmed: filmed, carried: 0, start: PARTS, scene: { label: sc.label, id: sc.id, mode: sc.mode, renderer: sc.renderer } }); }
         return out;
     }
     L.lab = {
@@ -126,10 +126,11 @@ test('the recorder keeps no change log of its own: the rows are the world\'s Rec
 test('a Record with zero changes still carries its clip; it is the package\'s folder plus lab.json, complete; a chain with no Record is refused', () => {
     const folder = serializeRecordFolder({ changes: [], clips: [{ bytes: bytes('c'), firstTick: 100, lastTick: 395 }], partsBefore: PARTS, partsAfter: PARTS, project: PROJECT });
     const scene = { label: '1A · Mirror', id: 'cl1a-mirror', mode: null, renderer: 'p5' };
-    const [rec] = recordsOf([{ folder, filmed: [SEGMENT_HAND], scene }], null, []);
+    const [rec] = recordsOf([{ folder, filmed: [SEGMENT_HAND], start: PARTS, scene }], null, []);
     assert.deepEqual(rec.record, { tickRange: [100, 395], clips: ['clip-01.mp4'], changes: [] });
     assert.deepEqual(rec.lab, { producer: 'record', scene, asked: null, chain: { index: 1, records: ['record-01'] }, handBack: { record: 'record-01', clip: 'clip-01.mp4' },
-        filmed: [{ clip: 'clip-01.mp4', hand: 'record', firstTick: 100, lastTick: 395 }] }, 'lab.json names every segment filmed, by its hand, at the package\'s span');
+        filmed: [{ clip: 'clip-01.mp4', hand: 'record', firstTick: 100, lastTick: 395 }], start: PARTS }, 'lab.json names every segment filmed, by its hand, at the package\'s span, and the parts the demonstration began from');
+    assert.throws(() => recordsOf([{ folder, filmed: [SEGMENT_HAND], scene }], null, []), /a Record names the producer's start \(start: the parts block its chain began from/, 'a world with no start is refused by name');
     assert.deepEqual([rec.faults, rec.complete], [[], true]);
     assert.throws(() => recordsOf([], null, []), /no act happened in the worlds of the recording — nothing to record/);
     assert.ok(/tick 12 · move \(human\) mirror: rect \[1, 2, 3, 4\] → rect \[5, 2, 3, 4\]/.test(changesAsText([{ tick: 12, name: 'mirror', op: 'move', by: 'human', from: { rect: [1, 2, 3, 4] }, to: { rect: [5, 2, 3, 4] } }])));
@@ -200,6 +201,34 @@ test('Stop on a paused world refuses by name and keeps recording — also when p
     assert.deepEqual([L.sent[0].media.length, L.sent[0].media[0].mime_type], [1, 'video/mp4']);
     assert.deepEqual(recs[0].lab.asked, { interaction_id: 'thread-1', answer_excerpt: 'seen' });
     assert.deepEqual(errors, []);
+});
+
+test('a demonstration COMPLETES once, at Stop: onComplete gets the very Records Stop returns, before Send asks anything (the call removed is red); a non-function onComplete is refused', async () => {
+    const run = async (attach) => {
+        const { sc, setTick } = liveScene('clip');
+        const L = recordLab({ sc });
+        const done = [];
+        const rec = attach({ lab: L.lab, onError() {}, onComplete: (r) => done.push({ r, sent: L.sent.length }) });
+        await rec.start();
+        setTick(260);
+        const stopped = await rec.stop();
+        return { stopped, done };
+    };
+    const { stopped, done } = await run(attachRecorder);
+    assert.equal(done.length, 1, 'one completion');
+    assert.equal(done[0].r, stopped, 'the Records Stop returns');
+    assert.equal(done[0].sent, 0, 'before anything is asked');
+    assert.throws(() => attachRecorder({ lab: recordLab({ sc: liveScene('clip').sc }).lab, onError() {}, onComplete: 'keep' }), /onComplete is a function\(records\)/);
+    const src = fs.readFileSync(path.join(REPO, 'site/app-assets/maxi-record.js'), 'utf8');
+    const line = '            onComplete(st.last);';
+    assert.ok(src.includes(line), 'the plant applies');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-plant-'));
+    try {
+        const pinned = src.replace(line, '').replace(/from '\.\/([a-z-]+)\.js'/g, (m, f) => "from '" + pathToFileURL(path.join(REPO, 'site/app-assets', f + '.js')).href + "'");
+        fs.writeFileSync(path.join(dir, 'maxi-record.js'), pinned);
+        const planted = await import(pathToFileURL(path.join(dir, 'maxi-record.js')).href);
+        assert.equal((await run(planted.attachRecorder)).done.length, 0, 'planted: no completion (RED under the check above)');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('the live REC status counts the Record\'s rows (one per act, the lab\'s chainState)', async () => {
@@ -293,7 +322,7 @@ test('dispose() is deleted; a paused world refuses the scene change by name, sti
     const lab = read('site/app-assets/maxi-lab.js');
     assertLeaveOrder(lab);
     assert.ok(/await leaveWorld\(\);\n\s*if \(state\.frame\) \{ state\.frame\.remove\(\); \}/.test(lab), 'mountScene leaves the world before the old scene document goes');
-    assert.ok(/await openWorldRecord\(sc\);\n\s*state\.scene = sc;\n\s*attachHand\(ms, win\);\n\s*resumeRecorder\(\);/.test(lab), 'mountScene opens the world\'s Record, then the hand, then filming resumes');
+    assert.ok(/await openWorldRecord\(sc\);\n\s*if \(state\.chain\) \{ await readStart\(sc, [^\n]*state\.chain\.starts\); \}[^\n]*\n\s*state\.scene = sc;\n\s*attachHand\(ms, win\);\n\s*resumeRecorder\(\);/.test(lab), 'mountScene opens the world\'s Record, reads its start inside a producer\'s chain (THE START), then the hand, then filming resumes');
     const restart = lab.slice(lab.indexOf('async function restartUnguarded('), lab.indexOf('\n}\n', lab.indexOf('async function restartUnguarded(')));
     assert.ok(/await stopFilming\(\);[\s\S]*await sc\.runner\.restart\(\);[\s\S]*attachHand\(sc\.win\.MaxiScene, sc\.win\);\n\s*resumeRecorder\(\);/.test(restart), 'restart stops filming, restarts, then filming resumes');
     assert.ok(!/leaveWorld|closeWorldRecord|stop\(\)/.test(restart), 'a restart never closes the world\'s Record (one Record spans it)');
@@ -461,7 +490,7 @@ test('a demonstration is handed over once: a second Send while the first questio
     assert.equal(w.refused, 'record: the last demonstration has not been sent — press Send to Maxi on its card, or close the card (×) to discard it, then press Record (R).');
     assert.deepEqual([w.kept, w.dismissed, w.after, w.restarted, w.sent], [[false, true], { discarded: true }, [false, { discarded: false }], true, 0], 'refused and still waiting; × discards it; then Record starts');
     const lab = read('site/app-assets/maxi-lab.js');
-    assert.ok(lab.includes("el.demoClose.addEventListener('click', closeDemonstration);"), 'the card\'s × is the dismissal');
+    assert.ok(lab.includes("el.demoClose.addEventListener('click', function () { closeDemonstration().catch("), 'the card\'s × is the dismissal');
     const close = lab.slice(lab.indexOf('function closeDemonstration('), lab.indexOf('\n}\n', lab.indexOf('function closeDemonstration(')));
     assert.ok(close.includes('state.recorder.dismiss()') && close.includes('the demonstration was discarded unsent'), 'closing a waiting card says by name that it was discarded unsent');
     const src = read('site/app-assets/maxi-record.js');
@@ -485,7 +514,7 @@ test('what the world\'s Record carried from before Record was pressed is set asi
     const maxiMove = { tick: 331, name: 'mirror', op: 'move', by: 'maxi', from: { rect: [360, 80, 20, 240] }, to: { rect: [290, 80, 20, 240] } };
     const maxiSet = { tick: 489, name: 'mirror', op: 'setDeclared', by: 'maxi', from: { orientationDeg: 45 }, to: { orientationDeg: 30 } };
     const folder = serializeRecordFolder({ changes: [maxiMove, maxiSet], clips: [{ bytes: bytes('maxi'), firstTick: 182, lastTick: 482 }, { bytes: bytes('human'), firstTick: 490, lastTick: 790 }], partsBefore: PARTS, partsAfter: PARTS, project: PROJECT });
-    const worlds = [{ folder, filmed: ['dragTo', SEGMENT_HAND], scene: { label: '1A · Mirror', id: 'cl1a-mirror', mode: null, renderer: 'p5' },
+    const worlds = [{ folder, filmed: ['dragTo', SEGMENT_HAND], start: PARTS, scene: { label: '1A · Mirror', id: 'cl1a-mirror', mode: null, renderer: 'p5' },
         carried: { changes: [maxiMove, maxiSet], clips: [{ hand: 'dragTo', firstTick: 182, lastTick: 482 }] } }];
     const [rec] = recordsOf(worlds, null, []);
     assert.deepEqual(rec.faults, []);

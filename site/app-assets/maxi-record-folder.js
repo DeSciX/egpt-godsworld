@@ -62,6 +62,17 @@ export const HAND_BACK_KEYS = Object.freeze([UNHELD_KEY, TEACHING_KEY]);
  * producer's. First Record of a chain only, ABSENT when nothing was carried; never empty (carriedFaults).
  */
 export const CARRIED_KEY = 'carried';
+/**
+ * The lab.json key of the producer's START: the parts block (parts.before.json's shape, {name: [Kind, {props}]}) the round's
+ * first world held when the round began — the human pressed Record, the loop took the outline, or an Owl's revise began the
+ * next round — or when that world booted inside the round (maxi-lab.js THE START). It is read in the page, after any rows the
+ * world's Record carried from before, so it is where the round began even when parts.before.json is not (a carried Record,
+ * or a hand-back whose world the round booted later). The round's change is judged START → END (recordPlanFaults: the
+ * hand-back's parts.after.json against it), and the seen memory's parts diff is that diff. Hand-back Record of a chain only;
+ * never a placeholder (partsBlockFaults); when the chain's first Record carried nothing it is that Record's
+ * parts.before.json (startOpeningFaults, in the folder gate and the chain gate). Read through startOf, the one reader.
+ */
+export const START_KEY = 'start';
 
 // ── the placeholder no field holds ────────────────────────────────────────────────────────────
 /** The key of a placeholder value: no producer writes one; the gate refuses it anywhere in the folder by name. */
@@ -121,6 +132,59 @@ export function changesAsText(changes) {
     return changes.map(changeText).join('\n');
 }
 
+/**
+ * What keeps a value from being a parts block, the Record's own shape (parts.before.json, parts.after.json, lab.json
+ * START_KEY): [] when it is {name: [Kind, {props}]}, each props strict JSON.
+ */
+export function partsBlockFaults(v) {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) { return ['a parts block is {name: [Kind, {props}]}, got ' + JSON.stringify(v)]; }
+    return Object.keys(v).filter(function (k) { return !isEntry(v[k]); }).map(function (k) { return 'entry "' + k + '" is not [Kind, {props}]: ' + JSON.stringify(v[k]); });
+}
+
+/**
+ * The parts a Record changed, as lines a model reads: each part of parts.before.json ∪ parts.after.json whose entry differs
+ * ("name: Kind {props} → Kind {props}"), arrived ("name: added, Kind {props}") or left ("name: removed, was Kind {props}"),
+ * in the after block's order then the removed ones. The rows (changeText) say what each act did; this says the net state.
+ * THROWS on a block that is not {name: [Kind, {props}]}.
+ */
+export function partsDiffText(before, after) {
+    [['parts.before.json', before], ['parts.after.json', after]].forEach(function (b) {
+        if (partsBlockFaults(b[1]).length) { throw new Error('[record-folder] ' + b[0] + ' is a parts block {name: [Kind, {props}]}, got ' + JSON.stringify(b[1])); }
+    });
+    const entryText = function (e) { return e[0] + ' ' + JSON.stringify(e[1]); };
+    const lines = [];
+    Object.keys(after).forEach(function (k) {
+        if (!Object.prototype.hasOwnProperty.call(before, k)) { lines.push(k + ': added, ' + entryText(after[k])); }
+        else if (canon(before[k]) !== canon(after[k])) { lines.push(k + ': ' + entryText(before[k]) + ' → ' + entryText(after[k])); }
+    });
+    Object.keys(before).forEach(function (k) { if (!Object.prototype.hasOwnProperty.call(after, k)) { lines.push(k + ': removed, was ' + entryText(before[k])); } });
+    return lines.length ? lines.join('\n') : '(the parts block is the same before and after)';
+}
+
+/** Whether two parts blocks state the same parts (strict-JSON equal, key order aside). */
+export function partsEqual(a, b) { return canon(a) === canon(b); }
+
+/** The words of the refusal of a start that is not where the producer's first Record opened (startOpeningFaults). */
+export const START_NOT_OPENING = 'start is not where the round began';
+
+/**
+ * THE check of a hand-back's START against the chain's first Record (`first`: its files, `firstName`: its folder name): when
+ * that Record carried nothing (lab.json CARRIED_KEY absent) it opened as the round began (maxi-lab.js beginChain rotates the
+ * world's Record, or a world booted inside the round opens its Record, and THE START is read right then), so the start IS
+ * its parts.before.json — a start that disagrees is refused as START_NOT_OPENING. When it carried rows the start is its
+ * world's parts after those rows: no file of the folder states that block and the package exports no reader that derives
+ * it from parts.before.json and the rows, so nothing is checked there. A first Record whose files do not parse is the
+ * package's gate to name. → [fault].
+ */
+function startOpeningFaults(start, first, firstName) {
+    let lab, before;
+    try { lab = JSON.parse(textOf(first[FILES.lab])); before = JSON.parse(textOf(first[FILES.partsBefore])); } catch (e) { return []; }
+    if (!lab || lab[CARRIED_KEY] !== undefined || partsBlockFaults(before).length || partsBlockFaults(start).length) { return []; }
+    if (partsEqual(start, before)) { return []; }
+    return [START_NOT_OPENING + ': lab.json ' + START_KEY + ' is not ' + firstName + '/' + FILES.partsBefore + ' (' + partsDiffText(before, start).split('\n').join('; ') +
+        ') — ' + firstName + ' carried nothing, so it opened as the round began and where it opened is the start'];
+}
+
 // ── a closed Record, as the lab hands it to a producer ────────────────────────────────────────
 function textOf(v) { return typeof v === 'string' ? v : new TextDecoder('utf-8').decode(v); }
 
@@ -149,10 +213,12 @@ export function folderHere(out) {
 /**
  * ONE Record folder: the package's closed Record plus the lab's own file (lab.json) and the stills.
  * @param {{producer:'record'|'loop', folder:{files, record, clips:[{file, firstTick, lastTick}]}, filmed:string[],
- *          stills?:Uint8Array[3], lab:object, carried?:{changes, clips:[{hand, firstTick, lastTick}]}|null}} p
+ *          stills?:Uint8Array[3], lab:object, carried?:{changes, clips:[{hand, firstTick, lastTick}]}|null, start:object|null}} p
  *   folder: what rec.stop() resolved (folderHere); filmed: the hand that filmed each clip, in the order filmed (the lab's own
  *   list for that Record, one per clip of the folder); carried: what the Record held before its producer began (maxi-lab.js
- *   beginChain), written as lab.json CARRIED_KEY with the clips named — THROWS unless it is the folder's leading rows and clips.
+ *   beginChain), written as lab.json CARRIED_KEY with the clips named — THROWS unless it is the folder's leading rows and clips;
+ *   start: the producer's START (START_KEY) for the hand-back Record, null for any other Record of the chain — always named,
+ *   never left out (THROWS on an absent `start` or one that is not a parts block).
  * @returns {{files, record, lab, faults:string[], complete:boolean}}
  */
 export function assembleRecord(p) {
@@ -167,6 +233,14 @@ export function assembleRecord(p) {
     const lab = Object.assign({ producer: p.producer }, p.lab || {}, {
         filmed: folder.clips.map(function (c, i) { return { clip: c.file, hand: p.filmed[i], firstTick: c.firstTick, lastTick: c.lastTick }; })
     });
+    if (!Object.prototype.hasOwnProperty.call(p, 'start') || p.start === undefined) {
+        throw new Error('[record-folder] a Record names the producer\'s start (' + START_KEY + ': the parts block its chain began from, for the hand-back Record; null for the others) — the round\'s change is judged start → end, so it is never left out.');
+    }
+    if (p.start !== null) {
+        const bad = partsBlockFaults(p.start);
+        if (bad.length) { throw new Error('[record-folder] the producer\'s ' + START_KEY + ' is the parts block its chain began from: ' + bad.join('; ') + '.'); }
+        lab[START_KEY] = JSON.parse(JSON.stringify(p.start));
+    }
     const carried = p.carried || null;
     if (carried && (carried.changes.length || carried.clips.length)) {
         if (JSON.stringify(carried.changes) !== JSON.stringify(folder.record.changes.slice(0, carried.changes.length))) {
@@ -228,7 +302,8 @@ export function recordChain(worlds, where) {
  * acted worlds, each with as many clips and the same rows (after the rows the world's Record already held when the round
  * began, `carried`) — or this THROWS naming the world: the loop never hands back a Record it did not watch being written.
  * Each lab.json chains them (`chain: {index, records}`) and names the hand-back clip; the round's own fields
- * (LOOP_LAB_KEYS) ride in the hand-back Record's lab.json. `host` = {worlds, unheld?, stills?, run?, brain}.
+ * (LOOP_LAB_KEYS) ride in the hand-back Record's lab.json, with the producer's START: the first world's `start` (maxi-lab.js
+ * THE START), THROWS when it is not a parts block. `host` = {worlds:[{folder, filmed, carried, start}], unheld?, stills?, run?, brain}.
  * Returns [{name, files, record, lab, faults, complete}], in chain order.
  */
 export function assembleLoopRecords(out, host) {
@@ -245,6 +320,8 @@ export function assembleLoopRecords(out, host) {
         throw new Error('[record-folder] the loop acted in ' + acted.length + ' world(s), the lab closed ' + host.worlds.length + ' Record(s) for the round — the loop\'s worlds and the Records disagree.');
     }
     const ch = recordChain(host.worlds, 'of the round');
+    const start = host.worlds[0].start;
+    if (partsBlockFaults(start).length) { throw new Error('[record-folder] the round\'s first world carries no start (' + START_KEY + ': the parts it held when the round began, maxi-lab.js THE START), got ' + JSON.stringify(start) + ' — the round\'s change is judged start → end; nothing was assembled.'); }
     acted.forEach(function (w, i) {
         const folder = folderHere(host.worlds[i].folder);
         if (!w.after) { throw new Error('[record-folder] world ' + (i + 1) + ' of the round carries no inventory at its close' + (w.afterRefused ? ' (the body refused it: ' + w.afterRefused + ')' : '') + ' — a Record needs the scene it recorded; nothing was assembled.'); }
@@ -262,7 +339,7 @@ export function assembleLoopRecords(out, host) {
             chain: ch.chainOf(i), handBack: Object.assign({}, ch.handBack),
             declared: { before: w.before ? w.before.objects : null, after: w.after.objects } };
         if (w === last) { LOOP_LAB_KEYS.forEach(function (k) { lab[k] = out[k]; }); }
-        const rec = assembleRecord({ producer: 'loop', folder: host.worlds[i].folder, filmed: host.worlds[i].filmed, carried: host.worlds[i].carried || null, stills: w === last ? host.stills : undefined, lab: lab });
+        const rec = assembleRecord({ producer: 'loop', folder: host.worlds[i].folder, filmed: host.worlds[i].filmed, carried: host.worlds[i].carried || null, start: w === last ? start : null, stills: w === last ? host.stills : undefined, lab: lab });
         return Object.assign({ name: ch.names[i] }, rec);
     });
 }
@@ -293,6 +370,11 @@ export function recordChainFaults(folders) {
     try { lastClips = parseRecordFolder(lastFolder.files).record.clips || []; } catch (e) { lastClips = []; }
     const want = JSON.stringify({ record: lastFolder.name, clip: lastClips[lastClips.length - 1] });
     if (hb !== want) { bad.push('the hand-back clip is ' + hb + ', not the last clip of the last Record ' + want); }
+    if (folders.length > 1) {   // the hand-back's start against the chain's first Record (hostFolderFaults checks a chain of one)
+        let hbLab = null;
+        try { hbLab = JSON.parse(textOf(lastFolder.files[FILES.lab])); } catch (e) { hbLab = null; }
+        if (hbLab && hbLab[START_KEY] !== undefined) { startOpeningFaults(hbLab[START_KEY], folders[0].files, folders[0].name).forEach(function (f) { bad.push(lastFolder.name + ': ' + f); }); }
+    }
     return bad;
 }
 
@@ -423,8 +505,9 @@ export function carriedFaults(v, rec, filmed) {
  * no placeholder outside the §6 files (lab.json, project/), the entry's text a sketch module (entryTextFaults), at most
  * MAX_SEGMENTS clips, the stills all three or none, and lab.json: its producer, one `filmed` entry per clip of record.json
  * in order (the clip, the hand that filmed it, its span inside tickRange), what it carried from before its producer began
- * (carriedFaults, first Record only), its unheld rows, the human's teaching words, the hand-back-only keys and a chained
- * Record's chain and hand-back.
+ * (carriedFaults, first Record only), its unheld rows, the human's teaching words, the producer's start (a parts block,
+ * hand-back Record only; where the Record opened when it is its chain's first and carried nothing, startOpeningFaults), the
+ * hand-back-only keys and a chained Record's chain and hand-back.
  */
 export function hostFolderFaults(files) {
     if (!files || typeof files !== 'object') { return ['a Record folder is a tree of files']; }
@@ -466,7 +549,11 @@ export function hostFolderFaults(files) {
         else { unheld.forEach(function (c, i) { rowFaults(c).forEach(function (f) { bad.push('lab.json ' + UNHELD_KEY + '[' + i + ']: ' + f); }); }); }
     }
     if (lab[TEACHING_KEY] !== undefined) { teachingFaults(lab[TEACHING_KEY]).forEach(function (f) { bad.push('lab.json ' + f); }); }
-    HAND_BACK_KEYS.filter(function (k) { return lab[k] !== undefined; }).forEach(function (k) {   // named in the hand-back Record only
+    if (lab[START_KEY] !== undefined) { partsBlockFaults(lab[START_KEY]).forEach(function (f) { bad.push('lab.json ' + START_KEY + ': ' + f); }); }
+    if (lab[START_KEY] !== undefined && lab.chain && lab.chain.index === 1 && Array.isArray(lab.chain.records) && lab.handBack && lab.handBack.record === lab.chain.records[0]) {
+        startOpeningFaults(lab[START_KEY], files, lab.chain.records[0]).forEach(function (f) { bad.push(f); });   // the hand-back is the chain's first Record (recordChainFaults checks a longer chain)
+    }
+    HAND_BACK_KEYS.concat([START_KEY]).filter(function (k) { return lab[k] !== undefined; }).forEach(function (k) {   // named in the hand-back Record only
         const hbr = lab.handBack, chn = lab.chain;
         if (!hbr || !chn || !Array.isArray(chn.records) || hbr.record !== chn.records[chn.index - 1]) { bad.push('lab.json ' + k + ' rides in the hand-back Record of a chain only'); }
     });
@@ -496,6 +583,22 @@ export function planOf(files) {
         throw new Error('[record-folder] lab.json carries no `' + PLAN_KEY + '` (producer ' + JSON.stringify(lab.producer) + ') — only the hand-back Record of a loop holds the round\'s plan (LOOP_LAB_KEYS).');
     }
     return lab[PLAN_KEY];
+}
+
+/**
+ * THE one reader of the producer's START a Record carries: lab.json[START_KEY], a parts block. THROWS naming a Record that
+ * carries none (it is not the hand-back of a chain, or it was written before Records carried their start) or one that is
+ * not a parts block — a start is never stood in for by parts.before.json, which is where this Record's world was when the
+ * Record opened, not necessarily where the round began.
+ */
+export function startOf(files) {
+    const lab = parseRecordFolder(files).lab;
+    if (!Object.prototype.hasOwnProperty.call(lab, START_KEY)) {
+        throw new Error('[record-folder] lab.json carries no `' + START_KEY + '` — the hand-back Record of a chain names the parts its round began from; this Record does not, so its round cannot be judged start → end (parts.before.json is where its world stood when the Record opened, not necessarily where the round began).');
+    }
+    const bad = partsBlockFaults(lab[START_KEY]);
+    if (bad.length) { throw new Error('[record-folder] lab.json ' + START_KEY + ': ' + bad.join('; ')); }
+    return lab[START_KEY];
 }
 
 /** Strict-JSON equality, key order aside. */
@@ -536,13 +639,6 @@ function sameValue(param, planned, h) {
     return planned.every(function (n, i) { return typeof n === 'number' && Math.abs(n - c[i]) <= slack; });
 }
 
-/** The props a §6 row's `to` states: setDeclared's patched keys, a move's placement, an add's entry props; none for remove/fork. */
-function rowTo(row) {
-    if (row.op === 'setDeclared' || row.op === MOVE) { return row.to; }
-    if (row.op === 'add' && isEntry(row.to)) { return row.to[1]; }
-    return null;
-}
-
 /**
  * The params of a part a row acts on, beyond what its plan names (`planned`: the plan's params for that part): a setDeclared's
  * patched keys the plan does not name; a move when the plan names neither centre nor rect (either names a placement, stated in
@@ -562,20 +658,25 @@ function chainName(lab, i) {
     return (ch && Array.isArray(ch.records) && typeof ch.records[ch.index - 1] === 'string') ? ch.records[ch.index - 1] : 'records[' + i + ']';
 }
 
+/** The words of the round-level refusal: a round that ends where it started changed nothing (recordPlanFaults). */
+export const NO_CHANGE = 'no change';
+
 /**
  * THE plan-against-Record check, in code (the Owl never sees the plan: it gets the outline, the prediction and the footage).
  * `plan` is maxi-roles.js parsePlan's plan as the hand-back Record's lab.json holds it (planOf); each change is read as
  * {object, param, value} (its `why` is words). `records` is the round's CHAIN in order, each a Record folder tree (one Record
- * per booted world; the last is the hand-back); a one-Record round is a chain of one, [files]. [] when the chain states the
- * plan; else every fault by name:
- *   - a plan change no row of ANY Record in the chain states: a row on that part whose `to` holds param: value (for rect/center,
- *     the move row's `to`, in the shape the part is declared by: a planned centre of a rect-declared part matches its rect's
- *     centre within RECT_CENTER_SLACK px per axis);
+ * per booted world; the last is the hand-back); a one-Record round is a chain of one, [files]. The round's change is judged
+ * START → END: START is the producer's start the hand-back carries (startOf: the parts the round began from), END the
+ * hand-back's parts.after.json. No row decides it: a re-staging row and the row that undoes it say nothing
+ * about where the round ended. [] when the chain states the plan; else every fault by name:
+ *   - the hand-back carries no start (a Record that cannot be judged start → end);
+ *   - NO_CHANGE: END equals START — the round ends where it started, whatever its rows did;
+ *   - a plan change END does not hold at its value (for a planned centre of a rect-declared part, its rect's centre within
+ *     RECT_CENTER_SLACK px per axis);
+ *   - a plan change START already holds: start → end does not make it;
  *   - a row, in any Record, on a part the plan never mentions;
- *   - a row on a planned part that acts beyond the plan: a param the plan does not name for that part (beyondPlan);
- *   - a plan change the hand-back (last) Record's parts.after.json does not hold at its value (the same reading).
- * Repeated rows on a planned param pass when one states the value. Pure: it reads, never repairs, and never decides whether a
- * fault blocks a memory (the loop does).
+ *   - a row on a planned part that acts beyond the plan: a param the plan does not name for that part (beyondPlan).
+ * Pure: it reads, never repairs, and never decides whether a fault blocks a memory (the loop does).
  */
 export function recordPlanFaults(plan, records) {
     if (!plan || typeof plan !== 'object' || !Array.isArray(plan.changes)) { return ['the plan is maxi-roles.js parsePlan\'s {…, changes: [{object, param, value, why}]}, got ' + JSON.stringify(plan)]; }
@@ -591,6 +692,12 @@ export function recordPlanFaults(plan, records) {
     }
     const handBack = chain[chain.length - 1];
     const bad = [];
+    let start = null;
+    try { start = startOf(records[records.length - 1]); } catch (e) { bad.push(handBack.name + ': ' + e.message.replace('[record-folder] ', '')); }
+    const end = handBack.after;
+    if (start !== null && partsEqual(start, end)) {
+        bad.push(NO_CHANGE + ': ' + handBack.name + '/parts.after.json equals the start (lab.json ' + START_KEY + ') — the round ends where it started' + (handBack.rows.length ? ', whatever its ' + handBack.rows.length + ' row(s) did on the way' : ''));
+    }
     const named = {};   // part → the params the plan names for it
     plan.changes.forEach(function (c, i) {
         if (!c || typeof c !== 'object' || typeof c.object !== 'string' || !c.object || typeof c.param !== 'string' || !c.param || !('value' in c)) {
@@ -598,21 +705,19 @@ export function recordPlanFaults(plan, records) {
         }
         (named[c.object] = named[c.object] || []).push(c.param);
         const at = 'plan changes[' + i + '] (' + c.object + ' ' + c.param + ': ' + JSON.stringify(c.value) + ')';
-        const onPart = [];
-        chain.forEach(function (r) { r.rows.forEach(function (row) { if (row && row.name === c.object) { onPart.push({ rec: r.name, row: row }); } }); });
-        const stated = onPart.some(function (o) { const h = heldOf(rowTo(o.row), c.param); return h.none === undefined && sameValue(c.param, c.value, h); });
-        if (!stated) {
-            bad.push(at + ' has no change row on "' + c.object + '" in the chain whose `to` holds ' + c.param + ': ' + JSON.stringify(c.value) +
-                (onPart.length ? ' (its rows: ' + onPart.map(function (o) { return o.rec + ' ' + o.row.op + ' → ' + JSON.stringify(o.row.to); }).join('; ') + ')' : ' (no row names "' + c.object + '")'));
-        }
-        const after = handBack.after;
-        const entry = after && typeof after === 'object' ? after[c.object] : undefined;
+        const entry = end && typeof end === 'object' ? end[c.object] : undefined;
         if (!isEntry(entry)) { bad.push(at + ': ' + handBack.name + '/parts.after.json has no part "' + c.object + '"'); return; }
         const h = heldOf(entry[1], c.param);
         if (h.none !== undefined) { bad.push(at + ': ' + handBack.name + '/parts.after.json "' + c.object + '" holds no ' + c.param + ' (' + h.none + ')'); }
         else if (!sameValue(c.param, c.value, h)) {
             bad.push(at + ': ' + handBack.name + '/parts.after.json holds "' + c.object + '" ' + c.param + ' at ' + JSON.stringify(h.value) +
                 (h.fromRect ? ' (the centre of its rect ' + JSON.stringify(h.fromRect) + ', ' + RECT_CENTER_SLACK + ' px per axis allowed)' : '') + ', not ' + JSON.stringify(c.value));
+        }
+        if (start === null) { return; }
+        const was = isEntry(start[c.object]) ? heldOf(start[c.object][1], c.param) : { none: 'absent' };
+        if (was.none === undefined && sameValue(c.param, c.value, was)) {
+            bad.push(at + ': the start (lab.json ' + START_KEY + ') already holds "' + c.object + '" ' + c.param + ' at ' + JSON.stringify(was.value) +
+                (was.fromRect ? ' (the centre of its rect ' + JSON.stringify(was.fromRect) + ')' : '') + ' — start → end does not make this change');
         }
     });
     const parts = Object.keys(named);

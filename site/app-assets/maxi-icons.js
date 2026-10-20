@@ -26,6 +26,7 @@ export const ICON_FILES = Object.freeze({
     record: 'esm/FiberManualRecord.js',
     stop: 'esm/Stop.js',
     code: 'esm/Code.js',
+    memories: 'esm/Bookmarks.js',
     info: 'esm/Info.js',
     fullscreen: 'esm/Fullscreen.js',
     fullscreenExit: 'esm/FullscreenExit.js'

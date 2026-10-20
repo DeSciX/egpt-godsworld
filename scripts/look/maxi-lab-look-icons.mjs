@@ -48,8 +48,8 @@ function ownBrowserPids() {
 }
 function check(cond, what, data) { if (!cond) { note('FAILED: ' + what, data); throw new Error('LOOK check failed: ' + what); } note('ok: ' + what, data); }
 
-async function open(browser, viewport, video) {
-    const ctx = await browser.newContext(Object.assign({ viewport }, video ? { recordVideo: { dir: OUT, size: viewport } } : {}));
+async function open(browser, viewport, video, device) {
+    const ctx = await browser.newContext(Object.assign({ viewport }, device || {}, video ? { recordVideo: { dir: OUT, size: viewport } } : {}));
     await ctx.addInitScript((key) => { try { localStorage.setItem(key, '1'); } catch (e) { /* the look reads the page either way */ } }, INTRO_SEEN_KEY);
     const page = await ctx.newPage();
     const errors = [];
@@ -66,8 +66,11 @@ const readHeader = (page) => page.evaluate(() => Array.from(document.querySelect
     const svg = b.querySelector(':scope > svg.icon'); const label = b.querySelector(':scope > .label'); const r = b.getBoundingClientRect();
     return { id: b.id, icon: b.dataset.icon || null, shape: svg ? svg.firstElementChild && svg.firstElementChild.tagName : null, svgW: svg ? svg.getBoundingClientRect().width : 0,
         words: label ? label.textContent : null, wordsShown: !!label && getComputedStyle(label).display !== 'none', aria: b.getAttribute('aria-label'), pressed: b.getAttribute('aria-pressed'),
-        fill: svg ? getComputedStyle(svg).fill : null, border: getComputedStyle(b).borderColor, x: r.left, right: r.right };
+        fill: svg ? getComputedStyle(svg).fill : null, border: getComputedStyle(b).borderColor, x: r.left, right: r.right, top: r.top };
 }));
+
+/** Every shown header button on one row: their tops within 2 px. */
+const oneRow = (h) => h.length > 0 && Math.max(...h.map((b) => b.top)) - Math.min(...h.map((b) => b.top)) <= 2;
 
 /** The panel's lines, and the lines the registry gives for the loaded scene (read in the page, through its import map). */
 const readCard = (page) => page.evaluate(async () => {
@@ -95,7 +98,8 @@ try {
         video = page.video();
         const h = await readHeader(page);
         note('header (desktop)', h);
-        check(h.map((b) => b.id).join() === 'btn-run,btn-restart,btn-hand,btn-record,btn-code,btn-info', 'A: the desktop header shows Run, Restart, Hand, Record, Scene code, Info (Full screen hidden)');
+        check(h.map((b) => b.id).join() === 'btn-run,btn-restart,btn-hand,btn-record,btn-code,btn-info,btn-memories', 'A: the desktop header shows Run, Restart, Hand, Record, Scene code, Info, Memories (Full screen hidden)');
+        check(oneRow(h), 'A: at the shell frame\'s 1232x720 every header button sits on ONE row (no button wraps onto the status line)', h.map((b) => [b.id, b.top, b.right]));
         check(h.every((b) => b.icon && b.shape && b.svgW >= 14 && b.wordsShown && b.words && b.aria === b.words), 'A: every button draws its icon beside its visible words, its aria-label naming it');
         const roles = Object.fromEntries(h.map((b) => [b.id, b.icon]));
         check(roles['btn-run'] === 'pause' && roles['btn-restart'] === 'restart' && roles['btn-hand'] === 'hand' && roles['btn-record'] === 'record' && roles['btn-code'] === 'code' && roles['btn-info'] === 'info', 'A: each button has its icon', roles);
@@ -165,6 +169,7 @@ try {
         check(h.every((b) => b.icon && b.svgW >= 16 && !b.wordsShown && b.aria), 'B: icons only at 390 px, every button still named by its aria-label');
         const fit = await page.evaluate(() => { const hd = document.querySelector('header'); return { scroll: hd.scrollWidth, client: hd.clientWidth }; });
         check(h.every((b) => b.x >= 0 && b.right <= 390) && fit.scroll <= fit.client, 'B: every header button sits inside the 390 px screen without scrolling the header', fit);
+        check(oneRow(h) && h.some((b) => b.id === 'btn-memories'), 'B: at 390 px the header, Memories included, is ONE row', h.map((b) => [b.id, b.top]));
         await shot(page, 'B1-390-header.png', { clip: { x: 0, y: 0, width: 390, height: 60 } });
         await shot(page, 'B2-390-lab.png');
         await page.click('#btn-info');
@@ -179,6 +184,16 @@ try {
         await shot(page, 'B3-390-info.png');
         note('B page errors', errors);
         check(errors.length === 0, 'B: no page errors', errors);
+        await ctx.close();
+    }
+    // ── C. a phone in landscape (844x390): the mobile layout's header is one row too ──
+    {
+        const { ctx, page } = await open(browser, { width: 844, height: 390 }, false, { isMobile: true, hasTouch: true });
+        const h = await readHeader(page);
+        note('header (844x390)', h);
+        const fit = await page.evaluate(() => { const hd = document.querySelector('header'); return { scroll: hd.scrollWidth, client: hd.clientWidth }; });
+        check(oneRow(h) && h.some((b) => b.id === 'btn-memories') && h.every((b) => b.x >= 0 && b.right <= 844) && fit.scroll <= fit.client, 'C: at 844x390 the header, Memories included, is ONE row inside the screen', fit);
+        await shot(page, 'C1-844x390-header.png', { clip: { x: 0, y: 0, width: 844, height: 60 } });
         await ctx.close();
     }
 } catch (err) {

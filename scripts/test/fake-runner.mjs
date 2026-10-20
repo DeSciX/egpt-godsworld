@@ -182,7 +182,7 @@ export function recordDoors(sceneOf) {
         } catch (e) { if (into) { into.unheld.push.apply(into.unheld, rec.changes); } return { refused: e.message }; }
         const hands = filmed.map((f) => f.hand);
         sc.record = { changes: [] }; sc.filmed = [];
-        if (!out.empty && into) { into.worlds.push({ folder: out, filmed: hands, carried: 0, scene: { label: sc.label, id: sc.id, mode: sc.mode, renderer: sc.renderer } }); }
+        if (!out.empty && into) { into.worlds.push({ folder: out, filmed: hands, carried: 0, start: {}, scene: { label: sc.label, id: sc.id, mode: sc.mode, renderer: sc.renderer } }); }
         return out;
     }
     return {

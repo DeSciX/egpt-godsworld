@@ -10,8 +10,8 @@
  * The input is the run's Record folder: record-01/, record-02/, … (site/app-assets/maxi-record-folder.js owns the layout,
  * the chain and the completeness gate; minimaxi/record-folder.mjs reads it from disk). The memory is written from the
  * HAND-BACK Record its lab.json names (`handBack.record`): its clips, its change rows (record.json `changes`, one memo
- * line per row in the §6 vocabulary, printed by the owner's changeText), its parts.before/after.json (one line per
- * entry that differs), its tickRange and its scene, the loop round's own fields quoted from lab.json, and the human's
+ * line per row in the §6 vocabulary, printed by the owner's changeText), its parts diff START → END (one line per entry
+ * that differs between the producer's start, lab.json START_KEY read by the owner's startOf, and parts.after.json), its tickRange and its scene, the loop round's own fields quoted from lab.json, and the human's
  * teaching words when lab.json carries them (the owner's TEACHING_KEY: teachingLines, verbatim, each line quoted). Every sentence
  * is quoted from the Record; nothing is written that a role did not say or the Record does not hold.
  *
@@ -33,7 +33,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FILES, STILLS, LOOP_LAB_KEYS, RECORD_DIR, SHAPE_OWNER, UNAVAILABLE, TEACHING_KEY, CARRIED_KEY, recordFolderFaults, recordChainFaults, recordPlanFaults, planOf, changeText, sceneFacts, projectEntryOf } from '../site/app-assets/maxi-record-folder.js';
+import { FILES, STILLS, LOOP_LAB_KEYS, RECORD_DIR, SHAPE_OWNER, UNAVAILABLE, TEACHING_KEY, CARRIED_KEY, START_KEY, startOf, recordFolderFaults, recordChainFaults, recordPlanFaults, planOf, changeText, sceneFacts, projectEntryOf } from '../site/app-assets/maxi-record-folder.js';
 import { SEEN_ACCOUNT, ROLE_ORDER } from '../site/app-assets/maxi-roles.js';
 import { readRecordFolder, writeRecordFolder } from '../minimaxi/record-folder.mjs';
 
@@ -175,7 +175,21 @@ export function readRun(recordDir) {
 export const CHANGE_PREFIX = 'change: ';
 export const PART_PREFIX = 'part ';
 const NO_CHANGE = CHANGE_PREFIX + '(none: no act changed a declared part in this Record)';
-const NO_PART_DIFF = PART_PREFIX + '(none): parts.after.json equals parts.before.json';
+/** The line of a parts diff that is empty: END equals the side it starts from (diffStart's `file`). */
+function noPartDiff(file) { return PART_PREFIX + '(none): parts.after.json equals ' + file; }
+
+/**
+ * THE side a memory's parts diff starts from, named: the producer's start (lab.json START_KEY, through the Record owner's
+ * startOf) — the parts the round began from. A Record written before Records carried their start
+ * (the memories published before it) states only its own parts.before.json, so its diff starts there and every line that
+ * prints it says so by the file's name; the plan check refuses such a Record (recordPlanFaults), so no new memory is
+ * published from one.
+ */
+export function diffStart(files) {
+    const lab = jsonOf(files, FILES.lab);
+    if (lab && Object.prototype.hasOwnProperty.call(lab, START_KEY)) { return { parts: startOf(files), file: 'lab.json ' + START_KEY }; }
+    return { parts: jsonOf(files, FILES.partsBefore), file: FILES.partsBefore };
+}
 
 function partsSide(v, file) {
     if (v === undefined) { return { missing: file + ' is not in the folder' }; }
@@ -194,8 +208,8 @@ function carriedRowCount(lab) {
 /**
  * THE lines a seen memory states from its Record, in order: one memo line per record.json change row (the owner's
  * changeText: `op` in the §6 vocabulary, a move's from/to in the shape its entry declares, setDeclared/add/remove/fork
- * as written; a carried row opens with CARRIED_MARK), then one line per parts entry that differs between parts.before.json
- * and parts.after.json. The memories gate re-renders these from the published folder (site/memories/<id>/) and compares,
+ * as written; a carried row opens with CARRIED_MARK), then one line per parts entry that differs between the side the diff
+ * starts from (diffStart: the producer's start) and parts.after.json. The memories gate re-renders these from the published folder (site/memories/<id>/) and compares,
  * so a hand edit of either is red.
  */
 export function recordLines(files) {
@@ -203,7 +217,8 @@ export function recordLines(files) {
     const rows = record && Array.isArray(record.changes) ? record.changes : [];
     const carried = carriedRowCount(jsonOf(files, FILES.lab));
     const lines = rows.length ? rows.map(function (c, i) { return CHANGE_PREFIX + (i < carried ? CARRIED_MARK : '') + changeText(c); }) : [NO_CHANGE];
-    const before = partsSide(jsonOf(files, FILES.partsBefore), FILES.partsBefore);
+    const from = diffStart(files);
+    const before = partsSide(from.parts, from.file);
     const after = partsSide(jsonOf(files, FILES.partsAfter), FILES.partsAfter);
     if (before.missing || after.missing) {
         lines.push(PART_PREFIX + '(not stated): ' + [before.missing, after.missing].filter(Boolean).join('; ') + ' — the parts diff waits on it');
@@ -214,7 +229,7 @@ export function recordLines(files) {
         const side = function (v) { return v === undefined ? '(absent)' : JSON.stringify(v); };
         return PART_PREFIX + n + ': ' + side(before.parts[n]) + ' → ' + side(after.parts[n]);
     });
-    return lines.concat(diff.length ? diff : [NO_PART_DIFF]);
+    return lines.concat(diff.length ? diff : [noPartDiff(from.file)]);
 }
 /** The Record's lines as they stand in a memory text (every line opening with CHANGE_PREFIX or PART_PREFIX), in order. */
 export function recordLinesOf(text) {
@@ -489,7 +504,7 @@ export function renderSeenMemory(run, look, opts) {
     const seen = Object.keys(SEEN_ACCOUNT).map(function (k) { return k + ' — ' + oneLine(quoted(lab, 'owl.seen.' + k)); }).join('; ');
     return head.concat(looked, roundsLines(lab), [
         '',
-        'Changes (record.json, one row per act, in order) and the parts diff (parts.before.json → parts.after.json):'
+        'Changes (record.json, one row per act, in order) and the parts diff (' + diffStart(run.files).file + ' → parts.after.json):'
     ], recordLines(run.files), teachingLines(lab), [
         '',
         'Outline (the person): ' + oneLine(lab.outline),

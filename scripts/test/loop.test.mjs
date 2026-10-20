@@ -81,16 +81,17 @@ const PROJECT = { 'frqtl.json': JSON.stringify({ name: 'cl1a-mirror', kind: 'sce
 function closeWorld() {
   const w = st.rec; st.rec = { rows: [], clips: [] };
   if (!st.chain) { return; }
+  if (!w.start) { throw new Error('fake body: a world closed into the chain with no start'); }
   let out;
   try { out = serializeRecordFolder({ changes: w.rows, clips: w.clips.map((c) => ({ bytes: new Uint8Array(fs.readFileSync(c.file)), firstTick: c.firstTick, lastTick: c.lastTick })), partsBefore: { mirror: ['Wall', w.before || PROPS()] }, partsAfter: { mirror: ['Wall', PROPS()] }, project: PROJECT }); }
   catch (e) { st.chain.unheld.push(...w.rows); return; }
   if (out.empty) { return; }
   const files = {}; Object.keys(out.files).forEach((k) => { const v = out.files[k]; files[k] = typeof v === 'string' ? { text: v } : { base64: Buffer.from(v).toString('base64') }; });
-  st.chain.worlds.push({ folder: { files, record: out.record, clips: out.clips }, filmed: w.clips.map((c) => c.hand), carried: 0, scene: { label: '1A · Mirror', id: 'cl1a-mirror', mode: null, renderer: 'p5' } });
+  st.chain.worlds.push({ folder: { files, record: out.record, clips: out.clips }, filmed: w.clips.map((c) => c.hand), carried: 0, start: { mirror: ['Wall', w.start] }, scene: { label: '1A · Mirror', id: 'cl1a-mirror', mode: null, renderer: 'p5' } });
 }
 const emit = (o) => { (o.changes || []).forEach((c) => st.rec.rows.push(c)); save(); console.log(JSON.stringify(o)); };
 if (op === 'record') {
-  if (args === 'begin' || args === 'next') { st.rec = { rows: [], clips: [], before: PROPS() }; st.chain = { worlds: [], unheld: [] }; save(); console.log(JSON.stringify({ begun: true })); }
+  if (args === 'begin' || args === 'next') { st.rec = { rows: [], clips: [], before: PROPS(), start: PROPS() }; st.chain = { worlds: [], unheld: [] }; save(); console.log(JSON.stringify({ begun: true })); }   // THE START: read where each round begins
   else if (args === 'abandon') { st.chain = null; save(); console.log(JSON.stringify({ abandoned: true })); }
   else if (args === 'end') { closeWorld(); const ch = st.chain; st.chain = null; save(); console.log(JSON.stringify({ producer: 'loop', worlds: ch.worlds, unheld: ch.unheld })); }
 } else if (op === 'ask') {
@@ -118,7 +119,7 @@ if (op === 'record') {
 } else if (op === 'inventory') {
   console.log(JSON.stringify({ tick: 5, scene: '1A · Mirror', id: 'cl1a-mirror', mode: null, modes: [], renderer: 'p5', dimensions: 2, canvas: [600, 400], camera: null, viewer: null, objects: [{ name: 'mirror', kind: 'Wall', authority: 'rect', center: [370, 200, 0], rect: [360, 80, 20, 240] }], parts: { mirror: ['Wall', PROPS()] }, project: { entry: 'sketch.js', files: PROJECT }, changes: [] }));
 } else if (op === 'openSketch' && args.source === 'bad') { console.log('openSketch: SyntaxError: Unexpected token'); process.exit(1); }
-else if (op === 'openSketch' || op === 'loadScene') { closeWorld(); st.rec.before = PROPS(); emit({ ok: op, changes: [] }); }
+else if (op === 'openSketch' || op === 'loadScene') { closeWorld(); st.rec.before = PROPS(); st.rec.start = PROPS(); emit({ ok: op, changes: [] }); }
 else { console.log(JSON.stringify({ ok: op, changes: [] })); }
 `);
     return { root, env: { root, out: path.join(root, 'out'), handCli: path.join(root, 'hand.mjs') } };
@@ -136,14 +137,16 @@ test('approve on the platform brain: three threads, the clip rides on the Builde
         'PREDICTION: refused\n' + fence('json:call:dragTo', '{"name":"mirror","to":[9999,200]}'), 'The dragTo of "mirror" was refused: [9999, 200] is outside the world.\n' + B_SEE, B_DONE], owl: [APPROVE] });
     const rep = await runLoop(args(), env);
     // the approve's Record folder (the sketch-projects design §6): the package's closed Record, complete as §6; the memory is still
-    // not published, because the Record does not state its plan (the plan's orientationDeg has no row)
+    // not published, because the Record does not state its plan (judged start → end: the mirror ends where it started, and
+    // the plan's orientationDeg is not what parts.after.json holds)
     assert.equal(rep.record.folder, 'out/mmtest/record');
     assert.deepEqual(rep.record.records.map((r) => r.name), ['record-01'], 'one world, one Record');
     rep.record.files = rep.record.records[0].files; rep.record.unavailable = rep.record.records[0].unavailable;
     assert.deepEqual(rep.record.files, ['clip-01.mp4', 'early.png', 'lab.json', 'mid.png', 'parts.after.json', 'parts.before.json', 'project/frqtl.json', 'project/sketch.js', 'record.json', 'settled.png']);
     assert.equal(rep.record.handBackComplete, false, 'the generator\'s measure: the hand-back Record is incomplete');
-    assert.ok(rep.record.planFaults.some((f) => /plan changes\[0\] \(mirror orientationDeg: 30\) has no change row on "mirror"/.test(f)), 'the plan faults ride in the run report: ' + rep.record.planFaults);
-    assert.match(rep.outcome, /\(the Record does not state its plan: plan changes\[0\]/, 'and in its outcome');
+    assert.ok(rep.record.planFaults.includes('plan changes[0] (mirror orientationDeg: 30): record-01/parts.after.json holds "mirror" orientationDeg at 45, not 30'), 'the plan faults ride in the run report: ' + rep.record.planFaults);
+    assert.ok(rep.record.planFaults.some((f) => /^no change: record-01\/parts\.after\.json equals the start \(lab\.json start\) — the round ends where it started, whatever its 2 row\(s\) did on the way$/.test(f)), 'two moves that end on the start are no change');
+    assert.match(rep.outcome, /\(the Record does not state its plan: no change: record-01/, 'and in its outcome');
     assert.deepEqual(rep.record.records[0].faults, [], 'the Record itself is complete (§6 and the lab\'s half): only the plan check stops the publish');
     assert.equal(rep.record.complete, undefined, 'no second, chain-wide derivation of publishable');
     assert.deepEqual(rep.record.unavailable, [], 'no placeholder: the block and the project come from the body\'s inventory');
@@ -189,7 +192,7 @@ test('approve on the platform brain: three threads, the clip rides on the Builde
     let refused = null;
     try { writeSeenMemory(recDir, { by: 'human', who: 'the-seat-owner', stills: 10, account: 'contact: mirror middle; after: up-right; passes: no' }, { root }); } catch (e) { refused = e; }
     assert.ok(refused, 'publishing the incomplete Record is refused');
-    assert.match(refused.message, /is not a complete Record[\s\S]*plan changes\[0\] \(mirror orientationDeg: 30\) has no change row on "mirror"[\s\S]*--draft writes the memory under \S*out\/mmtest\/memory\/ only/);
+    assert.match(refused.message, /is not a complete Record[\s\S]*no change: record-01\/parts\.after\.json equals the start[\s\S]*plan changes\[0\] \(mirror orientationDeg: 30\): record-01\/parts\.after\.json holds "mirror" orientationDeg at 45, not 30[\s\S]*--draft writes the memory under \S*out\/mmtest\/memory\/ only/);
     assert.ok(!fs.existsSync(path.join(root, 'kb', 'GodsWorld', 'memories', 'mm-cl1a-mirror-test-seen.md')) && !fs.existsSync(path.join(root, 'site', 'memories', 'mm-cl1a-mirror-test')), 'a refusal writes nothing');
     const drafted = genCli([recDir].concat(look, ['--draft']));
     assert.equal(drafted.status, 0, drafted.stderr);

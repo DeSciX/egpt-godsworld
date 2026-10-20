@@ -12,7 +12,10 @@
  *   2. the lab's note of which hand filmed which clip must match the Record's clips: a count that differs, and a span a
  *      hand read that differs from the Record's, THROW by name;
  *   3. a producer that finds the world's Record unclosable carries what it held — rows AND clips, each with its hand — into
- *      its first Record's chain entry (lab.json carried), never as its own.
+ *      its first Record's chain entry (lab.json carried), never as its own;
+ *   4. THE START: each world joins the chain with the parts it held when the round began in it (beginChain — also when an
+ *      Owl's revise begins the next round, beginNextRound) or when it booted inside the chain (readStart); a world with no
+ *      start is refused by name at its close.
  */
 
 import { test } from 'node:test';
@@ -23,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { folderHere, sceneFacts } from '../../site/app-assets/maxi-record-folder.js';
 
 const LAB_SRC = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'site', 'app-assets', 'maxi-lab.js'), 'utf8');
-const NAMES = ['recordOf', 'openWorldRecord', 'stopWorldRecord', 'closeWorldRecord', 'beginChain', 'endChain', 'abandonChain'];
+const NAMES = ['recordOf', 'openWorldRecord', 'stopWorldRecord', 'closeWorldRecord', 'readStart', 'beginChain', 'endChain', 'abandonChain', 'beginNextRound'];
 
 /** One top-level function of maxi-lab.js, by name, to its first closing brace at column 0. */
 function fnSource(src, name) {
@@ -34,9 +37,11 @@ function fnSource(src, name) {
 
 /** The page's Record functions from `src`, bound to a stand-in scene `sc` and the lab's state. */
 function labRecord(src, sc) {
-    const state = { chain: null, scene: sc };
+    const state = { chain: null, scene: sc, chainTurn: null };
     const body = NAMES.map((n) => fnSource(src, n)).join('\n') + '\nreturn { ' + NAMES.join(', ') + ' };';
-    const fns = new Function('state', 'requireScene', 'folderHere', 'sceneFacts', body)(state, () => sc, folderHere, sceneFacts);
+    // the hands' sketch reader stands in as the scene's own parts now (maxi-hands.js partsNowOf reads the sketch's block)
+    const partsNowOf = async (w) => JSON.parse(JSON.stringify(w.parts || {}));
+    const fns = new Function('state', 'requireScene', 'folderHere', 'sceneFacts', 'partsNowOf', 'showError', body)(state, () => state.scene, folderHere, sceneFacts, partsNowOf, () => {});
     return Object.assign({ state }, fns);
 }
 
@@ -123,4 +128,52 @@ test('a producer that finds the world\'s Record unclosable carries its rows AND 
     assert.equal(LAB_SRC.split(CLIPS).length, 2, 'the plant target moved');
     const bad = await carriedChain(LAB_SRC.replace(CLIPS, '        clips: []\n'), false);
     assert.throws(() => assert.deepEqual(bad.ch.worlds[0].carried.clips, r.ch.worlds[0].carried.clips), undefined, 'a carried that forgets its clips is RED');
+});
+
+/** A loop's two rounds on one world, the Owl's revise between: round 1 moves the screen S → T, round 2 re-stages it to S and
+ *  drags it to U. → the chain the lab hands back at the end (each world with its `start`). */
+async function revisedRounds(src) {
+    const at = (x) => ({ screen: ['Wall', { rect: [x, 0, -77, 20, 400, 154] }] });
+    const S = at(315), T = at(355), U = at(395);
+    const sc = scene([folder([]), folder([]), folder([])]);
+    sc.parts = S;
+    const L = labRecord(src, sc);
+    await L.beginChain('loop');
+    sc.parts = T;                       // round 1's drag
+    L.beginNextRound();                 // the Owl sent it back
+    await L.state.chainTurn;
+    sc.parts = S; sc.parts = U;         // round 2: re-staged to the stock place, then dragged on
+    const ch = await L.endChain();
+    return { ch, S, T, U };
+}
+
+test('THE START: each round names the parts it began from (an Owl\'s revise begins the next round where the world stands); a world booted inside the chain starts at its boot; a world with no start is refused at its close (negative controls: each planted away is red)', async () => {
+    const r = await revisedRounds(LAB_SRC);
+    assert.equal(r.ch.worlds.length, 1);
+    assert.deepEqual(r.ch.worlds[0].start, r.T, 'round 2 began where round 1 left the screen: its start is T, never round 1\'s start S nor its own end U');
+    // planted: one map of starts for the whole run (the producer's first start kept across the revise) → S (RED)
+    const MAP = '    const st = new Map();\n';
+    assert.equal(LAB_SRC.split(MAP).length, 2, 'the plant target moved');
+    const kept = await revisedRounds(LAB_SRC.replace(MAP, '    const st = (state.runStarts = state.runStarts || new Map());\n'));
+    assert.deepEqual(kept.ch.worlds[0].start, kept.S, 'the plant must keep round 1\'s start (else this control measures nothing)');
+    assert.throws(() => assert.deepEqual(kept.ch.worlds[0].start, r.T), undefined, 'RED under the same check');
+
+    // a world booted inside the chain: its start is its parts at boot, read once (a later read keeps it)
+    const sc = scene([folder([]), folder([])]);
+    sc.parts = r.S;
+    const L = labRecord(LAB_SRC, sc);
+    await L.beginChain('loop');
+    const booted = { label: 'b', id: 'x', mode: null, renderer: 'p5', filmed: [], parts: r.T, record: { stop: async () => folder([])() } };
+    await L.readStart(booted, 'boot', L.state.chain.starts);
+    booted.parts = r.U;
+    await L.readStart(booted, 'boot', L.state.chain.starts);
+    assert.deepEqual(L.state.chain.starts.get(booted), r.T, 'the boot read stands; a second read keeps it');
+    await L.closeWorldRecord(booted);
+    assert.deepEqual(L.state.chain.worlds.map((w) => w.start), [r.T]);
+    // a world the chain never read: refused by name at its close, never joined without a start
+    const stray = { label: 'stray', id: 'y', mode: null, renderer: 'p5', filmed: [], record: { stop: async () => folder([])() } };
+    await assert.rejects(L.closeWorldRecord(stray), /the world "stray" closed into the loop's chain with no start/);
+    const BEGIN = '    await readStart(sc, producer, st);\n';
+    assert.equal(LAB_SRC.split(BEGIN).length, 2, 'the plant target moved');
+    await assert.rejects(revisedRounds(LAB_SRC.replace(BEGIN, '')), /closed into the loop's chain with no start/, 'a chain that reads no start is refused at the close');
 });

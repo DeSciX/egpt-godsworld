@@ -5,7 +5,7 @@
  *   1. every header <button> carries an aria-label, a title and ONE <span class="label"> whose words ARE its aria-label
  *      (the label hides on phones; the aria-label names the button there);
  *   2. #btn-info comes right after #btn-code;
- *   3. Scene code and Info share one side-pane slot (never both open; aria-pressed follows each pane);
+ *   3. Scene code, Info and Your memories share one side-pane slot (never two open; aria-pressed follows each pane);
  *   4. the stylesheet hides the labels only inside the mobile @media block, and draws the icon in currentColor.
  * Every gate is shown red on a planted fault.
  */
@@ -49,7 +49,7 @@ export function headerFaults(html) {
 
 test('every header button carries an aria-label, a title and its words in one label; #btn-info comes right after #btn-code (plants are red)', () => {
     const ids = headerButtons(HTML).map((b) => b.id);
-    assert.deepEqual(ids, ['btn-run', 'btn-restart', 'btn-hand', 'btn-record', 'btn-code', 'btn-info', 'btn-fullscreen']);
+    assert.deepEqual(ids, ['btn-run', 'btn-restart', 'btn-hand', 'btn-record', 'btn-code', 'btn-info', 'btn-memories', 'btn-fullscreen']);
     assert.deepEqual(headerFaults(HTML), []);
     assert.deepEqual(headerFaults(HTML.replace('<button id="btn-run" type="button" aria-label="Pause"', '<button id="btn-run" type="button"')), ['#btn-run: no aria-label']);
     assert.deepEqual(headerFaults(HTML.replace('aria-label="Restart"', 'aria-label="Again"')), ['#btn-restart: label "Restart" is not its aria-label "Again"']);
@@ -79,38 +79,50 @@ test('the stylesheet hides the header labels only on phones and paints the icons
 
 const LAB_SRC = fs.readFileSync(path.join(REPO, 'site', 'app-assets', 'maxi-lab.js'), 'utf8');
 
+/** The side panes sharing the slot: the button el key, its pane's el key. */
+const PANES = ['code', 'info', 'memories'];
+
 /** Faults of a lab source's side panes: at most one open after any click sequence, aria-pressed tracking each; no other writer. */
 export function sidePaneFaults(src) {
     const faults = [];
     const fn = src.match(/\nfunction toggleSidePane\(which\) \{\n[\s\S]*?\n\}\n/);
     if (!fn) { return ['maxi-lab.js has no toggleSidePane(which)']; }
     const btn = () => ({ pressed: 'false', setAttribute(k, v) { if (k === 'aria-pressed') { this.pressed = v; } } });
-    const el = { code: btn(), info: btn(), codePane: { hidden: true }, infoPane: { hidden: true } };
+    const el = {};
+    PANES.forEach((k) => { el[k] = btn(); el[k + 'Pane'] = { hidden: true }; });
     const toggle = new Function('el', fn[0] + '\nreturn toggleSidePane;')(el);
-    const seqs = [['code', 'info'], ['info', 'code'], ['code', 'info', 'info'], ['info', 'info', 'code', 'code'], ['code', 'info', 'code']];
+    const seqs = [['code', 'info'], ['info', 'code'], ['code', 'info', 'info'], ['info', 'info', 'code', 'code'], ['code', 'info', 'code'],
+        ['memories', 'code'], ['info', 'memories'], ['memories', 'memories', 'info'], ['code', 'memories', 'info', 'memories']];
     for (const seq of seqs) {
-        el.codePane.hidden = true; el.infoPane.hidden = true; el.code.pressed = 'false'; el.info.pressed = 'false';
-        seq.forEach((w) => toggle(w));
-        const open = ['code', 'info'].filter((k) => !el[k + 'Pane'].hidden);
-        if (open.length > 1) { faults.push('after ' + seq.join(' → ') + ' both panes are open'); }
-        for (const k of ['code', 'info']) { if (el[k].pressed !== String(!el[k + 'Pane'].hidden)) { faults.push('after ' + seq.join(' → ') + ' #btn-' + k + ' aria-pressed is ' + el[k].pressed + ' with its pane ' + (el[k + 'Pane'].hidden ? 'closed' : 'open')); } }
+        PANES.forEach((k) => { el[k + 'Pane'].hidden = true; el[k].pressed = 'false'; });
+        try { seq.forEach((w) => toggle(w)); } catch (e) { faults.push('after ' + seq.join(' → ') + ': ' + e.message); continue; }
+        const open = PANES.filter((k) => !el[k + 'Pane'].hidden);
+        if (open.length > 1) { faults.push('after ' + seq.join(' → ') + ' two panes are open (' + open.join(', ') + ')'); }
+        for (const k of PANES) { if (el[k].pressed !== String(!el[k + 'Pane'].hidden)) { faults.push('after ' + seq.join(' → ') + ' #btn-' + k + ' aria-pressed is ' + el[k].pressed + ' with its pane ' + (el[k + 'Pane'].hidden ? 'closed' : 'open')); } }
         if (seq.length === 2 && el[seq[1] + 'Pane'].hidden) { faults.push('after ' + seq.join(' → ') + ' the pane clicked last is not open'); }
     }
     const rest = src.replace(fn[0], '');
-    if (/(codePane|infoPane)\.hidden\s*=|(codePane|infoPane)\.(toggleAttribute|removeAttribute|setAttribute)\(/.test(rest)) { faults.push('a side pane is opened or closed outside toggleSidePane'); }
-    if (!/el\.code\.addEventListener\('click', function \(\) \{ toggleSidePane\('code'\); \}\);/.test(rest) || !/el\.info\.addEventListener\('click', function \(\) \{ toggleSidePane\('info'\); \}\);/.test(rest)) { faults.push('Scene code and Info do not both click through toggleSidePane'); }
+    if (/(codePane|infoPane|memoriesPane)\.hidden\s*=|(codePane|infoPane|memoriesPane)\.(toggleAttribute|removeAttribute|setAttribute)\(/.test(rest)) { faults.push('a side pane is opened or closed outside toggleSidePane'); }
+    if (!/el\.code\.addEventListener\('click', function \(\) \{ toggleSidePane\('code'\); \}\);/.test(rest) || !/el\.info\.addEventListener\('click', function \(\) \{ toggleSidePane\('info'\); \}\);/.test(rest) ||
+        !/el\.memories\.addEventListener\('click', function \(\) \{\n\s*toggleSidePane\('memories'\);/.test(rest)) { faults.push('Scene code, Info and Your memories do not all click through toggleSidePane'); }
     return faults;
 }
 
-test('Scene code and Info share one side-pane slot: never both open, aria-pressed follows each pane (plants are red)', () => {
+test('Scene code, Info and Your memories share one side-pane slot: never two open, aria-pressed follows each pane (plants are red)', () => {
     assert.deepEqual(sidePaneFaults(LAB_SRC), []);
     const independent = LAB_SRC.replace(/\nfunction toggleSidePane\(which\) \{\n[\s\S]*?\n\}\n/, "\nfunction toggleSidePane(which) {\n    const b = el[which], p = el[which + 'Pane'];\n    p.hidden = !p.hidden;\n    b.setAttribute('aria-pressed', String(!p.hidden));\n}\n");
     assert.notEqual(independent, LAB_SRC, 'the plant applied');
-    assert.match(sidePaneFaults(independent).join(), /both panes are open/);
+    assert.match(sidePaneFaults(independent).join(), /two panes are open/);
     const bypass = LAB_SRC.replace("el.info.addEventListener('click', function () { toggleSidePane('info'); });", "el.info.addEventListener('click', function () { el.infoPane.hidden = !el.infoPane.hidden; });");
     assert.notEqual(bypass, LAB_SRC, 'the plant applied');
     assert.match(sidePaneFaults(bypass).join(), /outside toggleSidePane/);
     const noAria = LAB_SRC.replace("        panes[k][0].setAttribute('aria-pressed', String(on));\n", '');
     assert.notEqual(noAria, LAB_SRC, 'the plant applied');
     assert.match(sidePaneFaults(noAria).join(), /aria-pressed is false with its pane open/);
+    const twoSlots = LAB_SRC.replace("memories: [el.memories, el.memoriesPane] };", '};');   // Your memories outside the slot
+    assert.notEqual(twoSlots, LAB_SRC, 'the plant applied');
+    assert.match(sidePaneFaults(twoSlots).join(), /no side pane "memories"/);
+    const bypassMem = LAB_SRC.replace("toggleSidePane('memories');\n", 'el.memoriesPane.hidden = !el.memoriesPane.hidden;\n');
+    assert.notEqual(bypassMem, LAB_SRC, 'the plant applied');
+    assert.match(sidePaneFaults(bypassMem).join(), /outside toggleSidePane/);
 });

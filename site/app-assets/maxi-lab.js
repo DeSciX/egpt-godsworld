@@ -25,11 +25,12 @@
  * (DeSciXAppSDK.js) resolves itself — `await DeSciX.ready()` settles timing.
  */
 
-import { HANDS, publishHands, assertAdapterCoversHands, inventoryObjects, inventoryOf, worldShape, declaredModesOf, writeSketch, HUMAN } from './maxi-hands.js';
+import { HANDS, publishHands, assertAdapterCoversHands, inventoryObjects, inventoryOf, worldShape, declaredModesOf, writeSketch, partsNowOf, HUMAN } from './maxi-hands.js';
 import { attachHandTool, handKeyAction } from './maxi-hand-tool.js';
 import { attachRecorder, recordKeyAction, paintCard, clipUrlLedger } from './maxi-record.js';
 import { createLoop, threadBrain, labBody, refuseWhileWorking } from './maxi-loop.js';
-import { assembleLoopRecords, changesAsText, completenessWords, folderHere, sceneFacts, base64OfBytes, MAX_SEGMENTS } from './maxi-record-folder.js';
+import { assembleLoopRecords, changesAsText, completenessWords, folderHere, sceneFacts, base64OfBytes, MAX_SEGMENTS, FILES, CARRIED_KEY, TEACHING_KEY, parseRecordFolder, projectEntryOf, partsEqual } from './maxi-record-folder.js';
+import { openMemories, memoryKey, memoryNote, memoryMedia, memoryTeaching } from './maxi-local-memory.js';
 import * as roles from './maxi-roles.js';
 import { loopRowsOf } from './maxi-talk.js';
 import { ASK, createThread, footageUserInput, plainWords } from './maxi-ask.js';
@@ -81,13 +82,15 @@ const state = {
     frame: null, scene: null, grab: null,
     hand: null, handOn: false,            // the human's hand (maxi-hand-tool.js): per scene; the toggle outlives a reload
     recorder: null,                       // the human's Record (maxi-record.js): one per lab; a scene swap closes the world's Record, and its filming goes on in the next world
-    chain: null,                          // the producer recording now (beginChain): {producer, worlds, unheld, carried, carriedRecord}, else null
+    chain: null,                          // the producer recording now (beginChain): {producer, worlds, unheld, carried, carriedRecord, starts}, else null
     chainTurn: null,                      // a chain being begun again between two loop rounds (an Owl's revise); every act awaits it
     loading: null, says: [],
     thread: null,                         // the lab's ONE thread with Maxi (maxi-ask.js createThread), made once the host settles
     loop: null,                           // the three-role loop (maxi-loop.js): Tony's outlines, three threads of its own
     clips: [],                            // every clip the lab handed (or tried to hand) to Maxi, newest last, kept for a test to look at
-    records: null                         // the newest loop approve's Records (maxi-record-folder.js assembleLoopRecords), in memory, one per world
+    records: null,                        // the newest loop approve's Records (maxi-record-folder.js assembleLoopRecords), in memory, one per world
+    memories: openMemories(),             // the human's Records kept in this browser (maxi-local-memory.js): the store opens on first use
+    completed: null                       // the keep of the demonstration that completed last (a Promise of {key} | null): × removes it
 };
 
 /** How many handed clips the page keeps in memory (a test reads the newest; older ones are let go). */
@@ -123,6 +126,10 @@ const el = {
     infoPane: document.getElementById('info'),
     infoTitle: document.getElementById('info-title'),
     infoBody: document.getElementById('info-body'),
+    memories: document.getElementById('btn-memories'),
+    memoriesPane: document.getElementById('memories'),
+    memoriesStatus: document.getElementById('memories-status'),
+    memoriesList: document.getElementById('memories-list'),
     status: document.getElementById('status'),
     says: document.getElementById('says'),
     error: document.getElementById('error')
@@ -185,6 +192,7 @@ async function mountScene(spec) {
             noteFilmed: function (hand, span) { sc.filmed.push({ hand: hand, span: span || null }); }
         };
         await openWorldRecord(sc);
+        if (state.chain) { await readStart(sc, 'the start of "' + spec.label + '"', state.chain.starts); }   // THE START: a world booted inside a chain starts here
         state.scene = sc;
         attachHand(ms, win);
         resumeRecorder();
@@ -231,9 +239,15 @@ async function leaveWorld() {
  * (beginChain): the world's Record closes and a new one opens, so the producer's first Record starts with it; when the open
  * Record holds rows its footage does not show it cannot close (rec.stop() refuses): what it already held (rows and clips)
  * stays in the producer's first Record's folder and lab.json names it `carried`, never the producer's own. While the chain lasts every Record that closes — a scene change (leaveWorld) or the
- * producer's end (endChain) — joins it as {folder, filmed, carried, scene}; a close the package refuses (rows no clip shows)
+ * producer's end (endChain) — joins it as {folder, filmed, carried, start, scene}; a close the package refuses (rows no clip shows)
  * gives its rows, off the refusal's err.record, to the chain's `unheld`, and the scene change goes on (a re-authoring is never
  * refused for missing footage). With no chain a closing Record is nobody's and is let go.
+ *
+ * THE START: the chain's `starts` holds, per world, the parts block it held when the round began in it — read when the chain
+ * begins (beginChain: Record pressed, the outline taken, or an Owl's revise beginning the next round) and when a world boots
+ * inside the chain (mountScene), never later. Each world joins the chain with its `start`; the hand-back Record carries the
+ * first world's (maxi-record-folder.js START_KEY), and the round's change is judged start → end: a round that re-stages and
+ * ends where it began changed nothing.
  */
 function recordOf(sc, op) {
     if (!sc.record) { throw new Error(op + ': the world holds no open Record (one is closing or opening) — try again in a moment.'); }
@@ -288,7 +302,10 @@ async function closeWorldRecord(sc) {
     if (closed.refused) {   // the producer's rows no Record holds; rows the Record carried from before the producer began are nobody's, as before it began
         Array.prototype.push.apply(ch.unheld, closed.rows.slice(rec === ch.carriedRecord && ch.carried ? ch.carried.changes.length : 0));
     }
-    else if (!closed.empty) { ch.worlds.push({ folder: closed.folder, filmed: closed.filmed, carried: rec === ch.carriedRecord ? ch.carried : null, scene: sceneFacts(sc) }); }
+    else if (!closed.empty) {
+        if (!ch.starts.has(sc)) { throw new Error('[maxi-lab] the world "' + sc.label + '" closed into the ' + ch.producer + '\'s chain with no start — its parts were not read when the round began in it or when it booted.'); }
+        ch.worlds.push({ folder: closed.folder, filmed: closed.filmed, carried: rec === ch.carriedRecord ? ch.carried : null, start: ch.starts.get(sc), scene: sceneFacts(sc) });
+    }
     return closed;
 }
 
@@ -325,6 +342,7 @@ async function readyToFilm(sc, op) {
  * A producer begins recording: the world's Record closes and a new one opens (the producer's first). When it cannot close (rows
  * its footage does not show) it carries on, and what it already held — its rows and its clips, each clip with the hand that
  * filmed it — is CARRIED: the producer's first Record names it in lab.json (maxi-record-folder.js CARRIED_KEY), never as its own.
+ * THE START: the world's parts now, read after the rows it carried, are where this chain's round begins.
  */
 async function beginChain(producer) {
     if (state.chain) { throw new Error(producer + ': the ' + state.chain.producer + ' is recording now — one producer records at a time.'); }
@@ -335,8 +353,16 @@ async function beginChain(producer) {
         changes: closed.rows,
         clips: closed.clips.map(function (c, i) { return { hand: sc.filmed[i] ? sc.filmed[i].hand : null, firstTick: c.firstTick, lastTick: c.lastTick }; })
     } : null;
-    state.chain = { producer: producer, worlds: [], unheld: [], carriedRecord: sc.record, carried: carried };
+    const st = new Map();
+    await readStart(sc, producer, st);
+    state.chain = { producer: producer, worlds: [], unheld: [], carriedRecord: sc.record, carried: carried, starts: st };
     return { carried: carried ? { changes: carried.changes.length, clips: carried.clips.length } : null };
+}
+
+/** THE START of world `sc` in `starts` (a chain's): its parts block now (maxi-hands.js partsNowOf), read once per chain — a
+ *  world already in `starts` keeps the start it has. */
+async function readStart(sc, op, starts) {
+    if (!starts.has(sc)) { starts.set(sc, await partsNowOf(sc, op)); }
 }
 
 /** The producer's end: the world's Record closes into the chain and a new one opens; → the chain {worlds, unheld}. */
@@ -369,7 +395,8 @@ function chainState() {
 /** The producer stopped without handing back (the loop stopped, a refused start): its chain is let go; the world's Record goes on. */
 function abandonChain() { state.chain = null; }
 
-/** Between two loop rounds (the Owl sent it back): the round's chain is let go and the next round's begins; every act awaits it. */
+/** Between two loop rounds (the Owl sent it back): the round's chain is let go and the next round's begins where the world now
+ *  stands (THE START); every act awaits it. */
 function beginNextRound() {
     const producer = state.chain ? state.chain.producer : 'loop';
     state.chain = null;
@@ -405,7 +432,7 @@ function chainForNode(ch) {
         worlds: ch.worlds.map(function (w) {
             const files = {};
             Object.keys(w.folder.files).forEach(function (f) { const v = w.folder.files[f]; files[f] = typeof v === 'string' ? { text: v } : { base64: base64OfBytes(v) }; });
-            return { folder: { files: files, record: w.folder.record, clips: w.folder.clips }, filmed: w.filmed, carried: w.carried, scene: w.scene };
+            return { folder: { files: files, record: w.folder.record, clips: w.folder.clips }, filmed: w.filmed, carried: w.carried, start: w.start, scene: w.scene };
         })
     };
 }
@@ -569,15 +596,31 @@ function toggleRecord() {
     });
 }
 
-/** The card's close (×): a waiting demonstration is discarded unsent, said by name on the status line; then the card goes. */
+/**
+ * The card's close (×): a waiting demonstration is discarded unsent, said by name on the strip, and the memory its completion
+ * kept is removed from Your memories (only when that keep succeeded: a refused keep stored nothing under its key). → a Promise.
+ */
 function closeDemonstration() {
+    let d;
     try {
-        const d = state.recorder ? state.recorder.dismiss() : { discarded: false };
-        if (d.discarded) { talkLine('Lab', 'the demonstration was discarded unsent (the card was closed before Send to Maxi).', 'talk-user'); }
+        const last = state.recorder ? state.recorder.last() : null;
+        d = state.recorder ? state.recorder.dismiss() : { discarded: false };
         el.demo.hidden = true;
         clearError('record');
-    } catch (err) { showError(err, 'record'); }
-    renderStatus();
+        renderStatus();
+        if (!d.discarded) { return Promise.resolve({ discarded: false }); }
+        talkLine('Lab', 'the demonstration was discarded unsent (the card was closed before Send to Maxi).', 'talk-user');
+        const keeping = state.completed;
+        state.completed = null;
+        if (!keeping || !last) { return Promise.resolve({ discarded: true, removed: null }); }
+        return keeping.then(function (k) {
+            if (k.key !== memoryKey(last)) { throw new Error('memories: the kept memory ' + k.key + ' is not the discarded demonstration\'s ' + memoryKey(last) + ' — nothing was removed.'); }
+            return state.memories.remove(k.key).then(function (r) {
+                talkLine('Lab', 'removed from Your memories: ' + k.key + ' (its card was closed unsent).', 'talk-lab');
+                return renderMemories().then(function () { return { discarded: true, removed: r.removed }; });
+            });
+        }, function () { return { discarded: true, removed: null }; }).catch(memoriesFailed);
+    } catch (err) { showError(err, 'record'); renderStatus(); return Promise.reject(err); }
 }
 
 /** The card's Send to Maxi: the stopped demonstration and the human's words (maxi-record.js send), refusals painted. */
@@ -585,7 +628,176 @@ function sendDemonstration(words) {
     if (!state.recorder) { return Promise.reject(new Error('record: the lab has no Record yet — it is attached when the lab boots.')); }
     let p;
     try { p = state.recorder.send(words); } catch (err) { showError(err, 'record'); return Promise.reject(err); }
-    return p.then(function (r) { clearError('record'); renderStatus(); return r; }, function (err) { showError(err, 'record'); renderStatus(); throw err; });
+    return p.then(function (r) {
+        clearError('record'); renderStatus();
+        // a sent demonstration is kept with Maxi's answer; a refused keep is painted and leaves the hand-off as it went
+        return keepRecords(r).then(function () { return r; }, function () { return r; });
+    }, function (err) { showError(err, 'record'); renderStatus(); throw err; });
+}
+
+// ── local memories: the human's Records kept in this browser (maxi-local-memory.js) ─────────────
+
+/** The op a question about a local memory is asked under (the strip's You row, the clips kept). */
+const MEMORY_OP = 'memory';
+
+function memoriesSay(text, isError) {
+    el.memoriesStatus.textContent = text || '';
+    el.memoriesStatus.className = isError ? 'memories-error' : '';
+}
+function memoriesFailed(err) {
+    showError(err, 'memories');
+    memoriesSay(String((err && err.message) || err), true);
+    throw err;
+}
+
+/** Keep a human's Records (the card's Save, or a sent demonstration with Maxi's answer); said on the strip, refusals painted. */
+function keepRecords(records) {
+    return state.memories.save(records).then(function (k) {
+        clearError('memories');
+        talkLine('Lab', k.replaced ? 'updated your memory ' + k.key + ' with your words and Maxi\'s answer.' :
+            'kept in Your memories (this browser only): ' + k.key + '. Send to Maxi adds your words and his answer; closing the card (×) removes it.', 'talk-lab');
+        return renderMemories().then(function () { memoriesSay((k.replaced ? 'Updated ' : 'Kept ') + k.key + '.', false); return k; });
+    }, memoriesFailed);
+}
+
+/** THE moment a demonstration is kept: it completed (maxi-record.js onComplete). Remembered so the card's × can remove it. */
+function keepCompleted(records) {
+    state.completed = keepRecords(records);
+    state.completed.catch(function (err) { console.error('[maxi-lab] the completed demonstration was not kept (shown in the pane):', err); });
+}
+
+function memoryNode(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) { n.className = cls; }
+    if (text !== undefined) { n.textContent = text; }
+    return n;
+}
+
+/** The Your memories pane: every kept memory, scene by scene, newest first; a refused entry with its faults and Delete only. */
+async function renderMemories() {
+    let list;
+    try { list = await state.memories.list(); }
+    catch (err) { el.memoriesList.textContent = ''; return memoriesFailed(err); }
+    el.memoriesList.textContent = '';
+    if (!list.length) { memoriesSay('No memories kept in this browser yet. A Record is kept here when you stop it; Send to Maxi adds your words and his answer; closing its card (×) removes it.', false); return list; }
+    memoriesSay(list.length + ' kept in this browser.', false);
+    const groups = [];
+    list.forEach(function (m) {
+        const g = m.faults.length ? 'Refused (not a complete Record)' : (m.scene.label + (m.scene.mode ? ' · ' + m.scene.mode : ''));
+        let grp = groups.find(function (x) { return x.name === g; });
+        if (!grp) { grp = { name: g, rows: [] }; groups.push(grp); }
+        grp.rows.push(m);
+    });
+    groups.forEach(function (g) {
+        el.memoriesList.appendChild(memoryNode('h3', null, g.name));
+        g.rows.forEach(function (m) {
+            const row = memoryNode('div', 'memory');
+            row.dataset.key = m.key || '';
+            row.appendChild(memoryNode('time', null, (m.savedAt ? new Date(m.savedAt).toLocaleString() : 'no date') + ' · ' + (m.key || 'no key')));
+            const doors = memoryNode('div', 'memory-doors');
+            if (m.faults.length) {
+                row.appendChild(memoryNode('p', 'memory-refused', 'Refused: ' + m.faults.join(' · ')));
+            } else {
+                row.appendChild(memoryNode('p', 'memory-teaching', m.teaching ? 'You taught: ' + m.teaching : 'No words: you taught nothing in words.'));
+                row.appendChild(memoryNode('p', 'memory-facts', m.changes + ' change' + (m.changes === 1 ? '' : 's') + (m.records > 1 ? ' across ' + m.records + ' Records' : '') +
+                    (m.answered ? ' · Maxi answered: ' + m.answered : ' · not handed to Maxi')));
+                const reload = memoryNode('button', 'memory-reload', 'Reload'); reload.type = 'button';
+                reload.addEventListener('click', function () { reloadMemory(m.key).catch(function (err) { console.error('[maxi-lab] reload refused (shown in the pane):', err); }); });
+                const discuss = memoryNode('button', 'memory-discuss', 'Discuss'); discuss.type = 'button';
+                const form = memoryNode('form', 'memory-ask'); form.hidden = true; form.autocomplete = 'off';
+                const input = memoryNode('input'); input.type = 'text'; input.placeholder = 'Ask Maxi about this memory…'; input.setAttribute('aria-label', 'Your question to Maxi about this memory');
+                const send = memoryNode('button', null, 'Ask'); send.type = 'submit';
+                form.appendChild(input); form.appendChild(send);
+                discuss.addEventListener('click', function () { form.hidden = !form.hidden; if (!form.hidden) { input.focus(); } });
+                form.addEventListener('submit', function (ev) {
+                    ev.preventDefault();
+                    discussMemory(m.key, input.value).then(function () { input.value = ''; }, function (err) { console.error('[maxi-lab] discuss refused (shown in the pane):', err); });
+                });
+                doors.appendChild(reload); doors.appendChild(discuss);
+                row.appendChild(doors); row.appendChild(form);
+            }
+            const del = memoryNode('button', 'memory-delete', 'Delete'); del.type = 'button';
+            del.addEventListener('click', function () { deleteMemory(m.key).catch(function (err) { console.error('[maxi-lab] delete refused (shown in the pane):', err); }); });
+            doors.appendChild(del);
+            if (m.faults.length) { row.appendChild(doors); }
+            el.memoriesList.appendChild(row);
+        });
+    });
+    return list;
+}
+
+/**
+ * RELOAD: the memory's scene opens as the Record left it — its hand-back Record's project/ (the sketch at stop), booted through
+ * the one mount path with the registry rung's own render state (projectOf) — and is checked against parts.after.json; its clip
+ * plays on the demonstration card. Refused by name while Maxi works, while a demonstration waits on the card, for a corrupt
+ * entry (the store's gate), and when the booted scene does not hold parts.after.
+ */
+async function reloadMemory(key) {
+    try {
+        guardBusy('Reload (a memory)');
+        if (state.recorder && state.recorder.recording) { throw new Error('memories: Record is on — stop it first; the memory\'s scene would become a second Record inside the running demonstration. Nothing was reloaded.'); }
+        if (state.recorder && state.recorder.state().waiting) { throw new Error('memories: a demonstration waits on the card — Send it to Maxi or close the card (×) first; Reload would cover it. Nothing was reloaded.'); }
+        const m = await state.memories.load(key);
+        const hb = m.records[m.records.length - 1];
+        const p = parseRecordFolder(hb.files);
+        const pe = projectEntryOf(hb.files);
+        if (pe.fault) { throw new Error('memories: ' + key + ' — ' + pe.fault + '.'); }
+        const files = {};
+        Object.keys(hb.files).filter(function (f) { return f.indexOf(FILES.project) === 0; }).forEach(function (f) { files[f.slice(FILES.project.length)] = hb.files[f]; });
+        const sc = p.lab.scene;
+        let spec;
+        if (sc.id) {
+            const row = walkthroughById(sc.id);
+            if (!row) { throw new Error('memories: ' + key + ' was recorded in scene "' + sc.id + '", which this lab\'s registry no longer has. Scenes: [' + WALKTHROUGH.map(function (r) { return r.id; }).join(', ') + '].'); }
+            const rung = await projectOf(row, sc.mode ? { mode: sc.mode } : {});
+            spec = { label: row.title, kind: 'registry', id: row.id, mode: sc.mode, modes: walkthroughModes(row).map(function (x) { return x.id; }), path: scenePath(row), files: files, entry: pe.entry, renderState: rung.renderState };
+        } else {
+            spec = { label: sc.label, kind: 'sketch', id: null, mode: null, modes: [], path: null, files: files, entry: pe.entry, renderState: { renderer: sc.renderer } };
+        }
+        el.demo.hidden = true;
+        await mountScene(spec);
+        const now = await HANDS.inventory.run(lab);
+        if (!partsEqual(now.parts, p.partsAfter)) {
+            throw new Error('memories: ' + key + ' reloaded, but the scene holds parts ' + JSON.stringify(now.parts) + ', not the memory\'s parts.after.json ' + JSON.stringify(p.partsAfter) + '.');
+        }
+        const carried = p.lab[CARRIED_KEY] ? p.lab[CARRIED_KEY].clips.length : 0;
+        const own = p.lab.filmed.slice(carried);
+        const rows = p.record.changes.slice(p.lab[CARRIED_KEY] ? p.lab[CARRIED_KEY].changes.length : 0);
+        paintCard(demoCard, {
+            mime: 'video/mp4', base64: base64OfBytes(hb.files[own[0].clip]),
+            title: 'Your memory · ' + spec.label + ' · kept ' + new Date(m.savedAt).toLocaleString(),
+            lines: (p.lab[TEACHING_KEY] ? 'You taught: ' + p.lab[TEACHING_KEY] + '\n' : '') + changesAsText(rows) + '\n' +
+                (p.lab.asked ? 'Maxi answered then: ' + p.lab.asked.answer_excerpt : 'Not handed to Maxi.') + '\nThe scene is open as this Record left it (parts.after).'
+        });
+        el.demoClip.play().catch(function (err) { showError(err, 'memories'); });
+        clearError('memories');
+        memoriesSay('Reloaded ' + key + ': the scene as the Record left it; its clip plays on the card.', false);
+        talkLine('Lab', 'reloaded your memory ' + key + ' — ' + spec.label + ' as the Record left it; its clip plays on the card.', 'talk-lab');
+        return { key: key, scene: summary(state.scene), parts: now.parts };
+    } catch (err) { return memoriesFailed(err); }
+}
+
+/** DISCUSS: the visitor's question about a memory, asked with its facts and its clips on the lab's thread (the same door as Send to Maxi). */
+async function discussMemory(key, question) {
+    try {
+        guardBusy('Discuss (a memory)');
+        if (typeof question !== 'string' || !question.trim()) { throw new Error('memories: Discuss asks Maxi YOUR question about the memory — type it first. Nothing was asked.'); }
+        const m = await state.memories.load(key);
+        const out = await ask(MEMORY_OP, { note: memoryNote(m), teaching: memoryTeaching(m), question: question.trim(), media: memoryMedia(m) });
+        clearError('memories');
+        memoriesSay('Asked Maxi about ' + key + '; his answer is in the conversation.', false);
+        return out;
+    } catch (err) { return memoriesFailed(err); }
+}
+
+/** DELETE: the memory goes from this browser. */
+async function deleteMemory(key) {
+    try {
+        const r = await state.memories.remove(key);
+        await renderMemories();
+        memoriesSay((r.existed ? 'Deleted ' : 'Nothing was kept as ') + key + '.', false);
+        return r;
+    } catch (err) { return memoriesFailed(err); }
 }
 
 // ── the question door: footage to Maxi, from the page itself ───────────────────────────────
@@ -624,9 +836,12 @@ async function ask(op, q) {
         if (node && q.teaching !== undefined) {
             throw new Error(op + ': the node body\'s door (window.MaxiHostDoor, minimaxi/ask-door.mjs) asks a hand\'s footage and carries no human\'s teaching words — nothing was asked; send a Record demonstration from the lab in the DeSciX App Shell.');
         }
+        if (node && q.question !== undefined) {
+            throw new Error(op + ': the node body\'s door (window.MaxiHostDoor, minimaxi/ask-door.mjs) asks a hand\'s footage and carries no visitor\'s question — nothing was asked; discuss a memory from the lab in the DeSciX App Shell.');
+        }
         const out = node
             ? await window.MaxiHostDoor({ op: op, note: q.note, media: q.media })
-            : await thread().ask({ op: op, note: q.note, teaching: q.teaching, userInput: footageUserInput(q.note, q.teaching), media: q.media });
+            : await thread().ask({ op: op, note: q.note, teaching: q.teaching, question: q.question, userInput: footageUserInput(q.note, q.teaching, q.question), media: q.media });
         clearError('ask');
         return out;
     } catch (err) {
@@ -659,7 +874,7 @@ function clipWords(media) {
 let pendingRow = null;
 function renderTurn(t) {
     if (t.phase === 'asking') {
-        talkLine(t.op === 'record' ? 'You' : 'Lab', (t.teaching ? t.teaching + '\n' : '') + t.note + '\n[footage: ' + clipWords(t.media) + ']', 'talk-user');
+        talkLine(t.op === 'record' || t.op === MEMORY_OP ? 'You' : 'Lab', (t.question ? t.question + '\n' : '') + (t.teaching ? t.teaching + '\n' : '') + t.note + '\n[footage: ' + clipWords(t.media) + ']', 'talk-user');
         pendingRow = talkLine('Maxi', 'looking …', 'talk-maxi talk-pending');
         return;
     }
@@ -985,11 +1200,11 @@ function renderFullscreen() {
     if (on) { iconButton(el.fullscreen, icons, 'fullscreenExit', 'Exit full screen'); } else { iconButton(el.fullscreen, icons, 'fullscreen', 'Full screen'); }
 }
 
-// The side panes (Scene code, Info) share ONE slot beside the conversation: opening one closes the other, so the stage
+// The side panes (Scene code, Info, Your memories) share ONE slot beside the conversation: opening one closes the other, so the stage
 // keeps its width (two open panes left it 9 px at 1232 px). Each button's aria-pressed says whether its pane is open.
 function toggleSidePane(which) {
-    const panes = { code: [el.code, el.codePane], info: [el.info, el.infoPane] };
-    if (!panes[which]) { throw new Error('[maxi-lab] toggleSidePane: no side pane "' + which + '" (code | info).'); }
+    const panes = { code: [el.code, el.codePane], info: [el.info, el.infoPane], memories: [el.memories, el.memoriesPane] };
+    if (!panes[which]) { throw new Error('[maxi-lab] toggleSidePane: no side pane "' + which + '" (code | info | memories).'); }
     const open = panes[which][1].hidden;
     Object.keys(panes).forEach(function (k) {
         const on = k === which && open;
@@ -1003,6 +1218,7 @@ function wireUi() {
     iconButton(el.hand, icons, 'hand');
     iconButton(el.code, icons, 'code');
     iconButton(el.info, icons, 'info');
+    iconButton(el.memories, icons, 'memories');
     el.picker.addEventListener('change', function () {
         const o = el.picker.selectedOptions[0];
         if (!o || !o.dataset.id) { return; }
@@ -1016,6 +1232,10 @@ function wireUi() {
     el.restart.addEventListener('click', function () { restart().catch(function (err) { console.error('[maxi-lab] restart failed (shown in #error):', err); }); });
     el.code.addEventListener('click', function () { toggleSidePane('code'); });
     el.info.addEventListener('click', function () { toggleSidePane('info'); });
+    el.memories.addEventListener('click', function () {
+        toggleSidePane('memories');
+        if (!el.memoriesPane.hidden) { renderMemories().catch(function (err) { console.error('[maxi-lab] Your memories (shown in the pane):', err); }); }
+    });
     el.hand.addEventListener('click', function () {
         try { humanSetHand(!(state.hand && state.hand.enabled)); }
         catch (err) { console.error('[maxi-lab] hand toggle failed (shown in #error):', err); }
@@ -1023,7 +1243,7 @@ function wireUi() {
     el.record.addEventListener('click', function () {
         toggleRecord().catch(function (err) { console.error('[maxi-lab] record failed (shown in #error):', err); });
     });
-    el.demoClose.addEventListener('click', closeDemonstration);
+    el.demoClose.addEventListener('click', function () { closeDemonstration().catch(function (err) { console.error('[maxi-lab] closing the card (shown in #error):', err); }); });
     el.demoTeach.addEventListener('submit', function (ev) {
         ev.preventDefault();
         sendDemonstration(el.demoTeachText.value).catch(function (err) { console.error('[maxi-lab] the demonstration was not handed to Maxi (shown in #error):', err); });
@@ -1045,6 +1265,7 @@ function wireUi() {
         lab: lab,
         onError: function (err) { showError(err, 'record'); console.error('[maxi-lab] record:', err); },
         onChange: function () { renderStatus(); },
+        onComplete: keepCompleted,
         card: demoCard
     });
     setInterval(renderStatus, 500);
@@ -1119,6 +1340,13 @@ window.MaxiLab = Object.freeze({
     recorder: function () { return state.recorder; }, toggleRecord: toggleRecord,
     /** The demonstration card's Send to Maxi: hand the stopped Record over with the human's words ('' = none). A Promise of the Records. */
     sendDemonstration: sendDemonstration,
+    /** The card's close (×): discards a waiting demonstration and removes the memory its completion kept. A Promise. */
+    closeDemonstration: closeDemonstration,
+    /** Your memories (maxi-local-memory.js, this browser only): list them, Reload one (its scene at parts.after, its clip on the card), Discuss one (your question to Maxi with its facts), Delete one. */
+    memories: Object.freeze({
+        list: function () { return state.memories.list(); }, render: renderMemories,
+        reload: reloadMemory, discuss: discussMemory, remove: deleteMemory
+    }),
     ask: ASK,
     thread: function () { return state.thread ? { id: state.thread.id, turns: state.thread.turns } : null; },
     imagine: imagine,

@@ -86,9 +86,10 @@ export function recordKeyAction(ev) {
 function secondsOf(c) { return ((c.lastTick - c.firstTick) / RECORD_DEFAULTS.everyTicks + 1) / RECORD_DEFAULTS.fps; }
 
 /**
- * The human's recording → its Records: `worlds` are the chain's closed Records in order ([{folder, filmed, scene}],
+ * The human's recording → its Records: `worlds` are the chain's closed Records in order ([{folder, filmed, carried, start, scene}],
  * maxi-lab.js endChain), chained by the folder's one chain owner (recordChain); `asked` rides in the hand-back Record
- * only, with the rows no Record holds (`unheld`) and the human's `teaching` words (teachingOf; undefined = absent).
+ * only, with the rows no Record holds (`unheld`), the human's `teaching` words (teachingOf; undefined = absent) and the
+ * producer's start (the first world's `start`, maxi-lab.js THE START; the owner's START_KEY).
  * Returns [{name, files, record, lab, faults, complete}] in chain order.
  */
 export function recordsOf(worlds, asked, unheld, teaching) {
@@ -98,7 +99,7 @@ export function recordsOf(worlds, asked, unheld, teaching) {
         const lab = { scene: w.scene, asked: handBack && asked ? asked : null, chain: ch.chainOf(i), handBack: Object.assign({}, ch.handBack) };
         if (handBack && unheld && unheld.length) { lab[UNHELD_KEY] = unheld.slice(); }   // rows no Record holds (the owner's key and rows)
         if (handBack && teaching !== undefined) { lab[TEACHING_KEY] = teaching; }      // the human's words (teachingOf), absent when they typed none
-        return Object.assign({ name: ch.names[i] }, assembleRecord({ producer: 'record', folder: w.folder, filmed: w.filmed, carried: w.carried || null, lab: lab }));
+        return Object.assign({ name: ch.names[i] }, assembleRecord({ producer: 'record', folder: w.folder, filmed: w.filmed, carried: w.carried || null, start: handBack ? worlds[0].start : null, lab: lab }));
     });
 }
 
@@ -186,9 +187,10 @@ export function cardSending(card, on) {
 }
 
 /**
- * @param {{lab:object, onChange?:function, onError:function, card?:{root, video, lines, title, teach, teachText, send}}} spec
+ * @param {{lab:object, onChange?:function, onError:function, onComplete?:function, card?:{root, video, lines, title, teach, teachText, send}}} spec
  *   lab — maxi-lab's lab (scene(op), ask(op, {note, media[]}), beginChain(producer), endChain(), abandonChain(), chainState());
- *   card — the human's card elements.
+ *   card — the human's card elements;
+ *   onComplete(records) — called ONCE when a demonstration completes (Stop assembled it and its card appears), with its Records.
  */
 export function attachRecorder(spec) {
     if (!spec || !spec.lab || typeof spec.lab.scene !== 'function' || typeof spec.lab.ask !== 'function') {
@@ -202,6 +204,8 @@ export function attachRecorder(spec) {
     const onError = spec.onError;
     const onChange = typeof spec.onChange === 'function' ? spec.onChange : function () {};
     const card = spec.card || null;
+    if (spec.onComplete !== undefined && typeof spec.onComplete !== 'function') { throw new Error('[record] attachRecorder onComplete is a function(records) — the moment a demonstration completes.'); }
+    const onComplete = spec.onComplete || function () {};
     const budget = segmentTicks();
 
     const st = { on: false, starting: false, stopping: false, filming: false, full: false, scene: null, vision: null, segment: null, loop: null, segments: 0, last: null, error: null,
@@ -322,6 +326,7 @@ export function attachRecorder(spec) {
             st.last = recordsOf(ch.worlds, null, ch.unheld);
             st.waiting = { worlds: ch.worlds, unheld: ch.unheld };
             renderCard(st.last, ch.worlds, true);                 // the human sees what was filmed, and says what it teaches before Send
+            onComplete(st.last);                                  // THE moment a demonstration completes (the lab keeps it: maxi-local-memory.js)
             onChange(state());
             return st.last;
         } catch (err) { fail(err); throw err; }
