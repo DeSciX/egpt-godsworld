@@ -63,7 +63,7 @@
 
 'use strict';
 
-import { TEACHING_HEAD } from './maxi-ask.js';
+import { TEACHING_HEAD, DISCUSS_HEAD } from './maxi-ask.js';
 import { CLIP_SECONDS, BY } from './frqtl-web-project.js';
 
 export const RECT_CONVENTION =
@@ -450,6 +450,24 @@ export async function sketchOf(sc, op, by) {
     const parts = await ms.partsOf(project);
     // the block is built in the SCENE document's realm; the Record and the hands live in this one, so it crosses as JSON
     return { parts: parts === null ? null : JSON.parse(JSON.stringify(parts)), project: project };
+}
+
+/**
+ * The parts block the world holds NOW, read through the one sketch reader (sketchOf), for a round's start: the lab reads it
+ * when a chain begins and when a world boots inside one (maxi-lab.js THE START). Every act ends written
+ * into the sketch, so this read writes nothing; THROWS when it did write a row (the world held an act its sketch did not say,
+ * so where the round begins cannot be told), and when the sketch has no parts block (a Record needs one).
+ */
+export async function partsNowOf(sc, op) {
+    const rec = sc && sc.record;
+    if (!rec || !Array.isArray(rec.changes)) { throw new Error(op + ': the world holds no open Record — the parts it starts from are read beside one.'); }
+    const n = rec.changes.length;
+    const sk = await sketchOf(sc, op, MAXI);
+    if (rec.changes.length !== n) {
+        throw new Error(op + ': reading where the world starts wrote ' + (rec.changes.length - n) + ' row(s) into its Record (' + JSON.stringify(rec.changes.slice(n)) + ') — the world held an act its sketch did not say, so the start cannot be told.');
+    }
+    if (sk.parts === null) { throw new Error(op + ': the sketch declares its parts in code, so it has no `parts` block to start from.'); }
+    return sk.parts;
 }
 
 // ── the eyes: FrqtlVision.record → the question command (lab.ask) ───────────────────────────
@@ -983,6 +1001,9 @@ export const HANDS_PREAMBLE = [
     'thread\'s interaction_id). When the human presses Record, the lab hands you the demonstration the same',
     'way: the clip, plus the list of what was moved; when the human wrote what they are teaching, the question',
     'gives their own words after the line "' + TEACHING_HEAD + '"; answer to them and to the footage.',
+    'A visitor\'s demonstrations are also kept in their own browser (a LOCAL MEMORY: not in your memories; you see one only',
+    'when they send it or ask about it). When they ask about one later, the lab hands you its clips and its facts the same way, then their question after the line',
+    '"' + DISCUSS_HEAD + '"; answer it from the footage, those facts and your memories, and say which is which.',
     'Nothing reaches you as a chat attachment. Describe only',
     'what the footage shows — what you remember about a scene is not what you saw; "I looked at the',
     'readings" is `inventory`; "I saw" is the answer you gave to the footage. A refused question comes back',

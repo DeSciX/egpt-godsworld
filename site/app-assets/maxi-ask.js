@@ -172,7 +172,8 @@ export function plainWords(text) {
  * ONE thread with Maxi, owned by the page.
  *   call(command, params) → Promise — the shell's command door (window.DeSciX.call), injected;
  *   onTurn({phase:'asking'|'answered'|'refused', op, note, teaching, userInput, media, answer?, error?, interaction_id?}) — the strip
- *     (`teaching`: the human's words a Record demonstration was asked with, else null);
+ *     (`teaching`: the human's words a Record demonstration was asked with, else null; `question`: the visitor's question about a
+ *     remembered demonstration, else null);
  *   knowledgebaseNames — optional, the thread's KB list (knowledgebaseNamesOf);
  *   resume — optional {interaction_id, turns}: continue a thread a previous process kept (minimaxi's threads.json).
  * ask({op, userInput, media?, note?, teaching?}) — media omitted = a words-only turn — resolves {asked:true, interaction_id, answer, answer_excerpt, usage, model}.
@@ -196,7 +197,7 @@ export function createThread(spec) {
         ask: async function (q) {
             const op = q.op || 'ask';
             const params = buildAskParams({ op: op, userInput: q.userInput, media: q.media, previousInteractionId: st.id, knowledgebaseNames: kbs });
-            const turn = { op: op, note: (typeof q.note === 'string' && q.note) ? q.note : q.userInput, teaching: (typeof q.teaching === 'string' && q.teaching) ? q.teaching : null, userInput: q.userInput, media: (params.media || []).map(function (m) { return { mime_type: m.mime_type, label: m.label || null, bytes: base64Bytes(m.data, op) }; }) };
+            const turn = { op: op, note: (typeof q.note === 'string' && q.note) ? q.note : q.userInput, teaching: (typeof q.teaching === 'string' && q.teaching) ? q.teaching : null, question: (typeof q.question === 'string' && q.question) ? q.question : null, userInput: q.userInput, media: (params.media || []).map(function (m) { return { mime_type: m.mime_type, label: m.label || null, bytes: base64Bytes(m.data, op) }; }) };
             onTurn(Object.assign({ phase: 'asking' }, turn));
             let got;
             try {
@@ -224,17 +225,34 @@ export const TEACHING_HEAD = 'The human says this demonstration teaches you, in 
 export const TEACHING_QUESTION =
     'Then, in words only, say what you take the human to be teaching you, and where the footage shows it and where it does not.';
 
+/** How the visitor's question about a remembered demonstration (a local memory, maxi-local-memory.js) opens; their words follow, as typed. */
+export const DISCUSS_HEAD = 'The visitor asks about this remembered demonstration, in their own words:';
+/** What a question about a remembered demonstration asks after the visitor's words. Words only. */
+export const DISCUSS_QUESTION =
+    'Answer their question in words only, with no action block. Keep apart what the footage shows, what the facts above ' +
+    'state and what you bring from your own memories, and say which is which.';
+
 /**
  * The user_input of a footage question: the note that rides with the clip, then the question. ONE composition.
  * `teaching` — the human's words on their Record demonstration (maxi-record-folder.js teachingOf: trimmed, or undefined when
  * they typed none). Given, they ride after the note, verbatim, and the question asks what Maxi takes them to teach;
  * omitted, the question is the look alone. A blank or non-string `teaching` THROWS: an empty blurb is omitted, never sent.
+ * `question` — the visitor's own question about a remembered demonstration (a local memory's Discuss). Given, it rides
+ * after the note and the teaching words, verbatim, under DISCUSS_HEAD, and DISCUSS_QUESTION takes the place of the look;
+ * a blank or non-string `question` THROWS: nothing is asked without the visitor's words.
  */
-export function footageUserInput(note, teaching) {
+export function footageUserInput(note, teaching, question) {
     if (typeof note !== 'string' || !note.trim()) { throw new Error('[ask] a footage question needs the note that says what was filmed.'); }
-    if (teaching === undefined || teaching === null) { return note.trim() + '\n\n' + LOOK_QUESTION; }
-    if (typeof teaching !== 'string' || !teaching.trim()) {
+    if (teaching !== undefined && teaching !== null && (typeof teaching !== 'string' || !teaching.trim())) {
         throw new Error('[ask] the teaching words are the human\'s typed words, got ' + JSON.stringify(teaching) + ' — an empty blurb is omitted (the question is the look alone), never sent. Nothing was asked.');
     }
+    const taught = (teaching === undefined || teaching === null) ? '' : '\n\n' + TEACHING_HEAD + '\n' + teaching.trim();
+    if (question !== undefined && question !== null) {
+        if (typeof question !== 'string' || !question.trim()) {
+            throw new Error('[ask] a question about a remembered demonstration carries the visitor\'s own words, got ' + JSON.stringify(question) + '. Nothing was asked.');
+        }
+        return note.trim() + taught + '\n\n' + DISCUSS_HEAD + '\n' + question.trim() + '\n\n' + DISCUSS_QUESTION;
+    }
+    if (!taught) { return note.trim() + '\n\n' + LOOK_QUESTION; }
     return note.trim() + '\n\n' + TEACHING_HEAD + '\n' + teaching.trim() + '\n\n' + LOOK_QUESTION + '\n' + TEACHING_QUESTION;
 }

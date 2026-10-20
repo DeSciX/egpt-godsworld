@@ -20,7 +20,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as seen from '../gen-memories-seen.mjs';
-import { FILES, RECORD_KEYS, LOOP_LAB_KEYS, OPS, STILLS, UNAVAILABLE, TEACHING_KEY, CARRIED_KEY, changeText, recordFolderFaults, recordPlanFaults } from '../../site/app-assets/maxi-record-folder.js';
+import { FILES, RECORD_KEYS, LOOP_LAB_KEYS, OPS, STILLS, UNAVAILABLE, TEACHING_KEY, CARRIED_KEY, START_KEY, changeText, recordFolderFaults, recordPlanFaults } from '../../site/app-assets/maxi-record-folder.js';
 import { readRecordFolder } from '../../minimaxi/record-folder.mjs';
 
 const { readRun, writeSeenMemory, recordLines, recordLinesOf, publishedRecordFaults, lookedFaults, CHANGE_PREFIX } = seen;
@@ -71,6 +71,9 @@ test('a complete Record is published: the whole hand-back folder under site/memo
     assert.ok(md.includes('Record record-02 of run mmp41d (chain record-01, record-02)') && md.includes('ticks 2135–8529') && md.includes('memories/' + ID + '/clip-01.mp4 (see, ticks 4266–4516)') && md.includes('memories/' + ID + '/clip-02.mp4 (dragTo, ticks 8229–8529)'));
     assert.ok(md.includes('The project at stop: memories/' + ID + '/project/sketch.js.'));
     assert.ok(!/INCOMPLETE/.test(md));
+    // the header names the side the parts diff starts from: this Record carries a start, so it is lab.json start, never parts.before.json
+    const header = md.split('\n').filter((l) => l.startsWith('Changes (record.json, one row per act, in order) and the parts diff ('));
+    assert.deepEqual(header, ['Changes (record.json, one row per act, in order) and the parts diff (' + FILES.lab + ' ' + START_KEY + ' → ' + FILES.partsAfter + '):'], 'the header names lab.json start as the diff\'s start');
     assert.deepEqual(recordLinesOf(md), [CHANGE_PREFIX + 'tick 2135 · setDeclared (maxi) mirror: {"orientationDeg":45} → {"orientationDeg":30}', CHANGE_PREFIX + 'tick 8378 · move (maxi) mirror: rect [360, 80, 20, 240] → rect [290, 80, 20, 240]',
         'part mirror: ["Wall",{"rect":[360,80,20,240],"collisionBehavior":"bounce","bounceDirection":"reflect","orientationDeg":45,"color":[255,120,0],"hooks":["recolor"]}] → ["Wall",{"rect":[290,80,20,240],"collisionBehavior":"bounce","bounceDirection":"reflect","orientationDeg":30,"color":[255,120,0],"hooks":["recolor"]}]'], 'the trial\'s own two acts and the parts diff they made');
     assert.deepEqual(lookedFaults(md, ID, path.join(root, 'site')), [], 'the looked rule');
@@ -146,7 +149,7 @@ test('the completeness gate: a Record missing any §6 field, or holding one {una
     assert.deepEqual(d.faults.slice(6), ['plan changes[0] (mirror orientationDeg: 30): record-02/parts.after.json has no part "mirror"', 'plan changes[1] (mirror center: [300,200]): record-02/parts.after.json has no part "mirror"'], 'the plan faults follow the completeness faults (readRun)');
     const text = fs.readFileSync(path.join(root, d.draft), 'utf8');
     assert.match(text, /^INCOMPLETE Record, so not published/m);
-    assert.ok(recordLinesOf(text).includes('part (not stated): parts.before.json is unavailable; parts.after.json is unavailable — the parts diff waits on it'));
+    assert.ok(recordLinesOf(text).includes('part (not stated): parts.after.json is unavailable — the parts diff waits on it'), 'the diff starts from lab.json start, which the Record states; its end is the placeholder');
     assert.ok(nothingPublished(root));
 });
 
@@ -372,12 +375,14 @@ test('what the Record carried from before the round (lab.json carried) is render
     assert.deepEqual(publishedRecordFaults(md, ID, path.join(root, 'site')), [], 'the published text, carried included, re-renders byte for byte');
     assert.match(publishedRecordFaults(md.replace(seen.CARRIED_PREFIX + 'clip:', seen.CARRIED_PREFIX + 'klip:'), ID, path.join(root, 'site')).join('\n'), /is not the text the generator renders/, 'a hand edit of the carried line is red');
     assert.deepEqual(seen.carriedLines({}), [], 'nothing carried: no heading');
-    // a carried row is set aside from the plan: carrying the fixture's setDeclared row leaves the plan's orientationDeg unstated
+    // a carried row is set aside from the plan: the producer began AFTER the fixture's setDeclared row, so its start already
+    // holds the plan's orientationDeg and start → end does not make that change
     const files = readRecordFolder(path.join(FIXTURE, HB));
     const l2 = JSON.parse(files[FILES.lab]);
     const rows = JSON.parse(files[FILES.record]).changes;
+    l2[START_KEY].mirror[1].orientationDeg = rows[0].to.orientationDeg;   // where the producer began: the carried row already made
     const carriedPlan = recordPlanFaults(l2.plan, [Object.assign({}, files, { [FILES.lab]: JSON.stringify(Object.assign(l2, { [CARRIED_KEY]: { changes: [rows[0]], clips: [] } })) })]);
-    assert.ok(carriedPlan.some((f) => /plan changes\[0\] \(mirror orientationDeg: 30\) has no change row/.test(f)), 'the carried row is not the plan\'s: ' + carriedPlan.join(' | '));
+    assert.ok(carriedPlan.includes('plan changes[0] (mirror orientationDeg: 30): the start (lab.json start) already holds "mirror" orientationDeg at 30 — start → end does not make this change'), 'the carried row is not the plan\'s: ' + carriedPlan.join(' | '));
     fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -395,6 +400,7 @@ function assertCarriedRowMarked(g) {
     const lab = readJson(labFile);
     const rows = readJson(path.join(dir, 'record-01', FILES.record)).changes;
     lab.plan.changes = lab.plan.changes.filter((c) => c.param !== 'orientationDeg');   // the carried setDeclared is not the round's
+    lab[START_KEY].mirror[1].orientationDeg = rows[0].to.orientationDeg;               // the producer began after it (THE START)
     Object.assign(lab, { chain: { index: 1, records: ['record-01'] }, handBack: { record: 'record-01', clip: 'clip-02.mp4' }, [CARRIED_KEY]: { changes: [rows[0]], clips: [lab.filmed[0]] } });
     writeJson(labFile, lab);
     const out = g.writeSeenMemory(dir, LOOK, { root });

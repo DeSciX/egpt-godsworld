@@ -26,7 +26,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
     HANDS, HANDS_MARKERS, buildAdapter, assertAdapterCoversHands, renderHandsMarkdown, placementOf, inventoryObjects,
-    publishHands, inventoryOf, viewerOf, spansOf, centerOfRect, worldShape, INVENTORY_KEYS, CLIP_SECONDS, SEE_DEFAULTS, DRAG_DEFAULTS, plannedFrames, assertClipSeconds, writePosition, RECT_CONVENTION, SKETCH_KEYS
+    publishHands, inventoryOf, viewerOf, spansOf, centerOfRect, worldShape, INVENTORY_KEYS, CLIP_SECONDS, SEE_DEFAULTS, DRAG_DEFAULTS, plannedFrames, assertClipSeconds, writePosition, RECT_CONVENTION, SKETCH_KEYS, partsNowOf
 } from '../../site/app-assets/maxi-hands.js';
 import { PAGES, renderPage, siteImportMap, SITE_ROOT, PROJECT_DOOR, renderProjectDoor } from '../gen-import-maps.mjs';
 import { SKETCH_FORM } from '../../site/app-assets/maxi-record-folder.js';   // the one definition of the sketch module form
@@ -428,6 +428,35 @@ function sketchLab(opts) {
     const lab = fakeLab({ scene: () => sc, inventory: () => inventoryOf(sc) });
     return { sc, lab, runner, mirror, adapter: buildAdapter(HANDS, lab) };
 }
+
+test('partsNowOf (a round\'s start) reads the sketch\'s block through the one sketch reader and writes nothing: a read that wrote a row, a sketch with no block and a world with no open Record are refused by name', async () => {
+    const ok = sketchLab();
+    ok.sc.record = { changes: [] };
+    assert.deepEqual(await partsNowOf(ok.sc, 'the start'), { mirror: ['Wall', { orientationDeg: 45, rect: [360, 80, 20, 240] }] });
+    assert.deepEqual(ok.sc.sketchCalls.map((c) => c.op), ['toSketch', 'partsOf'], 'read through sketchOf: the write, then the block');
+    // a read whose write lands a row: the world held an act its sketch did not say (negative control below: the same read without the row check resolves)
+    const wrote = sketchLab();
+    wrote.sc.record = { changes: [] };
+    const toSketch = wrote.sc.recipeContext.toSketch;
+    wrote.sc.recipeContext.toSketch = async (o) => { wrote.sc.record.changes.push({ tick: 7, name: 'mirror', op: 'move', by: o.by, from: { rect: [1, 2, 3, 4] }, to: { rect: [360, 80, 20, 240] } }); return toSketch(o); };
+    await assert.rejects(partsNowOf(wrote.sc, 'the start'), /^Error: the start: reading where the world starts wrote 1 row\(s\) into its Record .* — the world held an act its sketch did not say, so the start cannot be told\.$/);
+    await assert.rejects(partsNowOf(sketchLab().sc, 'x'), /^Error: x: the world holds no open Record/, 'no open Record: refused by name');
+    const noBlock = sketchLab({ noBlock: true }); noBlock.sc.record = { changes: [] };
+    await assert.rejects(partsNowOf(noBlock.sc, 'the start'), /^Error: the start: the sketch declares its parts in code, so it has no `parts` block to start from\.$/);
+    const src = read('site/app-assets/maxi-hands.js');
+    const CHECK = '    if (rec.changes.length !== n) {';
+    assert.equal(src.split(CHECK).length, 2, 'the plant target moved');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hands-start-'));
+    try {
+        const planted = src.replace(CHECK, '    if (false) {').replace(/from '\.\/([a-z-]+)\.js'/g, (m, f) => "from '" + pathToFileURL(path.join(REPO, 'site/app-assets', f + '.js')).href + "'");
+        fs.writeFileSync(path.join(dir, 'maxi-hands.mjs'), planted);
+        const m = await import(pathToFileURL(path.join(dir, 'maxi-hands.mjs')).href);
+        const again = sketchLab(); again.sc.record = { changes: [] };
+        const t2 = again.sc.recipeContext.toSketch;
+        again.sc.recipeContext.toSketch = async (o) => { again.sc.record.changes.push({ tick: 7, name: 'mirror', op: 'move', by: o.by, from: null, to: null }); return t2(o); };
+        await assert.doesNotReject(m.partsNowOf(again.sc, 'the start'), 'planted away, the read that wrote a row resolves (RED under the check above)');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
 
 test('every hand on a scene ends with exp.toSketch(), and a refusal is the hand\'s error by part and key, never swallowed (negative control: the adapter without the write resolves)', async () => {
     const ok = sketchLab();

@@ -32,9 +32,10 @@ export const BRAINS = Object.freeze(['none', 'platform']);
 
 /**
  * The published CLI this repo runs, pinned: the ONE owner of the version (scripts/test/cli-pin.test.mjs holds every
- * `npx -y -p` pin of @descix/cli in the tracked tree to it). Plain `npx descix` resolves the wrong package.
+ * `npx -y -p` pin of @descix/cli in the tracked tree, and every npm dependency on it with its lock, to it). Plain
+ * `npx descix` resolves the wrong package.
  */
-export const DESCIX_CLI = '@descix/cli@4.0.0';
+export const DESCIX_CLI = '@descix/cli@4.1.0';
 
 export const CLI_ARGV = Object.freeze(['-y', '-p', DESCIX_CLI, 'descix', 'mcp', 'execute', '--tool', ASK.command]);
 

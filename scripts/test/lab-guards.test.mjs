@@ -167,7 +167,7 @@ function recordingLab() {
         const out = serializeRecordFolder({ changes: [], clips: sc.filmed.map((f, i) => ({ bytes: Buffer.from('clip' + i), firstTick: f.span.first, lastTick: f.span.last })),
             partsBefore: {}, partsAfter: {}, project: { 'frqtl.json': serializeManifest(manifestFor({ name: 'mirror', entry: 'sketch.js' })), 'sketch.js': 'export default function buildExperiment(exp) {}\n' } });
         const filmed = sc.filmed.map((f) => f.hand); sc.filmed.length = 0;
-        return out.empty ? null : { folder: out, filmed: filmed, carried: 0, scene: { label: sc.label, id: sc.id, mode: sc.mode, renderer: sc.renderer } };
+        return out.empty ? null : { folder: out, filmed: filmed, carried: 0, start: {}, scene: { label: sc.label, id: sc.id, mode: sc.mode, renderer: sc.renderer } };
     };
     return {
         scene: () => sc, ask: async () => ({ asked: true, interaction_id: 't', answer_excerpt: 'x' }),

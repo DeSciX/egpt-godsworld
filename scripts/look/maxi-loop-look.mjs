@@ -45,6 +45,8 @@ import { fileURLToPath } from 'node:url';
 import { installReplayDoor } from '../test/replay-door.mjs';
 import { ROLES, stageOf, stageWords } from '../../site/app-assets/maxi-roles.js';
 import { INTRO_SEEN_KEY } from '../../site/app-assets/maxi-intro.js';
+import { START_KEY, partsEqual } from '../../site/app-assets/maxi-record-folder.js';
+import { SKETCH_KEYS } from '../../site/app-assets/maxi-hands.js';
 
 function argOf(flag, dflt) { const i = process.argv.indexOf(flag); return i === -1 ? dflt : process.argv[i + 1]; }
 const URL_ = argOf('--url', null);
@@ -140,6 +142,8 @@ try {
         await boot(page);
         note('B host', await page.evaluate(() => window.MaxiLab.state.host));
         const actionsBefore = await page.evaluate(() => Object.keys(window.DeSciX_Actions).length);
+        // where the LOOP began: the stage's parts block as the loop takes the outline (round 1's start is read then)
+        const loopStart = await page.evaluate(async (k) => (await window.MaxiLab.inventory())[k], SKETCH_KEYS.parts);
         await say(page, FIXTURE.outline);
         await page.waitForFunction(() => document.querySelector('#talk-lines .talk-builder') !== null, null, { timeout: 30000 });
         await page.screenshot({ path: path.join(OUT, 'B1-plan.png') });
@@ -186,8 +190,13 @@ try {
         check(last.verdict === 'approve' && last.rounds === 2 && last.seconds >= 5 && last.seconds <= 10, 'B: the Owl approved in round 2; the clip is 5–10 s', { verdict: last.verdict, rounds: last.rounds, seconds: last.seconds, file: f, bytes: fs.statSync(f).size });
         const card = await page.evaluate(() => ({ hidden: document.getElementById('demo').hidden, title: document.getElementById('demo-title').textContent }));
         check(!card.hidden && /the Owl approved/.test(card.title), 'B: the approved clip is kept on the demonstration card', card);
-        const rec = await page.evaluate(() => { const rs = window.MaxiLab.records(); const r = rs[rs.length - 1]; return { count: rs.length, name: r.name, chain: r.lab.chain, record: r.record, producer: r.lab.producer, handBack: r.lab.handBack, filmed: r.lab.filmed, scene: r.lab.scene, complete: r.complete, faults: r.faults, files: Object.keys(r.files).sort(), clipBytes: r.files['clip-01.mp4'].length,
-            partsBefore: r.files['parts.before.json'] ? JSON.parse(r.files['parts.before.json']) : null, partsAfter: r.files['parts.after.json'] ? JSON.parse(r.files['parts.after.json']) : null }; });
+        const rec = await page.evaluate((k) => { const rs = window.MaxiLab.records(); const r = rs[rs.length - 1]; return { count: rs.length, name: r.name, chain: r.lab.chain, record: r.record, producer: r.lab.producer, handBack: r.lab.handBack, filmed: r.lab.filmed, scene: r.lab.scene, complete: r.complete, faults: r.faults, files: Object.keys(r.files).sort(), clipBytes: r.files['clip-01.mp4'].length,
+            partsBefore: r.files['parts.before.json'] ? JSON.parse(r.files['parts.before.json']) : null, partsAfter: r.files['parts.after.json'] ? JSON.parse(r.files['parts.after.json']) : null, start: r.lab[k] }; }, START_KEY);
+        // THE START: the approving round (round 2) begins at the Owl's revise, so its Record's start is where round 1 left the
+        // world — the parts its Record opened on (parts.before.json; nothing carried) — not where the loop began
+        check(!!rec.start && !!rec.partsBefore && partsEqual(rec.start, rec.partsBefore) && !partsEqual(rec.start, loopStart) && !partsEqual(rec.start, rec.partsAfter),
+            'B: lab.json ' + START_KEY + ' is the approving round\'s start (its Record\'s parts.before.json, where round 1 left the mirror), not where the loop began, and the round ends elsewhere',
+            { start: rec.start && rec.start.mirror, partsBefore: rec.partsBefore && rec.partsBefore.mirror, loopStart: loopStart && loopStart.mirror, partsAfter: rec.partsAfter && rec.partsAfter.mirror });
         check(rec.count === 1 && rec.name === 'record-01' && JSON.stringify(rec.chain) === JSON.stringify({ index: 1, records: ['record-01'] }) && rec.producer === 'loop' && rec.record.clips.length === 1 && JSON.stringify(rec.handBack) === JSON.stringify({ record: 'record-01', clip: 'clip-01.mp4' }) && rec.filmed.length === 1 && rec.filmed[0].hand === 'dragTo' && rec.clipBytes === Buffer.from(last.data, 'base64').length && rec.record.changes.length === 1 &&
             rec.record.changes[0].op === 'move' && rec.record.changes[0].by === 'maxi' && rec.record.changes[0].name === 'mirror' &&
             mirror.authority === 'rect' && Object.keys(rec.record.changes[0].from).join() === 'rect' && JSON.stringify(rec.record.changes[0].to.rect) === JSON.stringify(mirror.rect) && rec.record.changes[0].tick >= rec.record.tickRange[0] && rec.record.changes[0].tick <= rec.record.tickRange[1] && rec.complete && rec.faults.length === 0 &&

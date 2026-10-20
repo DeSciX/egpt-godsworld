@@ -81,6 +81,7 @@ function complete(over) {
     const folder = over.folder || packageFolder(over.pkg);
     return assembleRecord({
         producer: over.producer || 'loop', folder: folder, filmed: over.filmed || folder.clips.map(() => 'see'), stills: over.stills,
+        start: Object.prototype.hasOwnProperty.call(over, 'start') ? over.start : PARTS_BEFORE,
         lab: Object.assign({ outline: 'o', chain: { index: 1, records: ['record-01'] }, handBack: { record: 'record-01', clip: folder.clips[folder.clips.length - 1].file } }, over.lab || {})
     });
 }
@@ -170,6 +171,11 @@ test('assembleRecord adds lab.json beside the package\'s files and refuses what 
     assert.throws(() => complete({ stills: [bytes('a')] }), /stills are the three early\.png, mid\.png, settled\.png as bytes/);
     assert.throws(() => complete({ pkg: { clips: Array.from({ length: MAX_SEGMENTS + 1 }, (_, i) => clip(i + 1, 10 + i * 300, 260 + i * 300)) }, filmed: Array(MAX_SEGMENTS + 1).fill('see') }), /at most 8 segments/);
     assert.throws(() => assembleRecord({ producer: 'loop', folder: { empty: true }, filmed: [] }), /a closed Record is rec\.stop\(\)'s \{files, record, clips\}/);
+    // the producer's start: always named (null for a Record that is not the hand-back), a parts block, written as lab.json start
+    assert.throws(() => complete({ start: undefined }), /a Record names the producer's start \(start: the parts block its chain began from, for the hand-back Record; null for the others\)/);
+    assert.throws(() => complete({ start: { mirror: ['Wall'] } }), /the producer's start is the parts block its chain began from: entry "mirror" is not \[Kind, \{props\}\]/);
+    assert.deepEqual(JSON.parse(complete().files[FILES.lab]).start, PARTS_BEFORE, 'the hand-back names its start');
+    assert.equal(Object.prototype.hasOwnProperty.call(JSON.parse(complete({ start: null }).files[FILES.lab]), 'start'), false, 'null: not the hand-back, no key');
     const withLab = packageFolder(); withLab.files['lab.json'] = '{}';
     assert.throws(() => complete({ folder: withLab }), /already carries lab\.json — the host's file is never written over/);
     const st = complete({ stills: STILLS.map(() => bytes('png')) });
@@ -210,8 +216,8 @@ test('a loop approve\'s Records are the lab\'s closed Records, chained; the loop
     const round = { verdict: 'approve', outline: 'o', plan: {}, designerWords: 'w', steps: [], prediction: 'p', builderWords: 'b', owl: { verdict: 'approve' }, threads: {}, rounds: 1, clip: c2,
         worlds: [{ before: inv('cl1a-mirror'), after: inv('cl1a-mirror'), changes: [], clips: [{ hand: 'see', clip: c1 }] },
                  { before: inv('sketch'), after: null, afterRefused: 'inventory: no scene is loaded', changes: [MOVE], clips: [{ hand: 'dragTo', clip: c2 }] }] };
-    const w1 = { folder: packageFolder({ changes: [], clips: [clip(1, 3669, 3919)] }), filmed: ['see'], carried: 0 };
-    const w2 = { folder: packageFolder({ clips: [clip(2, 300, 560)] }), filmed: ['dragTo'], carried: 0 };
+    const w1 = { folder: packageFolder({ changes: [], clips: [clip(1, 3669, 3919)] }), filmed: ['see'], carried: 0, start: PARTS_BEFORE };
+    const w2 = { folder: packageFolder({ clips: [clip(2, 300, 560)] }), filmed: ['dragTo'], carried: 0, start: PARTS_BEFORE };
     const host = { worlds: [w1, w2], unheld: [], brain: 'local', run: 'mmx' };
     assert.throws(() => assembleLoopRecords(round, host), /world 2 of the round carries no inventory at its close \(the body refused it: inventory: no scene is loaded\)/);
     round.worlds[1].after = inv('sketch');
@@ -234,7 +240,7 @@ test('a loop approve\'s Records are the lab\'s closed Records, chained; the loop
     const pre = { tick: 2, name: 'mirror', op: 'move', by: 'human', from: { rect: [380, 80, 20, 240] }, to: { rect: [360, 80, 20, 240] } };
     // what the Record held before the round began (a row and Maxi's earlier clip): carried, sliced off, named in lab.json
     const earlier = { firstTick: 100, lastTick: 250 };
-    const carried = { folder: packageFolder({ changes: [pre, MOVE], clips: [clip(9, 100, 250), clip(2, 300, 560)] }), filmed: ['see', 'dragTo'], carried: { changes: [pre], clips: [Object.assign({ hand: 'see' }, earlier)] } };
+    const carried = { folder: packageFolder({ changes: [pre, MOVE], clips: [clip(9, 100, 250), clip(2, 300, 560)] }), filmed: ['see', 'dragTo'], carried: { changes: [pre], clips: [Object.assign({ hand: 'see' }, earlier)] }, start: PARTS_BEFORE };
     const one = Object.assign({}, round, { worlds: [round.worlds[1]] });   // the round acted in one world, the one whose Record carried
     const withCarried = assembleLoopRecords(one, Object.assign({}, host, { worlds: [carried] }));
     assert.deepEqual(withCarried[0].lab.carried, { changes: [pre], clips: [{ clip: 'clip-01.mp4', hand: 'see', firstTick: 100, lastTick: 250 }] }, 'lab.json carried names the earlier row and clip');
@@ -242,6 +248,11 @@ test('a loop approve\'s Records are the lab\'s closed Records, chained; the loop
     assert.throws(() => assembleLoopRecords(one, Object.assign({}, host, { worlds: [Object.assign({}, carried, { carried: null })] })), /world 1: the loop filmed 1 clip\(s\), its Record holds 2/);
     assert.throws(() => assembleLoopRecords(one, Object.assign({}, host, { worlds: [Object.assign({}, carried, { carried: { changes: [], clips: carried.carried.clips } })] })), /world 1: the rows the loop heard/);
     assert.throws(() => assembleLoopRecords(round, Object.assign({}, host, { unheld: [MOVE] })), /1 row\(s\) of the round no Record holds/);
+    // the producer's start rides in the hand-back only, from the round's FIRST world; a first world with none is refused by name
+    assert.deepEqual(recs.map((r) => r.lab.start), [undefined, PARTS_BEFORE], 'the first world\'s start, in the hand-back Record');
+    assert.throws(() => assembleLoopRecords(round, Object.assign({}, host, { worlds: [Object.assign({}, w1, { start: undefined }), w2] })), /the round's first world carries no start \(start: the parts it held when the round began, maxi-lab\.js THE START\), got undefined/);
+    const later = assembleLoopRecords(round, Object.assign({}, host, { worlds: [w1, Object.assign({}, w2, { start: PARTS_AFTER })] }));
+    assert.deepEqual(later[1].lab.start, PARTS_BEFORE, 'a later world\'s start is never the chain\'s: the first world\'s is');
     // the chain gate: out of order, another hand-back, the round's fields misplaced
     const swapped = [Object.assign({}, recs[1], { name: 'record-01' }), Object.assign({}, recs[0], { name: 'record-02' })];
     assert.ok(recordChainFaults(swapped).some((x) => /record-01\/lab\.json chains \{"index":2,.*the chain is out of order/.test(x)), recordChainFaults(swapped).join('\n'));
@@ -257,6 +268,50 @@ test('a loop approve\'s Records are the lab\'s closed Records, chained; the loop
     assert.throws(() => assembleLoopRecords(round, host), /lacks `rounds` for lab\.json/);
 });
 
+// ── the start against where the chain's first Record opened ───────────────────────────────────────
+const START_MOVED = { mirror: ['Wall', { rect: [330, 80, 20, 240], collisionBehavior: 'bounce' }] };   // no Record here opened on it
+
+test('the hand-back\'s start is where the chain\'s first Record opened when it carried nothing: a disagreement is refused by name, in the folder gate for a chain of one and in the chain gate for a longer one; a carried first Record is not judged (negative controls: the forged t41a, a forged chain start, the human\'s last-world start)', () => {
+    const { START_NOT_OPENING, START_KEY, CARRIED_KEY } = recordFolder;
+    const startFaults = (faults) => faults.filter((f) => f.indexOf(START_NOT_OPENING) !== -1);
+    // a chain of one: the published t41a given a start (its round's start is its parts.before.json: nothing was carried)
+    const t41a = readRecordFolder(path.join(REPO, 'site/memories/mm-dse-tunnel-rebuild-t41a'));
+    const json = (f) => JSON.parse(typeof t41a[f] === 'string' ? t41a[f] : new TextDecoder().decode(t41a[f]));
+    const t41aLab = json(FILES.lab), t41aBefore = json(FILES.partsBefore);
+    assert.equal(t41aLab[CARRIED_KEY], undefined, 'the fixture carried nothing');
+    assert.deepEqual([t41aLab.chain, t41aLab.handBack.record], [{ index: 1, records: ['record-01'] }, 'record-01'], 'the fixture is a chain of one');
+    const withStart = (start) => edit(t41a, FILES.lab, (l) => Object.assign(l, { [START_KEY]: start }));
+    assert.deepEqual(startFaults(recordFolderFaults(withStart(t41aBefore))), [], 'the green control: the start is where record-01 opened');
+    const forged = JSON.parse(JSON.stringify(t41aBefore)); forged.screen[1].rect[0] = 315;   // the verifier's false t41a: screen at 315
+    const refused = startFaults(hostFolderFaults(withStart(forged)));
+    assert.equal(refused.length, 1, hostFolderFaults(withStart(forged)).join('\n'));
+    assert.match(refused[0], /^start is not where the round began: lab\.json start is not record-01\/parts\.before\.json \(screen: GraphingDetectorWall \{"rect":\[355,0,20,400\][^)]*→ GraphingDetectorWall \{"rect":\[315,0,20,400\]/);
+    // a loop chain of two: the hand-back (record-02) carries the start; record-01 opened as the round began
+    const inv = (id) => ({ scene: id, id: id, mode: null, renderer: 'p5', objects: [] });
+    const c1 = { firstTick: 3669, lastTick: 3919 }, c2 = { firstTick: 300, lastTick: 560 };
+    const round = { verdict: 'approve', outline: 'o', plan: {}, designerWords: 'w', steps: [], prediction: 'p', builderWords: 'b', owl: { verdict: 'approve' }, threads: {}, rounds: 1, clip: c2,
+        worlds: [{ before: inv('cl1a-mirror'), after: inv('cl1a-mirror'), changes: [], clips: [{ hand: 'see', clip: c1 }] }, { before: inv('sketch'), after: inv('sketch'), changes: [MOVE], clips: [{ hand: 'dragTo', clip: c2 }] }] };
+    const loopChain = (start) => assembleLoopRecords(round, { brain: 'local', run: 'mmx', unheld: [], worlds: [
+        { folder: packageFolder({ changes: [], clips: [clip(1, 3669, 3919)] }), filmed: ['see'], start: start },
+        { folder: packageFolder({ clips: [clip(2, 300, 560)] }), filmed: ['dragTo'], start: START_MOVED }] });
+    assert.deepEqual(recordChainFaults(loopChain(PARTS_BEFORE)), [], 'the green control');
+    const bad = loopChain(START_MOVED);
+    assert.deepEqual(bad.map((r) => startFaults(r.faults)), [[], []], 'record-02 is not its chain\'s first Record: its own gate cannot read record-01');
+    const chainRefused = startFaults(recordChainFaults(bad));
+    assert.equal(chainRefused.length, 1, recordChainFaults(bad).join('\n'));
+    assert.match(chainRefused[0], /^record-02: start is not where the round began: lab\.json start is not record-01\/parts\.before\.json \(mirror: Wall \{"rect":\[360,80,20,240\][^)]*→ Wall \{"rect":\[330,80,20,240\]/);
+    // a carried first Record: the start is its world's parts after the carried rows, which no file states — not judged
+    const pre = { tick: 2, name: 'mirror', op: 'move', by: 'human', from: { rect: [380, 80, 20, 240] }, to: { rect: [360, 80, 20, 240] } };
+    const carried = assembleLoopRecords(Object.assign({}, round, { worlds: [round.worlds[1]] }), { brain: 'local', run: 'mmx', unheld: [], worlds: [
+        { folder: packageFolder({ changes: [pre, MOVE], clips: [clip(9, 100, 250), clip(2, 300, 560)] }), filmed: ['see', 'dragTo'], carried: { changes: [pre], clips: [{ hand: 'see', firstTick: 100, lastTick: 250 }] }, start: START_MOVED }] });
+    assert.deepEqual(carried.map((r) => r.faults), [[]], 'a carried first Record\'s start is not compared with its parts.before.json');
+    // the human's chain (maxi-record.js recordsOf): the hand-back carries the FIRST world's start, where record-01 opened
+    const world = (label, first, start) => ({ scene: { label, id: null, mode: null, renderer: 'p5' }, folder: packageFolder({ changes: [], clips: [clip(1, first, first + 495)], partsBefore: start, partsAfter: start }), filmed: ['record'], start: start });
+    const human = recordsOf([world('A', 0, PARTS_BEFORE), world('B', 400, START_MOVED)], null, []);
+    assert.deepEqual(human.map((r) => r.lab[START_KEY]), [undefined, PARTS_BEFORE], 'the hand-back carries world A\'s start, not world B\'s');
+    assert.deepEqual(recordChainFaults(human), [], 'and the chain gate holds');
+});
+
 // ── the human's teaching words: lab.json TEACHING_KEY, owned here ─────────────────────────────────
 /** Load a planted maxi-record-folder.js (its imports pinned to this checkout): the planted module, and dispose(). */
 async function plantedFolder(src) {
@@ -269,7 +324,7 @@ async function plantedFolder(src) {
 
 /** A two-world human Record chain from the real recorder's assembly (maxi-record.js recordsOf), with `teaching`. */
 function humanChain(teaching) {
-    const world = (label, first) => ({ scene: { label, id: null, mode: null, renderer: 'p5' }, folder: packageFolder({ changes: [], clips: [clip(1, first, first + 495)] }), filmed: ['record'] });
+    const world = (label, first) => ({ scene: { label, id: null, mode: null, renderer: 'p5' }, folder: packageFolder({ changes: [], clips: [clip(1, first, first + 495)] }), filmed: ['record'], start: PARTS_BEFORE });
     return recordsOf([world('A', 0), world('B', 400)], null, [], teaching);
 }
 

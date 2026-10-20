@@ -71,6 +71,24 @@
   #info-body p { margin: 0 0 6px; white-space: pre-wrap; }
   #info-body p.info-tile { color: var(--cyan); font-style: italic; }
   #info-body p.info-absent { color: var(--dim); }
+  aside#memories[hidden] { display: none; }
+  aside#memories { box-sizing: border-box; width: min(420px, 100vw); border-left: 1px solid var(--line); background: var(--bar); display: flex; flex-direction: column; min-height: 0; }
+  aside#memories .memories-head { padding: 6px 10px; color: var(--cyan); border-bottom: 1px solid var(--line); }
+  aside#memories .memories-head small { display: block; color: var(--dim); font-size: 11px; }
+  #memories-status { padding: 4px 12px; color: var(--dim); font-size: 11.5px; }
+  #memories-status.memories-error { color: var(--err); white-space: pre-wrap; }
+  #memories-list { padding: 4px 12px 12px; overflow: auto; flex: 1; font: 13px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
+  #memories-list h3 { margin: 12px 0 4px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+  .memory { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin: 0 0 8px; }
+  .memory time { display: block; color: var(--dim); font-size: 11px; }
+  .memory p { margin: 2px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .memory p.memory-refused { color: var(--err); font-size: 11.5px; }
+  .memory .memory-doors { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .memory button { background: #111a24; color: var(--cyan); border: 1px solid var(--line); border-radius: 4px; padding: 3px 10px; font: inherit; font-size: 12px; }
+  .memory button.memory-delete { color: var(--err); }
+  .memory form { display: flex; gap: 4px; margin-top: 6px; }
+  .memory form[hidden] { display: none; }
+  .memory form input { flex: 1; min-width: 0; background: #05070a; color: var(--ink); border: 1px solid var(--cyan); border-radius: 4px; padding: 4px 6px; font: inherit; }
   #says { padding: 6px 12px; border-top: 1px solid var(--line); background: var(--bar); color: var(--cyan); }
   #error { padding: 8px 12px; background: #1a0000; color: var(--err); border-top: 1px solid #b6161c; white-space: pre-wrap; font-size: 12px; }
   @media (max-width: 720px), (pointer: coarse) and (max-height: 600px) {
@@ -87,6 +105,7 @@
     aside#talk { width: 100%; height: 34dvh; max-height: 34dvh; flex: none; border-left: 0; border-top: 1px solid var(--line); }
     aside#code { position: absolute; right: 0; top: 0; bottom: 0; z-index: 2; }
     aside#info { position: absolute; right: 0; top: 0; bottom: 0; z-index: 3; }
+    aside#memories { position: absolute; right: 0; top: 0; bottom: 0; z-index: 3; }
     @media (orientation: landscape) {
       main { flex-direction: row; }
       aside#talk { width: min(340px, 42vw); height: auto; max-height: none; border-top: 0; border-left: 1px solid var(--line); }
@@ -143,6 +162,7 @@
   <button id="btn-record" type="button" aria-pressed="false" aria-label="Record" title="Record a demonstration for Maxi: the clip and every change you make (R)" disabled><span class="label">Record</span></button>
   <button id="btn-code" type="button" aria-pressed="false" aria-label="Scene code" title="The scene's code: the sketch Maxi reads and edits"><span class="label">Scene code</span></button>
   <button id="btn-info" type="button" aria-pressed="false" aria-label="Info" title="The scene's card: what you are seeing, why it is impossible the usual way, how FRQTL gets it"><span class="label">Info</span></button>
+  <button id="btn-memories" type="button" aria-pressed="false" aria-label="Memories" title="Your memories: every Record you stopped is kept in this browser; reload one, ask Maxi about it, or delete it"><span class="label">Memories</span></button>
   <button id="btn-fullscreen" type="button" aria-pressed="false" aria-label="Full screen" title="Full screen: the lab takes the whole phone screen" hidden><span class="label">Full screen</span></button>
   <span id="status">booting …</span>
 </header>
@@ -176,6 +196,12 @@
   <aside id="info" hidden aria-labelledby="info-title">
     <div class="info-head" id="info-title"></div>
     <div id="info-body"></div>
+  </aside>
+  <!-- The demonstrations this browser keeps (app-assets/maxi-local-memory.js), kept when a Record completes; the Memories button shows them. -->
+  <aside id="memories" hidden aria-labelledby="memories-title">
+    <div class="memories-head" id="memories-title">Your memories<small>Kept in this browser only; Maxi sees one only when you Send or Discuss it. A Record is kept here when you stop it; closing its card (×) removes it.</small></div>
+    <div id="memories-status"></div>
+    <div id="memories-list"></div>
   </aside>
 </main>
 <div id="says" hidden></div>

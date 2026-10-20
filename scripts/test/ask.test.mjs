@@ -252,7 +252,7 @@ test('footageUserInput carries the human\'s teaching words verbatim, and a Recor
     // the page's one ask passes the words to the one composition, and the turn carries them for the strip
     const lab = read('site/app-assets/maxi-lab.js');
     const ask = lab.slice(lab.indexOf('async function ask('), lab.indexOf('\n}\n', lab.indexOf('async function ask(')));
-    assert.ok(ask.includes('userInput: footageUserInput(q.note, q.teaching)') && ask.includes('teaching: q.teaching'), 'lab.ask must pass q.teaching to footageUserInput and the thread');
+    assert.ok(ask.includes('userInput: footageUserInput(q.note, q.teaching, q.question)') && ask.includes('teaching: q.teaching'), 'lab.ask must pass q.teaching to footageUserInput and the thread');
     assert.ok(/if \(node && q\.teaching !== undefined\) \{\s*throw new Error\(/.test(ask), 'the node body\'s door carries no teaching words: refused by name, never dropped');
     const turns = [];
     const t = createThread({ call: async () => ({ status: 'OK', response: 'ok', interaction_id: 'i1' }), onTurn: (x) => turns.push(x) });

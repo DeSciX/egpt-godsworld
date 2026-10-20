@@ -13,6 +13,7 @@
   "files": {
     "LICENSE": "f776953f07d3086635fd33953bcde47ba66fedaeb9a7cbc6ece2d4cb03cc56f8",
     "package.json": "23058660ed0a35b5ffbd0606f0f7178c3cb0b83138f0abf3f8c501631fccee74",
+    "esm/Bookmarks.js": "48341288b284bf7909d1f5f27567ade4899c0b160b2887da5711f2412d70a3b8",
     "esm/Code.js": "0ae41de258fc126701fe7b39abbd051e52ed09f33a81a6527e04d584c79fb11c",
     "esm/FiberManualRecord.js": "480d7af278b169caa3de1b086abdd80cd38f558a22dc0e023882254d5b7477ed",
     "esm/Fullscreen.js": "8247973e95dff0493a3732ae35e6f0e83acc9995ec1c68aa0aa75ea115c88da1",

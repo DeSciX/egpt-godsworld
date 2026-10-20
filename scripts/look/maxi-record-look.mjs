@@ -19,7 +19,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { INTRO_SEEN_KEY } from '../../site/app-assets/maxi-intro.js';
-import { TEACHING_KEY, TEACHING_PROMPT } from '../../site/app-assets/maxi-record-folder.js';
+import { TEACHING_KEY, TEACHING_PROMPT, START_KEY, partsEqual } from '../../site/app-assets/maxi-record-folder.js';
 import { TEACHING_HEAD } from '../../site/app-assets/maxi-ask.js';
 
 /** The human's words for the look (two lines, as a person types them). */
@@ -165,6 +165,11 @@ try {
     if (!sentUi.card.teach.hidden || !sentUi.card.lines.startsWith('You taught: ' + WORDS)) { throw new Error('the sent card does not show what was taught: ' + JSON.stringify(sentUi.card)); }
     const demo = await page.evaluate(() => { const rs = window.MaxiLab.recorder().last(); const r = rs[rs.length - 1]; return { count: rs.length, name: r.name, chain: r.lab.chain, record: r.record, lab: r.lab, faults: r.faults, complete: r.complete, files: Object.keys(r.files).sort() }; });
     note('Record folder', demo);
+    // THE START: the parts the demonstration began from, read in the page when Record was pressed (the Record rotated then,
+    // nothing carried), so it is parts.before.json; the drag ends elsewhere
+    const startOn = await page.evaluate(() => { const r = window.MaxiLab.recorder().last().slice(-1)[0]; const t = (f) => JSON.parse(typeof r.files[f] === 'string' ? r.files[f] : new TextDecoder().decode(r.files[f])); return { before: t('parts.before.json'), after: t('parts.after.json') }; });
+    note('lab.json start', { start: demo.lab[START_KEY], equalsPartsBefore: partsEqual(demo.lab[START_KEY], startOn.before), equalsPartsAfter: partsEqual(demo.lab[START_KEY], startOn.after) });
+    if (!demo.lab[START_KEY] || !partsEqual(demo.lab[START_KEY], startOn.before) || partsEqual(demo.lab[START_KEY], startOn.after)) { throw new Error('lab.json ' + START_KEY + ' is not the parts the demonstration began from: ' + JSON.stringify({ start: demo.lab[START_KEY], before: startOn.before, after: startOn.after })); }
     const media = await page.evaluate(() => window.__media.splice(0).map((m) => ({ mime_type: m.mime_type, label: m.label, note: m.note, bytes: m.data.length, data: m.data })));
     note('media handed to the question door', media.map((m) => ({ mime_type: m.mime_type, label: m.label, note: m.note, base64Length: m.bytes })));
     if (media.length !== demo.record.clips.length) { throw new Error('ferried ' + media.length + ' clips for ' + demo.record.clips.length); }
@@ -287,6 +292,14 @@ try {
     }
     if (chainMedia.length !== chain[0].record.clips.length + chain[1].record.clips.length || !/^DEMONSTRATION Record 1\/2/.test(chainMedia[0].label)) { throw new Error('the one question did not carry both worlds\' footage'); }
     if (!/2 Records/.test(chainUi.card.title) || !/record-01[\s\S]*record-02/.test(chainUi.card.lines)) { throw new Error('the card does not show both Records: ' + JSON.stringify(chainUi.card)); }
+    // THE START of the chain: the hand-back carries world 1's start, the parts record-01 opened on as Record was pressed
+    // (nothing carried), never world 2's boot parts (record-02's parts.before.json); record-01 carries none
+    const chainStart = await page.evaluate((k) => { const rs = window.MaxiLab.recorder().last(); const t = (r, f) => JSON.parse(typeof r.files[f] === 'string' ? r.files[f] : new TextDecoder().decode(r.files[f]));
+        return { handBack: rs[rs.length - 1].lab[k], first: Object.prototype.hasOwnProperty.call(rs[0].lab, k), before: rs.map((r) => t(r, 'parts.before.json')) }; }, START_KEY);
+    note('chain: lab.json start', { start: chainStart.handBack && chainStart.handBack.mirror, before: chainStart.before.map((b) => b.mirror), isWorld1Before: partsEqual(chainStart.handBack, chainStart.before[0]), isWorld2Before: partsEqual(chainStart.handBack, chainStart.before[1]), record01Carries: chainStart.first });
+    if (!chainStart.handBack || chainStart.first || !partsEqual(chainStart.handBack, chainStart.before[0]) || partsEqual(chainStart.handBack, chainStart.before[1])) {
+        throw new Error('the chain\'s lab.json ' + START_KEY + ' is not world 1\'s start (record-01/parts.before.json), in the hand-back only: ' + JSON.stringify({ start: chainStart.handBack, before: chainStart.before, record01Carries: chainStart.first }));
+    }
 
     note('page errors', pageErrors);
     if (pageErrors.length) { throw new Error('page errors: ' + pageErrors.join(' | ')); }

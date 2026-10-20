@@ -9,16 +9,21 @@
  * Gates, each with its negative control:
  *   1. conformance: the plan is read from lab.json through the owner's PLAN_KEY (one of LOOP_LAB_KEYS), and the plan
  *      maxi-roles.js parsePlan makes of the same json:plan block gives the same answer as the one lab.json holds;
- *   2. the two trial rounds state their plans: the fixture record-mmp41d as its chain [record-01, record-02] and as a chain
- *      of one (the hand-back), and the published site/memories/mm-dse-tunnel-rebuild-p41c ([files]) answer [] — the green controls;
- *   3. each refusal, planted alone, is red BY ITS OWN NAME and green again restored: a plan change no row's `to` holds
- *      (a setDeclared value, a planned centre the rect move does not reach); a row on a part the plan never mentions; a
- *      plan value parts.after.json does not hold; a planned rect for a centre-placed part; a plan that is not parsePlan's;
- *   4. the CHAIN: a plan change stated by a row in an earlier Record passes; an unplanned row in an earlier Record is red
- *      naming it; the hand-back's parts.after.json, never an earlier one's, must hold the plan; a bare tree is refused;
- *   5. an act beyond the plan (a setDeclared key or a move the plan does not name for a planned part; a remove; a fork) is red;
+ *   2. the fixture record-mmp41d states its plan as its chain [record-01, record-02] and as a chain of one (the green
+ *      controls); a Record that carries no start (the published Records written before Records carried one) is refused by
+ *      name — no row and no parts.before.json stands in for it;
+ *   3. START → END (lab.json START_KEY → the hand-back's parts.after.json): a re-staged round that undoes an earlier row and
+ *      then moves the part passes, and its parts diff is the real move; the published trial mmt41a's own Record (a re-stage,
+ *      then a last row that undoes it), its start where its round began, ends where it started and is refused as NO_CHANGE;
+ *      a synthetic round that ends where it started is refused the same way; each with the check planted away, red;
+ *   4. each refusal, planted alone, is red BY ITS OWN NAME and green again restored: a plan change the start already holds;
+ *      a row on a part the plan never mentions; a plan value parts.after.json does not hold; a planned rect for a
+ *      centre-placed part; a plan that is not parsePlan's; rows that say something else no longer decide anything;
+ *   5. the CHAIN: a change made in an earlier Record passes (start → end spans it); an unplanned row in an earlier Record is
+ *      red naming it; the hand-back's parts.after.json, never an earlier one's, is the end; a bare tree is refused;
+ *   6. an act beyond the plan (a setDeclared key or a move the plan does not name for a planned part; a remove; a fork) is red;
  *      an add of a planned part is not (its arrival; its props state the planned value), and the same add unplanned is red;
- *   6. a planned centre against a rect's centre: 0.5 px per axis passes, 0.6 px fails (RECT_CENTER_SLACK).
+ *   7. a planned centre against a rect's centre: 0.5 px per axis passes, 0.6 px fails (RECT_CENTER_SLACK).
  */
 
 import { test } from 'node:test';
@@ -26,13 +31,18 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { recordPlanFaults, planOf, PLAN_KEY, LOOP_LAB_KEYS, FILES, MOVE, CHANGE_KEYS, RECT_CENTER_SLACK, recordFolderFaults } from '../../site/app-assets/maxi-record-folder.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import { pathToFileURL } from 'node:url';
+import { recordPlanFaults, planOf, startOf, PLAN_KEY, START_KEY, NO_CHANGE, LOOP_LAB_KEYS, FILES, MOVE, CHANGE_KEYS, RECT_CENTER_SLACK, recordFolderFaults } from '../../site/app-assets/maxi-record-folder.js';
+import { recordLines } from '../gen-memories-seen.mjs';
 import { parsePlan, emptyStage, HANDOFF_TAGS } from '../../site/app-assets/maxi-roles.js';
 import { readRecordFolder } from '../../minimaxi/record-folder.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MMP41D = path.join(REPO, 'scripts', 'test', 'fixtures', 'record-mmp41d', 'record', 'record-02');
 const P41C = path.join(REPO, 'site', 'memories', 'mm-dse-tunnel-rebuild-p41c');
+const T41A = path.join(REPO, 'site', 'memories', 'mm-dse-tunnel-rebuild-t41a');
 
 const enc = (v) => new TextEncoder().encode(JSON.stringify(v, null, 2) + '\n');
 const dec = (b) => JSON.parse(typeof b === 'string' ? b : new TextDecoder().decode(b));
@@ -41,7 +51,9 @@ function withJson(files, name, edit) { const v = dec(files[name]); edit(v); retu
 /** Which arms a fault list fired: a fault names its arm in words the owner writes. */
 function arms(faults) {
     return {
-        row: faults.some((f) => /has no change row on .* in the chain/.test(f)),
+        nostart: faults.some((f) => /lab\.json carries no `start`/.test(f)),
+        nochange: faults.some((f) => f.startsWith(NO_CHANGE + ': ')),
+        already: faults.some((f) => /: the start \(lab\.json start\) already holds /.test(f)),
         after: faults.some((f) => /: record-\d\d\/parts\.after\.json (holds|has no part)/.test(f)),
         unplanned: faults.some((f) => /is on a part the plan never mentions/.test(f)),
         beyond: faults.some((f) => /acts beyond the plan/.test(f))
@@ -68,13 +80,82 @@ test('conformance: the plan rides lab.json under PLAN_KEY (one of LOOP_LAB_KEYS)
 });
 
 const R01 = path.join(MMP41D, '..', 'record-01');
-const NONE = { row: false, after: false, unplanned: false, beyond: false };
+const NONE = { nostart: false, nochange: false, already: false, after: false, unplanned: false, beyond: false };
 
-test('the two trial rounds state their plans: record-mmp41d as its chain and as a chain of one, mm-dse-tunnel-rebuild-p41c (the published Record memory) as a chain of one, answer []', () => {
+test('record-mmp41d states its plan as its chain and as a chain of one; a Record that carries no start (the published mm-dse-tunnel-rebuild-p41c) is refused by name, and nothing stands in for it', () => {
     const r01 = readRecordFolder(R01), r02 = readRecordFolder(MMP41D), p41c = readRecordFolder(P41C);
     assert.deepEqual(recordPlanFaults(planOf(r02), [r01, r02]), [], 'record-mmp41d [record-01, record-02]');
     assert.deepEqual(recordPlanFaults(planOf(r02), [r02]), [], 'record-mmp41d [record-02]');
-    assert.deepEqual(recordPlanFaults(planOf(p41c), [p41c]), [], 'mm-dse-tunnel-rebuild-p41c');
+    assert.deepEqual(recordFolderFaults(p41c), [], 'the published Record is a complete §6 Record');
+    const f = recordPlanFaults(planOf(p41c), [p41c]);
+    assert.deepEqual(arms(f), { ...NONE, nostart: true }, f.join('\n'));
+    assert.match(f[0], /^record-01: lab\.json carries no `start` — .* cannot be judged start → end \(parts\.before\.json is where its world stood when the Record opened, not necessarily where the round began\)\.$/);
+    assert.throws(() => startOf(p41c), /lab\.json carries no `start`/, 'the one reader refuses it too');
+    const noStart = withJson(r02, FILES.lab, (lab) => { delete lab[START_KEY]; });
+    assert.deepEqual(arms(recordPlanFaults(planOf(r02), [noStart])), { ...NONE, nostart: true }, 'the fixture with its start deleted');
+    const notBlock = withJson(r02, FILES.lab, (lab) => { lab[START_KEY] = { mirror: 'Wall' }; });
+    assert.match(recordPlanFaults(planOf(r02), [notBlock])[0], /^record-02: lab\.json start: entry "mirror" is not \[Kind, \{props\}\]/);
+    assert.ok(recordFolderFaults(notBlock).includes('lab.json start: entry "mirror" is not [Kind, {props}]: "Wall"'), 'the folder gate names a start that is not a parts block');
+    const early = withJson(r01, FILES.lab, (lab) => { lab[START_KEY] = dec(r01[FILES.partsBefore]); });
+    assert.ok(recordFolderFaults(early).includes('lab.json start rides in the hand-back Record of a chain only'), 'a start in an earlier Record is refused by name');
+});
+
+// ── START → END ─────────────────────────────────────────────────────────────────────────────
+/** The published mmt41a Record (round 2 of 2: it opened on round 1's world, re-staged the screen to the stock place, then
+ *  dragged it back to the plan's), with the start `start` planted into its lab.json (the Record carries none: it predates START_KEY). */
+function t41aWith(start) { return withJson(readRecordFolder(T41A), FILES.lab, (lab) => { lab[START_KEY] = start; }); }
+
+test('START → END: a re-staged round that undoes an earlier row and then moves the part passes, and its parts diff is the real move (negative control: the diff read off the last row\'s Record files alone is not)', () => {
+    const r02 = readRecordFolder(MMP41D);
+    const start = dec(r02[FILES.lab])[START_KEY];
+    // the round: the angle set, the mirror dragged to 330 (a wrong place), re-staged back to 360 (undoing that row), then to the plan's 290
+    const restaged = withJson(withJson(r02, FILES.record, (r) => {
+        const set = r.changes[0];
+        r.changes = [set,
+            { tick: 3000, name: 'mirror', op: MOVE, by: 'maxi', from: { rect: [360, 80, 20, 240] }, to: { rect: [330, 80, 20, 240] } },
+            { tick: 3100, name: 'mirror', op: MOVE, by: 'maxi', from: { rect: [330, 80, 20, 240] }, to: { rect: [360, 80, 20, 240] } },
+            { tick: 8378, name: 'mirror', op: MOVE, by: 'maxi', from: { rect: [360, 80, 20, 240] }, to: { rect: [290, 80, 20, 240] } }];
+    }), FILES.partsBefore, (p) => { p.mirror[1].rect = [330, 80, 20, 240]; });   // its world's Record opened after the wrong drag
+    assert.deepEqual(recordPlanFaults(planOf(restaged), [restaged]), [], 'start (360, 45°) → end (290, 30°): the plan is stated');
+    const end = dec(r02[FILES.partsAfter]);
+    assert.deepEqual(recordLines(restaged).filter((l) => l.startsWith('part ')), ['part mirror: ' + JSON.stringify(start.mirror) + ' → ' + JSON.stringify(end.mirror)], 'the parts diff is the real move, start → end');
+    const noStart = withJson(restaged, FILES.lab, (lab) => { delete lab[START_KEY]; });
+    assert.notDeepEqual(recordLines(noStart).filter((l) => l.startsWith('part ')), recordLines(restaged).filter((l) => l.startsWith('part ')), 'the control: parts.before.json → parts.after.json is another diff (from 330), so the start is what makes it the real move');
+});
+
+test('a round that ends where it started is refused as NO_CHANGE, whatever its rows did: the mmt41a shape (a re-stage, then a last row that undoes it) and a synthetic one (negative control: the check planted away passes both)', async () => {
+    const t = readRecordFolder(T41A);
+    const rows = dec(t[FILES.record]).changes;
+    assert.deepEqual(rows.map((r) => [r.from.rect[0], r.to.rect[0]]), [[355, 315], [315, 355]], 'the trial\'s rows: the re-stage to the stock place, then a last row that undoes it');
+    const opened = t41aWith(dec(t[FILES.partsBefore]));   // its start is where round 2 began: the world round 1 left
+    const f = recordPlanFaults(planOf(opened), [opened]);
+    assert.deepEqual(f, [
+        NO_CHANGE + ': record-01/parts.after.json equals the start (lab.json start) — the round ends where it started, whatever its 2 row(s) did on the way',
+        'plan changes[0] (screen center: [365,200,0]): the start (lab.json start) already holds "screen" center at [365,200] (the centre of its rect [355,0,20,400]) — start → end does not make this change'
+    ]);
+    assert.deepEqual(recordLines(opened).filter((l) => l.startsWith('part ')), ['part (none): parts.after.json equals lab.json start']);
+    assert.deepEqual(recordLines(t).filter((l) => l.startsWith('part ')), ['part (none): parts.after.json equals parts.before.json'], 'as published (no start), its own diff names its own file');
+    // synthetic: the fixture's mirror moved away and back inside the round, nothing else changed
+    const r02 = readRecordFolder(MMP41D);
+    const back = withJson(withJson(r02, FILES.record, (r) => {
+        r.changes = [{ tick: 3000, name: 'mirror', op: MOVE, by: 'maxi', from: { rect: [360, 80, 20, 240] }, to: { rect: [290, 80, 20, 240] } },
+                     { tick: 3100, name: 'mirror', op: MOVE, by: 'maxi', from: { rect: [290, 80, 20, 240] }, to: { rect: [360, 80, 20, 240] } }];
+    }), FILES.partsAfter, (p) => { Object.keys(p).forEach((k) => { delete p[k]; }); Object.assign(p, dec(r02[FILES.lab])[START_KEY]); });
+    const centre = { ...planOf(r02), changes: [{ object: 'mirror', param: 'center', value: [370, 200], why: 'w' }] };
+    assert.deepEqual(arms(recordPlanFaults(centre, [back])), { ...NONE, nochange: true, already: true });
+    // planted away: the NO_CHANGE check and the start arm deleted from a copy of the owner — both rounds pass (RED)
+    const src = fs.readFileSync(path.join(REPO, 'site', 'app-assets', 'maxi-record-folder.js'), 'utf8');
+    const CHECK = '    if (start !== null && partsEqual(start, end)) {';
+    const ALREADY = '        if (was.none === undefined && sameValue(c.param, c.value, was)) {';
+    assert.equal(src.split(CHECK).length, 2, 'the plant target moved'); assert.equal(src.split(ALREADY).length, 2, 'the plant target moved');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-plant-'));
+    try {
+        const pin = (x) => x.replace(/from '\.\/(frqtl-web-project|maxi-hands)\.js'/g, (m, n) => "from '" + pathToFileURL(path.join(REPO, 'site/app-assets', n + '.js')).href + "'");
+        fs.writeFileSync(path.join(dir, 'maxi-record-folder.js'), pin(src.replace(CHECK, '    if (false) {').replace(ALREADY, '        if (false) {')));
+        const m = await import(pathToFileURL(path.join(dir, 'maxi-record-folder.js')).href);
+        assert.deepEqual(m.recordPlanFaults(planOf(opened), [opened]), [], 'planted away, the mmt41a shape passes (the plant exhibits the failure)');
+        assert.deepEqual(m.recordPlanFaults(centre, [back]), [], 'planted away, the synthetic round passes');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('each refusal, planted alone, is red by its own name; restored, green', () => {
@@ -83,17 +164,16 @@ test('each refusal, planted alone, is red by its own name; restored, green', () 
     const run = (rec) => recordPlanFaults(plan, [rec]);
     assert.deepEqual(arms(run(files)), NONE, 'the control');
 
-    // a plan change no row's `to` holds: the setDeclared row turned to 25 (parts.after still 30)
-    const rowOff = withJson(files, FILES.record, (r) => { r.changes[0].to.orientationDeg = 25; });
-    let f = run(rowOff);
-    assert.deepEqual(arms(f), { ...NONE, row: true }, f.join('\n'));
-    assert.equal(f[0], 'plan changes[0] (mirror orientationDeg: 30) has no change row on "mirror" in the chain whose `to` holds orientationDeg: 30 (its rows: record-02 setDeclared → {"orientationDeg":25}; record-02 move → {"rect":[290,80,20,240]})');
+    // a plan change the start already holds: the producer began with the mirror at 30 degrees
+    const already = withJson(files, FILES.lab, (lab) => { lab[START_KEY].mirror[1].orientationDeg = 30; });
+    let f = run(already);
+    assert.deepEqual(f, ['plan changes[0] (mirror orientationDeg: 30): the start (lab.json start) already holds "mirror" orientationDeg at 30 — start → end does not make this change']);
+    const placed = withJson(files, FILES.lab, (lab) => { lab[START_KEY].mirror[1].rect = [291, 80, 19, 240]; });   // centre [300.5, 200]: within the slack
+    assert.match(run(placed)[0], /^plan changes\[1\] \(mirror center: \[300,200\]\): the start \(lab\.json start\) already holds "mirror" center at \[300\.5,200\] \(the centre of its rect \[291,80,19,240\]\)/);
 
-    // a planned centre the {rect} move does not reach: the move row 2 px short (parts.after still holds it)
-    const moveOff = withJson(files, FILES.record, (r) => { r.changes[1].to.rect = [292, 80, 20, 240]; });
-    f = run(moveOff);
-    assert.deepEqual(arms(f), { ...NONE, row: true }, f.join('\n'));
-    assert.match(f[0], /^plan changes\[1\] \(mirror center: \[300,200\]\) has no change row on "mirror" in the chain whose `to` holds center: \[300,200\]/);
+    // rows decide nothing about where the round ended: a row whose `to` says 25, or a move 2 px short, with END holding the plan
+    assert.deepEqual(run(withJson(files, FILES.record, (r) => { r.changes[0].to.orientationDeg = 25; })), [], 'a setDeclared row that says 25: END holds 30');
+    assert.deepEqual(run(withJson(files, FILES.record, (r) => { r.changes[1].to.rect = [292, 80, 20, 240]; })), [], 'a move row 2 px short: END holds the plan\'s centre');
 
     // a row on a part the plan never mentions
     const extra = withJson(files, FILES.record, (r) => { r.changes.push({ tick: 3000, name: 'source', op: MOVE, by: 'maxi', from: { center: [72, 200] }, to: { center: [80, 200] } }); });
@@ -126,13 +206,14 @@ test('each refusal, planted alone, is red by its own name; restored, green', () 
 test('the chain: a change stated in an earlier Record passes; an unplanned row there is red naming it; only the hand-back\'s parts.after.json must hold the plan', () => {
     const r01 = readRecordFolder(R01), r02 = readRecordFolder(MMP41D);
     const plan = planOf(r02);
-    // the setDeclared made in the first world (before the openSketch), its row in record-01
+    // the setDeclared made in the first world (before the openSketch), its row in record-01: start → end spans it
     const set = dec(r02[FILES.record]).changes[0];
     const r01set = withJson(r01, FILES.record, (r) => { r.changes.push({ ...set, tick: r.tickRange[0] }); });
     const r02moveOnly = withJson(r02, FILES.record, (r) => { r.changes.splice(0, 1); });
-    assert.deepEqual(recordPlanFaults(plan, [r01set, r02moveOnly]), [], 'the setDeclared stated in record-01');
-    // negative control: the same hand-back alone does not state it
-    assert.deepEqual(arms(recordPlanFaults(plan, [r02moveOnly])), { ...NONE, row: true });
+    assert.deepEqual(recordPlanFaults(plan, [r01set, r02moveOnly]), [], 'the setDeclared made in record-01');
+    // negative control: a start that already holds it (the producer began at 30 degrees) is red, chain or not
+    const r02began30 = withJson(r02moveOnly, FILES.lab, (lab) => { lab[START_KEY].mirror[1].orientationDeg = 30; });
+    assert.deepEqual(arms(recordPlanFaults(plan, [r01set, r02began30])), { ...NONE, already: true });
     // an unplanned row in the earlier Record is named with it
     const r01extra = withJson(r01, FILES.record, (r) => { r.changes.push({ tick: r.tickRange[0], name: 'source', op: MOVE, by: 'maxi', from: { center: [72, 200] }, to: { center: [80, 200] } }); });
     assert.deepEqual(recordPlanFaults(plan, [r01extra, r02]), ['record-01/record.json changes[0] (move of "source") is on a part the plan never mentions (the plan names "mirror")']);
@@ -184,10 +265,12 @@ test('a planned centre against a rect\'s centre: 0.5 px per axis passes, 0.6 px 
     assert.deepEqual(recordPlanFaults(at(300), [odd]), [], '0.5 px off: passes');
     assert.deepEqual(recordPlanFaults(at(301), [odd]), [], '0.5 px the other side: passes');
     const f = recordPlanFaults(at(299.9), [odd]);
-    assert.deepEqual(arms(f), { ...NONE, row: true, after: true }, '0.6 px off: fails on the row and on parts.after.json\n' + f.join('\n'));
-    assert.deepEqual(arms(recordPlanFaults(at(301.1), [odd])), { ...NONE, row: true, after: true }, '0.6 px the other side');
+    assert.deepEqual(arms(f), { ...NONE, after: true }, '0.6 px off: fails on parts.after.json\n' + f.join('\n'));
+    assert.deepEqual(arms(recordPlanFaults(at(301.1), [odd])), { ...NONE, after: true }, '0.6 px the other side');
     // an exact centre (a centre-placed part) has no slack: source at [72, 200] planned [72.5, 200]
     const src = withJson(files, FILES.record, (r) => { r.changes.push({ tick: 3000, name: 'source', op: MOVE, by: 'maxi', from: { center: [72, 200] }, to: { center: [80, 200] } }); });
     const srcPlan = { ...planOf(files), changes: planOf(files).changes.concat([{ object: 'source', param: 'center', value: [80.5, 200], why: 'w' }]) };
-    assert.deepEqual(arms(recordPlanFaults(srcPlan, [src])), { ...NONE, row: true, after: true });
+    const srcMoved = withJson(src, FILES.partsAfter, (p) => { p.source[1].center = [80, 200]; });
+    assert.deepEqual(arms(recordPlanFaults(srcPlan, [srcMoved])), { ...NONE, after: true });
+    assert.deepEqual(recordPlanFaults({ ...srcPlan, changes: srcPlan.changes.slice(0, 2).concat([{ object: 'source', param: 'center', value: [80, 200], why: 'w' }]) }, [srcMoved]), [], 'the control: exactly [80, 200] passes');
 });

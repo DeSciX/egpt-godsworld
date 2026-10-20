@@ -20,5 +20,9 @@ test, never a memory.
   `site/memories/<id>/turns/`.
 - One file was removed after the trial: `record-01/clip-01.mp4`, so the chain's first Record is incomplete, as the tests
   that read only the hand-back Record need.
+- One field was added after the trial: `record-02/lab.json` `start` (the producer's start, `START_KEY`), set to
+  `record-01/parts.before.json`, the parts of the world the loop began in (the trial ran before Records carried their
+  start; it was one round with nothing carried, so `record-01` opened when the loop took the outline). The plan-check
+  test deletes it in its scratch copy to show a Record without a start refused by name.
 - The trial's lab.json carries no `teaching` (the human's words on a Record demonstration): the teaching test adds them to
   its scratch copy of `record-02/lab.json`, never to this folder.
