@@ -25,7 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { publishedFiles, isPublished } from '../publish-paths.mjs';
+import { publishedFiles, isPublishedIn, viewOf } from '../publish-paths.mjs';
 
 import {
     INTRO_TEXT, EXPLAINERS, ENTRY_LABELS, INTRO_SEEN_KEY, PADS, PADS_LEDE,
@@ -104,7 +104,7 @@ test('the intro text has one home: no published text file but maxi-intro.js carr
     for (const need of ['site/share.json', 'site/index.html', 'assets/system_instructions.md']) { assert.ok(files.includes(need), 'the walk lost ' + need); }
     assert.ok(files.some((f) => f.startsWith('kb/')) && files.some((f) => f.startsWith('minimaxi/')), 'the walk must cover the whole published tree');
     assert.ok(!files.some((f) => WALK_EXCEPT.some((x) => f.startsWith(x))), 'the walk read an excepted path');
-    assert.ok(files.every(isPublished), 'the walk read a file that is not published');
+    assert.ok(files.every(isPublishedIn(viewOf(REPO))), 'the walk read a file that is not published');
     const home = 'site/app-assets/maxi-intro.js';
     const holders = introHolders(files, read, windows);
     assert.deepEqual(Object.keys(holders), [home], 'the intro text is copied outside maxi-intro.js INTRO_TEXT: ' + JSON.stringify(holders));

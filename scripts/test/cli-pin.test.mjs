@@ -14,26 +14,34 @@
  * same phrase in any other file is a run pin. The pins gated are the ones that ship: a twin-only file is never published
  * and is not read (a pin there is a dated record or a seat's note, never a line a reader runs).
  *
+ * The published tree is read in the view of the checkout (scripts/publish-paths.mjs publishedFiles): in the twin,
+ * .publish/CLAUDE.md; in the public repo, the same file at CLAUDE.md.
+ *
  * Gates (each shown red on a planted fault, ws-cli-400):
  *   1. DESCIX_CLI is an exact version ≥ the floor (the constant moved back to 2.0.4 is red);
  *   2. every run pin in the published tree equals DESCIX_CLI, named by file:line;
  *   3. the classifier's own plants: `@3`, `@latest`, `@3.0.1`, `@^4.0.0` in a script, and the ManifestLoader phrase in
  *      a script, are each a run pin that is not DESCIX_CLI; the note in site.json is not a pin;
- *   4. the scan found the owner's own pin and at least one other file (a scan that reads nothing cannot pass);
- *   5. every tracked package.json (outside site/vendor/) that depends on @descix/cli asks for exactly ^<DESCIX_CLI's
- *      version>, and its package-lock.json resolves exactly that version (a stale spec or an unregenerated lock is red,
- *      named by file); the scan must find the root and microservice manifests (ws-cli-410).
+ *   4. the scan found the owner's own pin and at least one other file (a scan that reads nothing cannot pass).
+ *   5. DESCIX_CLI is parsed once, in its owner (DESCIX_CLI_VERSION). Outside the owner, a tracked script's code line may
+ *      use DESCIX_CLI only as the whole value: never followed by `.` or `[`, never an argument to exec, match, test,
+ *      replace or split; and the bare pin prefix (@descix/cli@, slash escaped or not) is never followed by a quote,
+ *      `(`, `[` or `\d`, except in the pin scanner's own two lines here (PIN_PREFIX, PIN_RE). Each hit is named by
+ *      file:line. This refuses a LISTED set of spellings (the six planted below, and the deleted local regex); it is not
+ *      a proof that no other spelling parses the pin.
+ * The npm dependencies on @descix/cli (the twin's package.json files and locks, none published) are gated twin-side by
+ * scripts/test/twin-deps.test.mjs.
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { DESCIX_CLI } from '../../minimaxi/ask-door.mjs';
-import { publishedFiles, isPublished } from '../publish-paths.mjs';
+import { DESCIX_CLI, DESCIX_CLI_VERSION } from '../../minimaxi/ask-door.mjs';
+import { publishedFiles, isPublishedIn, viewOf } from '../publish-paths.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SELF = path.relative(ROOT, fileURLToPath(import.meta.url));
@@ -42,53 +50,14 @@ const SKIP = [/^site\/vendor\//];
 const FLOOR = [4, 0, 0];
 // Any spec after `@descix/cli@`, up to whitespace, a quote, a backtick, a closing paren or bracket; trailing
 // sentence punctuation is not part of the spec.
+const PIN_PREFIX = '@descix/cli@';
 const PIN_RE = /@descix\/cli@([^\s'"`)\]]+)/g;
 // The one mention that is not a run pin: this file's schema provenance note naming the CLI's ManifestLoader.
 const PROVENANCE = Object.freeze({ file: '.descix/manifests/site.json', re: /^@descix\/cli@\S+ ManifestLoader\b/ });
 
-function versionOf(pin) {
-    const m = /^@descix\/cli@(\d+)\.(\d+)\.(\d+)$/.exec(pin);
-    if (!m) { throw new Error('DESCIX_CLI is not @descix/cli@<major>.<minor>.<patch>: ' + JSON.stringify(pin)); }
-    return [Number(m[1]), Number(m[2]), Number(m[3])];
-}
-
 function atLeast(v, floor) {
     for (let i = 0; i < 3; i++) { if (v[i] !== floor[i]) { return v[i] > floor[i]; } }
     return true;
-}
-
-const DEP_FIELDS = Object.freeze(['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']);
-
-/** The npm dependency faults of one package.json against DESCIX_CLI: [] when it does not depend on @descix/cli or agrees. */
-function npmDepFaults(file, pkg, lock, pin) {
-    const version = versionOf(pin).join('.');
-    const want = '^' + version;
-    const out = [];
-    for (const field of DEP_FIELDS) {
-        const spec = pkg[field] && pkg[field]['@descix/cli'];
-        if (spec === undefined) { continue; }
-        if (spec !== want) { out.push(file + ' ' + field + ' @descix/cli is ' + JSON.stringify(spec) + ', not ' + JSON.stringify(want)); }
-        const lockFile = path.posix.join(path.posix.dirname(file), 'package-lock.json');
-        if (!lock) { out.push(lockFile + ' is missing'); continue; }
-        const rootSpec = lock.packages && lock.packages[''] && lock.packages[''][field] && lock.packages[''][field]['@descix/cli'];
-        const resolved = lock.packages && lock.packages['node_modules/@descix/cli'] && lock.packages['node_modules/@descix/cli'].version;
-        if (rootSpec !== spec) { out.push(lockFile + ' records @descix/cli ' + JSON.stringify(rootSpec) + ', package.json asks ' + JSON.stringify(spec) + ' — regenerate it'); }
-        if (resolved !== version) { out.push(lockFile + ' resolves @descix/cli ' + JSON.stringify(resolved) + ', not ' + version + ' — regenerate it'); }
-    }
-    return out;
-}
-
-/** Every tracked package.json outside site/vendor/, with its lock (null when absent). */
-function manifests() {
-    const listed = execFileSync('git', ['ls-files', '--', 'package.json', '**/package.json'], { cwd: ROOT, encoding: 'utf8' });
-    return listed.split('\n').filter(Boolean).filter((f) => !SKIP.some((re) => re.test(f))).map((f) => {
-        const lockAbs = path.join(ROOT, path.dirname(f), 'package-lock.json');
-        return {
-            file: f,
-            pkg: JSON.parse(fs.readFileSync(path.join(ROOT, f), 'utf8')),
-            lock: fs.existsSync(lockAbs) ? JSON.parse(fs.readFileSync(lockAbs, 'utf8')) : null
-        };
-    });
 }
 
 /** The run pins in one file's text: [{file, line, pin}] (the provenance note in its own file is left out). */
@@ -97,7 +66,7 @@ function pinsIn(file, text) {
     String(text).split('\n').forEach((line, i) => {
         for (const m of line.matchAll(PIN_RE)) {
             if (file === PROVENANCE.file && PROVENANCE.re.test(line.slice(m.index))) { continue; }
-            out.push({ file: file, line: i + 1, pin: '@descix/cli@' + m[1].replace(/[.,;:]+$/, '') });
+            out.push({ file: file, line: i + 1, pin: PIN_PREFIX + m[1].replace(/[.,;:]+$/, '') });
         }
     });
     return out;
@@ -123,8 +92,8 @@ function scan() {
 }
 
 test('DESCIX_CLI is an exact version at or above the floor (≤3.x hits the 410 on the retired buy verbs)', () => {
-    assert.ok(atLeast(versionOf(DESCIX_CLI), FLOOR),
-        OWNER + ' DESCIX_CLI is ' + DESCIX_CLI + ', below @descix/cli@' + FLOOR.join('.') + ' — the platform answers 410 COMMAND_REMOVED to ≤3.x.');
+    assert.ok(atLeast(DESCIX_CLI_VERSION.split('.').map(Number), FLOOR),
+        OWNER + ' DESCIX_CLI is ' + DESCIX_CLI + ', below ' + PIN_PREFIX + FLOOR.join('.') + ' — the platform answers 410 COMMAND_REMOVED to ≤3.x.');
 });
 
 test('the classifier: any spec is a run pin; the ManifestLoader note is excepted only in site.json', () => {
@@ -148,7 +117,7 @@ test('the classifier: any spec is a run pin; the ManifestLoader note is excepted
 
 test('every run pin of @descix/cli in the published tree equals DESCIX_CLI', () => {
     const files = scannedFiles();
-    assert.ok(files.length > 100 && files.every(isPublished) && !files.includes(SELF), 'the scan reads the published files, less this one: ' + files.length);
+    assert.ok(files.length > 100 && files.every(isPublishedIn(viewOf(ROOT))) && !files.includes(SELF), 'the scan reads the published files, less this one: ' + files.length);
     const pins = scan();
     assert.ok(pins.some((h) => h.file === OWNER && h.pin === DESCIX_CLI), 'the scan did not find DESCIX_CLI in ' + OWNER + ' — it read nothing.');
     assert.ok(new Set(pins.map((h) => h.file)).size >= 2, 'the scan found run pins in fewer than two files: ' + JSON.stringify(pins));
@@ -157,31 +126,47 @@ test('every run pin of @descix/cli in the published tree equals DESCIX_CLI', () 
         'run pins that are not ' + OWNER + ' DESCIX_CLI (' + DESCIX_CLI + '): move each to the constant (a script imports it; a doc names its version).');
 });
 
-test('the npm dependency classifier: a stale spec, a stale lock or a missing lock is red; the agreeing pair is not', () => {
-    const v = versionOf(DESCIX_CLI).join('.');
-    const lockOf = (spec, resolved) => ({ packages: { '': { dependencies: { '@descix/cli': spec } }, 'node_modules/@descix/cli': { version: resolved } } });
-    const good = { dependencies: { '@descix/cli': '^' + v } };
-    assert.deepEqual(npmDepFaults('x/package.json', good, lockOf('^' + v, v), DESCIX_CLI), [], 'the agreeing pair (the control)');
-    assert.deepEqual(npmDepFaults('x/package.json', { dependencies: { other: '1' } }, null, DESCIX_CLI), [], 'no @descix/cli dependency is not a fault');
-    const plants = [
-        [{ dependencies: { '@descix/cli': '^1.0.14' } }, lockOf('^1.0.14', '1.0.14'), 'a stale range'],
-        [{ dependencies: { '@descix/cli': v } }, lockOf(v, v), 'an exact version, not the caret range'],
-        [{ devDependencies: { '@descix/cli': '^4.0.0' } }, { packages: { '': { devDependencies: { '@descix/cli': '^4.0.0' } }, 'node_modules/@descix/cli': { version: '4.0.0' } } }, 'a stale devDependency'],
-        [good, lockOf('^' + v, '4.0.0'), 'a lock that still resolves the old version'],
-        [good, lockOf('1.0.3', '1.0.3'), 'a lock not regenerated after the spec moved'],
-        [good, null, 'a missing lock']
-    ];
-    for (const [pkg, lock, why] of plants) {
-        assert.ok(npmDepFaults('x/package.json', pkg, lock, DESCIX_CLI).length > 0, why + ' must be red');
-    }
-});
+// Gate 5's rules (a listed set of spellings, not a proof). Each is built so that its own source line does not match it.
+const PARSE_RULES = Object.freeze([
+    { why: 'DESCIX_CLI followed by . or [', re: /\bDESCIX_CLI(?![\w$])\s*(?:\?\.|[.[])/ },
+    { why: 'DESCIX_CLI as an argument to exec, match, test, replace or split', re: /\.(?:exec|match|matchAll|test|replace|replaceAll|split)\s*\([^)]*\bDESCIX_CLI(?![\w$])/ },
+    { why: 'the pin prefix followed by a quote, (, [ or \\d', re: /@descix(?:\\*\/)cli@(?:['"`(\[]|\\d)/ }
+]);
+// The pin scanner's own lines, the one named exception (this file only).
+const SCANNER_LINES = Object.freeze([/^const PIN_PREFIX = /, /^const PIN_RE = /]);
+const isComment = (l) => /^\s*(?:\*|\/\*|\/\/)/.test(l);
 
-test('every npm dependency on @descix/cli is ^<DESCIX_CLI version> and its lock resolves that version', () => {
-    const all = manifests();
-    const deps = all.filter((m) => DEP_FIELDS.some((f) => m.pkg[f] && m.pkg[f]['@descix/cli'] !== undefined)).map((m) => m.file);
-    for (const must of ['package.json', 'microservice/package.json']) {
-        assert.ok(deps.includes(must), 'the manifest scan did not find the @descix/cli dependency in ' + must + ' — it read ' + JSON.stringify(all.map((m) => m.file)));
+/** The code lines of one script's text that parse the CLI pin: [{file, line, why}]. */
+function parsersIn(file, text) {
+    return String(text).split('\n').flatMap((l, i) => {
+        if (isComment(l) || (file === SELF && SCANNER_LINES.some((re) => re.test(l)))) { return []; }
+        const rule = PARSE_RULES.find((r) => r.re.test(l));
+        return rule ? [{ file: file, line: i + 1, why: rule.why }] : [];
+    });
+}
+
+test('DESCIX_CLI is parsed once, in its owner: no other tracked script parses the pin (each planted spelling is red)', () => {
+    const listed = execFileSync('git', ['-C', ROOT, 'ls-files', '-z'], { encoding: 'utf8', maxBuffer: 1 << 28 }).split('\0').filter(Boolean);
+    const scripts = listed.filter((f) => /\.(m?js|cjs)$/.test(f) && !SKIP.some((re) => re.test(f)) && !/(^|\/)node_modules\//.test(f));
+    assert.ok(scripts.includes(OWNER) && scripts.includes(SELF), 'the scan did not read the owner and this file');
+    const hits = scripts.flatMap((f) => parsersIn(f, fs.readFileSync(path.join(ROOT, f), 'utf8')));
+    assert.deepEqual(hits.filter((h) => h.file !== OWNER).map((h) => h.file + ':' + h.line + ' ' + h.why), [],
+        'parsers of the CLI pin outside ' + OWNER + ': import DESCIX_CLI_VERSION instead');
+    assert.equal(hits.length, 1, 'the owner parses the pin on exactly one line: ' + JSON.stringify(hits));
+    // The plants, assembled so this file's own source carries none of them.
+    const C = 'DESCIX' + '_CLI'; const P = '@descix' + '/cli@'; const PE = '@descix' + '\\/cli@';
+    const plants = [
+        '    const m = /^' + PE + '([0-9.]+)$/.exec(' + C + ');',
+        '    const m = /cli@(\\d+\\.\\d+\\.\\d+)$/.exec(' + C + ');',
+        "    const re = new RegExp('^" + P + "(\\\\d+)\\\\.(\\\\d+)');",
+        "    const v = " + C + ".split('@')[2];",
+        "    const v = " + C + ".replace('" + P + "', '');",
+        "    const v = " + C + ".slice(" + C + ".lastIndexOf('@') + 1);",
+        '    const m = /^' + PE + '(\\d+)\\.(\\d+)\\.(\\d+)$/.exec(pin);'
+    ];
+    for (const plant of plants) { assert.equal(parsersIn('scripts/test/x.test.mjs', plant).length, 1, 'planted spelling not refused: ' + plant); }
+    for (const ok of ["    assert.equal(h.pin, " + C + ");", "    const argv = ['-y', '-p', " + C + ", 'descix'];", "const CLI = process.env." + C, ' * ' + C + '. A comment is not code.']) {
+        assert.deepEqual(parsersIn('scripts/test/x.test.mjs', ok), [], 'a whole-value use is not a parse: ' + ok);
     }
-    const faults = all.flatMap((m) => npmDepFaults(m.file, m.pkg, m.lock, DESCIX_CLI));
-    assert.deepEqual(faults, [], 'npm dependencies on @descix/cli that disagree with ' + OWNER + ' DESCIX_CLI (' + DESCIX_CLI + '): set each to the caret range and regenerate its lock with npm install --package-lock-only.');
+    assert.equal(parsersIn('scripts/test/x.test.mjs', 'const PIN_RE = ' + String(PIN_RE) + ';').length, 1, 'the scanner line outside this file is a parse');
 });

@@ -10,10 +10,10 @@
  *   1. conformance: the plan is read from lab.json through the owner's PLAN_KEY (one of LOOP_LAB_KEYS), and the plan
  *      maxi-roles.js parsePlan makes of the same json:plan block gives the same answer as the one lab.json holds;
  *   2. the fixture record-mmp41d states its plan as its chain [record-01, record-02] and as a chain of one (the green
- *      controls); a Record that carries no start (the published Records written before Records carried one) is refused by
- *      name — no row and no parts.before.json stands in for it;
+ *      controls), and so does the published p41c; a Record that carries no start (p41c with it deleted) is refused by
+ *      name, by the plan check and by the generator — no row and no parts.before.json stands in for it;
  *   3. START → END (lab.json START_KEY → the hand-back's parts.after.json): a re-staged round that undoes an earlier row and
- *      then moves the part passes, and its parts diff is the real move; the published trial mmt41a's own Record (a re-stage,
+ *      then moves the part passes, and its parts diff is the real move; trial mmt41a's own Record (fixture record-mmt41a: a re-stage,
  *      then a last row that undoes it), its start where its round began, ends where it started and is refused as NO_CHANGE;
  *      a synthetic round that ends where it started is refused the same way; each with the check planted away, red;
  *   4. each refusal, planted alone, is red BY ITS OWN NAME and green again restored: a plan change the start already holds;
@@ -42,7 +42,7 @@ import { readRecordFolder } from '../../minimaxi/record-folder.mjs';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MMP41D = path.join(REPO, 'scripts', 'test', 'fixtures', 'record-mmp41d', 'record', 'record-02');
 const P41C = path.join(REPO, 'site', 'memories', 'mm-dse-tunnel-rebuild-p41c');
-const T41A = path.join(REPO, 'site', 'memories', 'mm-dse-tunnel-rebuild-t41a');
+const T41A = path.join(REPO, 'scripts', 'test', 'fixtures', 'record-mmt41a', 'record', 'record-01');
 
 const enc = (v) => new TextEncoder().encode(JSON.stringify(v, null, 2) + '\n');
 const dec = (b) => JSON.parse(typeof b === 'string' ? b : new TextDecoder().decode(b));
@@ -82,15 +82,18 @@ test('conformance: the plan rides lab.json under PLAN_KEY (one of LOOP_LAB_KEYS)
 const R01 = path.join(MMP41D, '..', 'record-01');
 const NONE = { nostart: false, nochange: false, already: false, after: false, unplanned: false, beyond: false };
 
-test('record-mmp41d states its plan as its chain and as a chain of one; a Record that carries no start (the published mm-dse-tunnel-rebuild-p41c) is refused by name, and nothing stands in for it', () => {
+test('record-mmp41d states its plan as its chain and as a chain of one; the published mm-dse-tunnel-rebuild-p41c states its plan from its start; with its start deleted it is refused by name, and nothing stands in for it', () => {
     const r01 = readRecordFolder(R01), r02 = readRecordFolder(MMP41D), p41c = readRecordFolder(P41C);
     assert.deepEqual(recordPlanFaults(planOf(r02), [r01, r02]), [], 'record-mmp41d [record-01, record-02]');
     assert.deepEqual(recordPlanFaults(planOf(r02), [r02]), [], 'record-mmp41d [record-02]');
     assert.deepEqual(recordFolderFaults(p41c), [], 'the published Record is a complete §6 Record');
-    const f = recordPlanFaults(planOf(p41c), [p41c]);
+    assert.deepEqual(recordPlanFaults(planOf(p41c), [p41c]), [], 'the published Record, its start its own parts.before.json, states its plan');
+    const p41cNoStart = withJson(p41c, FILES.lab, (lab) => { delete lab[START_KEY]; });
+    const f = recordPlanFaults(planOf(p41cNoStart), [p41cNoStart]);
     assert.deepEqual(arms(f), { ...NONE, nostart: true }, f.join('\n'));
     assert.match(f[0], /^record-01: lab\.json carries no `start` — .* cannot be judged start → end \(parts\.before\.json is where its world stood when the Record opened, not necessarily where the round began\)\.$/);
-    assert.throws(() => startOf(p41c), /lab\.json carries no `start`/, 'the one reader refuses it too');
+    assert.throws(() => startOf(p41cNoStart), /lab\.json carries no `start`/, 'the one reader refuses it too');
+    assert.throws(() => recordLines(p41cNoStart), /lab\.json carries no `start`/, 'the memory\'s parts diff has no other side: the generator fails loud through the same reader');
     const noStart = withJson(r02, FILES.lab, (lab) => { delete lab[START_KEY]; });
     assert.deepEqual(arms(recordPlanFaults(planOf(r02), [noStart])), { ...NONE, nostart: true }, 'the fixture with its start deleted');
     const notBlock = withJson(r02, FILES.lab, (lab) => { lab[START_KEY] = { mirror: 'Wall' }; });
@@ -101,11 +104,11 @@ test('record-mmp41d states its plan as its chain and as a chain of one; a Record
 });
 
 // ── START → END ─────────────────────────────────────────────────────────────────────────────
-/** The published mmt41a Record (round 2 of 2: it opened on round 1's world, re-staged the screen to the stock place, then
- *  dragged it back to the plan's), with the start `start` planted into its lab.json (the Record carries none: it predates START_KEY). */
+/** The mmt41a Record, retired as 'no change' and kept as this fixture (round 2 of 2: it opened on round 1's world, re-staged the screen to the stock place, then
+ *  dragged it back to the plan's), with the start `start` planted into its lab.json (the trial carries none: it predates START_KEY). */
 function t41aWith(start) { return withJson(readRecordFolder(T41A), FILES.lab, (lab) => { lab[START_KEY] = start; }); }
 
-test('START → END: a re-staged round that undoes an earlier row and then moves the part passes, and its parts diff is the real move (negative control: the diff read off the last row\'s Record files alone is not)', () => {
+test('START → END: a re-staged round that undoes an earlier row and then moves the part passes, and its parts diff is the real move (negative control: parts.before.json is another side, and without the start the generator fails loud)', () => {
     const r02 = readRecordFolder(MMP41D);
     const start = dec(r02[FILES.lab])[START_KEY];
     // the round: the angle set, the mirror dragged to 330 (a wrong place), re-staged back to 360 (undoing that row), then to the plan's 290
@@ -119,8 +122,9 @@ test('START → END: a re-staged round that undoes an earlier row and then moves
     assert.deepEqual(recordPlanFaults(planOf(restaged), [restaged]), [], 'start (360, 45°) → end (290, 30°): the plan is stated');
     const end = dec(r02[FILES.partsAfter]);
     assert.deepEqual(recordLines(restaged).filter((l) => l.startsWith('part ')), ['part mirror: ' + JSON.stringify(start.mirror) + ' → ' + JSON.stringify(end.mirror)], 'the parts diff is the real move, start → end');
+    assert.notDeepEqual(dec(restaged[FILES.partsBefore]).mirror, start.mirror, 'the control: parts.before.json (from 330) is another side, so the start is what makes it the real move');
     const noStart = withJson(restaged, FILES.lab, (lab) => { delete lab[START_KEY]; });
-    assert.notDeepEqual(recordLines(noStart).filter((l) => l.startsWith('part ')), recordLines(restaged).filter((l) => l.startsWith('part ')), 'the control: parts.before.json → parts.after.json is another diff (from 330), so the start is what makes it the real move');
+    assert.throws(() => recordLines(noStart), /lab\.json carries no `start`/, 'without the start no diff is rendered: parts.before.json never stands in');
 });
 
 test('a round that ends where it started is refused as NO_CHANGE, whatever its rows did: the mmt41a shape (a re-stage, then a last row that undoes it) and a synthetic one (negative control: the check planted away passes both)', async () => {
@@ -134,7 +138,7 @@ test('a round that ends where it started is refused as NO_CHANGE, whatever its r
         'plan changes[0] (screen center: [365,200,0]): the start (lab.json start) already holds "screen" center at [365,200] (the centre of its rect [355,0,20,400]) — start → end does not make this change'
     ]);
     assert.deepEqual(recordLines(opened).filter((l) => l.startsWith('part ')), ['part (none): parts.after.json equals lab.json start']);
-    assert.deepEqual(recordLines(t).filter((l) => l.startsWith('part ')), ['part (none): parts.after.json equals parts.before.json'], 'as published (no start), its own diff names its own file');
+    assert.throws(() => recordLines(t), /lab\.json carries no `start`/, 'without its start no memory is rendered: parts.before.json does not stand in');
     // synthetic: the fixture's mirror moved away and back inside the round, nothing else changed
     const r02 = readRecordFolder(MMP41D);
     const back = withJson(withJson(r02, FILES.record, (r) => {

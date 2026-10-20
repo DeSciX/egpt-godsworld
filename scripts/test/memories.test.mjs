@@ -10,10 +10,11 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { lookedFaults, lookedLine, isPlaceholder, publishedRecordFaults, writeSeenMemory, recordIndexSection, RECORD_INDEX_HEADING, LOOKED_SHAPE, LOOKERS } from '../gen-memories-seen.mjs';
+import { lookedFaults, lookedLine, isPlaceholder, publishedRecordFaults, renderPublished, rerenderPublished, writeSeenMemory, recordIndexSection, RECORD_INDEX_HEADING, LOOKED_SHAPE, LOOKERS } from '../gen-memories-seen.mjs';
 import { VENDOR_REL, PINNED, distFile } from '../frqtl-web-pin.mjs';
 import { card, indexText, firstSentence, WHY_HEADING, WHY_INDEX_HEADING, GROWS_INDEX_HEADING, LEARNED_HEADING } from '../gen-memories-build.mjs';
-import { SKETCH_FORM } from '../../site/app-assets/maxi-record-folder.js';   // the Record owner's one definition of the sketch module form
+import { SKETCH_FORM, FILES, START_KEY, NO_CHANGE } from '../../site/app-assets/maxi-record-folder.js';   // the Record owner's one definition of the sketch module form, its file names, start key and no-change words
+import { readRecordFolder } from '../../minimaxi/record-folder.mjs';
 
 const ROOT = process.env.MEMORIES_ROOT || resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MEM = join(ROOT, 'kb', 'GodsWorld', 'memories');
@@ -305,6 +306,39 @@ test('the published-Record rule triggers on the text: a served record.json delet
   assert.deepEqual(publishedRecordFaults(plain, 'atomic-model', SITE), [], 'a seen memory that claims no Record is not this rule\'s');
   assert.ok(publishedRecordFaults(plain + '\nchange: tick 5 · move (human) nucleus: center [1, 2] → center [3, 4]\n', 'atomic-model', SITE).length > 0, 'a hand-written change: line added to a non-Record memory is red');
   assert.ok(publishedRecordFaults(plain + '\npart nucleus: ["Box",{}] → ["Box",{"a":1}]\n', 'atomic-model', SITE).length > 0, 'a hand-written part line is red');
+});
+
+// Every published Record memory passes the plan check on its served Record (publishedRecordFaults runs recordPlanFaults):
+// a Record with no start, or one that ends where it started, cannot be published, even with a text regenerated to match it.
+test('the published-Record rule runs the plan check: a served Record with no start, or one that ends where it started (no change), is red', () => {
+  const ID = 'mm-dse-tunnel-rebuild-olc2';
+  const scratch = mkdtempSync(join(tmpdir(), 'memories-plan-'));
+  const PLAN = 'does not state its plan (the plan check, recordPlanFaults) — ';
+  try {
+    const site = join(scratch, 'site'), dir = join(site, 'memories', ID);
+    cpSync(join(SITE, 'memories', ID), dir, { recursive: true });
+    const text = read(ID + '-seen.md');
+    assert.deepEqual(publishedRecordFaults(text, ID, site), [], 'the control: the published olc2 with its start passes');
+    const lab = JSON.parse(readFileSync(join(dir, FILES.lab), 'utf8'));
+    // planted: no start
+    const noStart = Object.assign({}, lab); delete noStart[START_KEY];
+    writeFileSync(join(dir, FILES.lab), JSON.stringify(noStart, null, 2) + '\n');
+    const a = publishedRecordFaults(text, ID, site);
+    assert.ok(a.some((f) => f.includes(PLAN) && /lab\.json carries no `start`/.test(f)), 'a start-less Record is red by the plan check:\n' + a.join('\n'));
+    assert.ok(a.some((f) => /states no parts diff — .*lab\.json carries no `start`/.test(f)), 'and the generator renders no diff for it (fails loud):\n' + a.join('\n'));
+    const md = join(scratch, 'kb', 'GodsWorld', 'memories', ID + '-seen.md');
+    mkdirSync(dirname(md), { recursive: true }); writeFileSync(md, text);
+    assert.throws(() => rerenderPublished(ID, { root: scratch }), /--rerender: the Record served for .* is not publishable .*nothing was written:\n- record-01: lab\.json carries no `start`/s, 'the regeneration refuses it too');
+    assert.equal(readFileSync(md, 'utf8'), text, '... and writes nothing');
+    // planted: no change — the round ends where it started, and the text regenerated from that folder, so only the plan check can see it
+    writeFileSync(join(dir, FILES.lab), JSON.stringify(lab, null, 2) + '\n');
+    writeFileSync(join(dir, FILES.partsAfter), JSON.stringify(lab[START_KEY], null, 2) + '\n');
+    const same = renderPublished(text, ID, readRecordFolder(dir));
+    assert.throws(() => rerenderPublished(ID, { root: scratch }), new RegExp('nothing was written:\\n- ' + NO_CHANGE + ': '), 'the regeneration refuses a no-change Record');
+    const b = publishedRecordFaults(same, ID, site);
+    assert.ok(b.some((f) => f.includes(PLAN + NO_CHANGE + ': ')), 'a no-change Record is red by the plan check:\n' + b.join('\n'));
+    assert.deepEqual(b.filter((f) => !f.includes(PLAN)), [], 'only the plan check catches it: without it the regenerated text would pass');
+  } finally { rmSync(scratch, { recursive: true, force: true }); }
 });
 
 // The INDEX's "Record memories" section is generated (gen-memories-build.mjs writes recordIndexSection); a hand edit, or a

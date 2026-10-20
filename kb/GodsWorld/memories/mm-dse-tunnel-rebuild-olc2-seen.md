@@ -6,7 +6,7 @@ looked: seat maxi-memory-curator on 5 stills of memories/mm-dse-tunnel-rebuild-o
 looked: seat maxi-memory-curator on 3 stills of memories/mm-dse-tunnel-rebuild-olc2/clip-02.mp4 — frames 0, 25 and 50: the framing see after the second setCamera (azimuth 180), the same side-on pose as the hand-back clip, +x reading right; the plate at rest at its old place, near edge about x 375; nothing moves but the dots. It is the before-state the hand-back clip opens on.
 looked: seat maxi-memory-curator on 3 stills of memories/mm-dse-tunnel-rebuild-olc2/clip-01.mp4 — frames 0, 25 and 50: the framing see after the first setCamera (azimuth 0): side-on but mirrored, the source panel at the right and the plate left of the red slabs, so +x reads left; this is why the Builder turned the camera to 180 before the drag. Nothing moves but the dots.
 
-Changes (record.json, one row per act, in order) and the parts diff (parts.before.json → parts.after.json):
+Changes (record.json, one row per act, in order) and the parts diff (lab.json start → parts.after.json):
 change: tick 41975 · move (maxi) screen: rect [315, 0, -77, 20, 400, 154] → rect [355, 0, -77, 20, 400, 154]
 part screen: ["GraphingDetectorWall",{"rect":[315,0,20,400],"z":-77,"depth":154,"preset":"transparent-probe","color":[120,200,120],"alpha":220,"binPx":12}] → ["GraphingDetectorWall",{"rect":[355,0,20,400],"z":-77,"depth":154,"preset":"transparent-probe","color":[120,200,120],"alpha":220,"binPx":12}]
 

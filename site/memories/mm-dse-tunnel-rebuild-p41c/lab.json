@@ -470,5 +470,186 @@
       "firstTick": 2929,
       "lastTick": 3229
     }
-  ]
+  ],
+  "start": {
+    "source": [
+      "SphereEmitter",
+      {
+        "preset": "hemisphere",
+        "is2D": false,
+        "center": [
+          20,
+          200
+        ],
+        "chargeMode": "random",
+        "wavelength": 3.2,
+        "burstSize": 8,
+        "emitEveryTicks": 1,
+        "fundamentalDimension": 2,
+        "fundamentalWaveLength": 160
+      }
+    ],
+    "start_wall": [
+      "Wall",
+      {
+        "rect": [
+          0,
+          0,
+          10,
+          400
+        ],
+        "z": -77,
+        "depth": 154,
+        "collisionBehavior": "destroy",
+        "color": [
+          120,
+          120,
+          120
+        ],
+        "alpha": 40
+      }
+    ],
+    "wall1": [
+      "Wall",
+      {
+        "rect": [
+          96,
+          0,
+          64,
+          122.5
+        ],
+        "z": -77,
+        "depth": 154,
+        "collisionBehavior": "destroy",
+        "color": [
+          200,
+          60,
+          60
+        ]
+      }
+    ],
+    "wall2": [
+      "Wall",
+      {
+        "rect": [
+          96,
+          174.5,
+          64,
+          50
+        ],
+        "z": -77,
+        "depth": 154,
+        "collisionBehavior": "destroy",
+        "color": [
+          150,
+          40,
+          40
+        ]
+      }
+    ],
+    "wall3": [
+      "Wall",
+      {
+        "rect": [
+          96,
+          276.5,
+          64,
+          122.5
+        ],
+        "z": -77,
+        "depth": 154,
+        "collisionBehavior": "destroy",
+        "color": [
+          200,
+          60,
+          60
+        ]
+      }
+    ],
+    "slit1_channel": [
+      "Tunnel",
+      {
+        "left": 96,
+        "top": 133.5,
+        "length": 64,
+        "bore": 31,
+        "wallThickness": 10,
+        "axis": "x",
+        "z": -77,
+        "depth": 154,
+        "mode": "directed",
+        "exitCollapse": true,
+        "exitRecenter": true,
+        "exitPhaseReset": true,
+        "color": [
+          80,
+          140,
+          220
+        ]
+      }
+    ],
+    "slit2_channel": [
+      "Tunnel",
+      {
+        "left": 96,
+        "top": 235.5,
+        "length": 64,
+        "bore": 31,
+        "wallThickness": 10,
+        "axis": "x",
+        "z": -77,
+        "depth": 154,
+        "mode": "directed",
+        "exitCollapse": true,
+        "exitRecenter": true,
+        "exitPhaseReset": true,
+        "color": [
+          80,
+          140,
+          220
+        ]
+      }
+    ],
+    "far_sink": [
+      "Wall",
+      {
+        "rect": [
+          590,
+          0,
+          10,
+          400
+        ],
+        "z": -77,
+        "depth": 154,
+        "collisionBehavior": "destroy",
+        "color": [
+          120,
+          120,
+          120
+        ],
+        "alpha": 40
+      }
+    ],
+    "screen": [
+      "GraphingDetectorWall",
+      {
+        "rect": [
+          315,
+          0,
+          20,
+          400
+        ],
+        "z": -77,
+        "depth": 154,
+        "preset": "transparent-probe",
+        "color": [
+          120,
+          200,
+          120
+        ],
+        "alpha": 220,
+        "binPx": 12
+      }
+    ]
+  }
 }

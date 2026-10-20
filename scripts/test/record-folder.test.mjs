@@ -271,11 +271,11 @@ test('a loop approve\'s Records are the lab\'s closed Records, chained; the loop
 // ── the start against where the chain's first Record opened ───────────────────────────────────────
 const START_MOVED = { mirror: ['Wall', { rect: [330, 80, 20, 240], collisionBehavior: 'bounce' }] };   // no Record here opened on it
 
-test('the hand-back\'s start is where the chain\'s first Record opened when it carried nothing: a disagreement is refused by name, in the folder gate for a chain of one and in the chain gate for a longer one; a carried first Record is not judged (negative controls: the forged t41a, a forged chain start, the human\'s last-world start)', () => {
+test('the hand-back\'s start is where the chain\'s first Record opened when it carried nothing: a disagreement is refused by name, in the folder gate for a chain of one and in the chain gate for a longer one; a carried first Record is judged on its un-named parts only (negative controls: the forged t41a, a forged chain start, the human\'s last-world start)', () => {
     const { START_NOT_OPENING, START_KEY, CARRIED_KEY } = recordFolder;
     const startFaults = (faults) => faults.filter((f) => f.indexOf(START_NOT_OPENING) !== -1);
-    // a chain of one: the published t41a given a start (its round's start is its parts.before.json: nothing was carried)
-    const t41a = readRecordFolder(path.join(REPO, 'site/memories/mm-dse-tunnel-rebuild-t41a'));
+    // a chain of one: the mmt41a fixture given a start (its round's start is its parts.before.json: nothing was carried)
+    const t41a = readRecordFolder(path.join(REPO, 'scripts/test/fixtures/record-mmt41a/record/record-01'));
     const json = (f) => JSON.parse(typeof t41a[f] === 'string' ? t41a[f] : new TextDecoder().decode(t41a[f]));
     const t41aLab = json(FILES.lab), t41aBefore = json(FILES.partsBefore);
     assert.equal(t41aLab[CARRIED_KEY], undefined, 'the fixture carried nothing');
@@ -300,16 +300,83 @@ test('the hand-back\'s start is where the chain\'s first Record opened when it c
     const chainRefused = startFaults(recordChainFaults(bad));
     assert.equal(chainRefused.length, 1, recordChainFaults(bad).join('\n'));
     assert.match(chainRefused[0], /^record-02: start is not where the round began: lab\.json start is not record-01\/parts\.before\.json \(mirror: Wall \{"rect":\[360,80,20,240\][^)]*→ Wall \{"rect":\[330,80,20,240\]/);
-    // a carried first Record: the start is its world's parts after the carried rows, which no file states — not judged
+    // a carried first Record: the start is its world's parts after the carried rows; only the parts no carried row names are judged (the next test)
     const pre = { tick: 2, name: 'mirror', op: 'move', by: 'human', from: { rect: [380, 80, 20, 240] }, to: { rect: [360, 80, 20, 240] } };
     const carried = assembleLoopRecords(Object.assign({}, round, { worlds: [round.worlds[1]] }), { brain: 'local', run: 'mmx', unheld: [], worlds: [
         { folder: packageFolder({ changes: [pre, MOVE], clips: [clip(9, 100, 250), clip(2, 300, 560)] }), filmed: ['see', 'dragTo'], carried: { changes: [pre], clips: [{ hand: 'see', firstTick: 100, lastTick: 250 }] }, start: START_MOVED }] });
-    assert.deepEqual(carried.map((r) => r.faults), [[]], 'a carried first Record\'s start is not compared with its parts.before.json');
+    assert.deepEqual(carried.map((r) => r.faults), [[]], 'a carried first Record\'s start may differ from its parts.before.json on the part a carried row names');
     // the human's chain (maxi-record.js recordsOf): the hand-back carries the FIRST world's start, where record-01 opened
     const world = (label, first, start) => ({ scene: { label, id: null, mode: null, renderer: 'p5' }, folder: packageFolder({ changes: [], clips: [clip(1, first, first + 495)], partsBefore: start, partsAfter: start }), filmed: ['record'], start: start });
     const human = recordsOf([world('A', 0, PARTS_BEFORE), world('B', 400, START_MOVED)], null, []);
     assert.deepEqual(human.map((r) => r.lab[START_KEY]), [undefined, PARTS_BEFORE], 'the hand-back carries world A\'s start, not world B\'s');
     assert.deepEqual(recordChainFaults(human), [], 'and the chain gate holds');
+});
+
+// ── a carried first Record: the parts no carried row names keep their parts.before.json entry in the start ──────────
+/** The carried-start gate's checks on folder `m` (the real owner or a planted copy); THROWS on the first that does not hold. */
+async function assertCarriedStartGate(m) {
+    const screen = (x) => ['Wall', { rect: [x, 0, 20, 400], collisionBehavior: 'absorb' }];
+    const mirror = (x) => ['Wall', { rect: [x, 80, 20, 240], collisionBehavior: 'bounce' }];
+    const pre = { tick: 2, name: 'mirror', op: 'move', by: 'human', from: { rect: [380, 80, 20, 240] }, to: { rect: [360, 80, 20, 240] } };   // carried from before the round
+    const screenMove = { tick: 8, name: 'screen', op: 'move', by: 'maxi', from: { rect: [500, 0, 20, 400] }, to: { rect: [480, 0, 20, 400] } };   // the round's own row on a part no carried row names
+    const before = { mirror: mirror(380), screen: screen(500) }, after = { mirror: mirror(300), screen: screen(480) };
+    const inv = (id) => ({ scene: id, id: id, mode: null, renderer: 'p5', objects: [] });
+    const c2 = { firstTick: 300, lastTick: 560 };
+    const loop = { verdict: 'approve', outline: 'o', plan: {}, designerWords: 'w', steps: [], prediction: 'p', builderWords: 'b', owl: { verdict: 'approve' }, threads: {}, rounds: 1, clip: c2 };
+    const carriedWorld = (start, partsBefore) => ({ folder: packageFolder({ changes: [pre, MOVE, screenMove], clips: [clip(9, 100, 250), clip(2, 300, 560)], partsBefore: partsBefore || before, partsAfter: after }),
+        filmed: ['see', 'dragTo'], carried: { changes: [pre], clips: [{ hand: 'see', firstTick: 100, lastTick: 250 }] }, start: start });
+    const one = (start, partsBefore) => m.assembleLoopRecords(Object.assign({}, loop, { worlds: [{ before: inv('sketch'), after: inv('sketch'), changes: [MOVE, screenMove], clips: [{ hand: 'dragTo', clip: c2 }] }] }),
+        { brain: 'local', run: 'mmx', unheld: [], worlds: [carriedWorld(start, partsBefore)] });
+    const two = (start) => m.assembleLoopRecords(Object.assign({}, loop, { worlds: [
+        { before: inv('sketch'), after: inv('sketch'), changes: [MOVE, screenMove], clips: [{ hand: 'see', clip: { firstTick: 300, lastTick: 560 } }] },
+        { before: inv('other'), after: inv('other'), changes: [MOVE], clips: [{ hand: 'dragTo', clip: c2 }] }] }),
+        { brain: 'local', run: 'mmx', unheld: [], worlds: [Object.assign(carriedWorld(start), { filmed: ['see', 'see'] }), { folder: packageFolder({ clips: [clip(2, 300, 560)] }), filmed: ['dragTo'], start: PARTS_AFTER }] });
+    const startFaults = (faults) => faults.filter((f) => f.indexOf(m.START_NOT_OPENING) !== -1);
+    // honest: the start is parts.before.json with the carried row on mirror applied; screen as it opened
+    const honest = { mirror: mirror(360), screen: screen(500) };
+    assert.deepEqual(one(honest).map((r) => r.faults), [[]], 'an honest carried chain of one passes');
+    assert.deepEqual(recordChainFaults(two(honest)), [], 'an honest carried chain of two passes the chain gate');
+    // only the named part differs from parts.before.json: not judged (no row applier here)
+    assert.deepEqual(one({ mirror: mirror(330), screen: screen(500) }).map((r) => r.faults), [[]], 'a start that changes only a carried row\'s part passes');
+    assert.deepEqual(recordChainFaults(two({ mirror: mirror(330), screen: screen(500) })), []);
+    // an un-named part moved, or absent, in the start: refused by name, listing it
+    const moved = startFaults(one({ mirror: mirror(360), screen: screen(480) })[0].faults);
+    assert.equal(moved.length, 1, 'a start that changes an un-named part is refused');
+    assert.match(moved[0], /^start is not where the round began: lab\.json start differs from record-01\/parts\.before\.json on part\(s\) no carried row names \(screen: Wall \{"rect":\[500,0,20,400\][^)]*→ Wall \{"rect":\[480,0,20,400\][^)]*\) — record-01 carried rows on "mirror" only/);
+    assert.doesNotMatch(moved[0], /mirror: Wall/, 'the named part is never listed');
+    const gone = startFaults(one({ mirror: mirror(360) })[0].faults);
+    assert.equal(gone.length, 1); assert.match(gone[0], /\(screen: removed, was Wall/);
+    const added = startFaults(one({ mirror: mirror(360), screen: screen(500), lens: screen(200) })[0].faults);
+    assert.equal(added.length, 1, 'a start that adds a part absent from parts.before.json is refused');
+    assert.match(added[0], /\(lens: added, Wall \{"rect":\[200,0,20,400\]/);
+    // a part named "constructor" no carried row names is judged like any other (the named set has no prototype)
+    const ctor = startFaults(one({ mirror: mirror(360), screen: screen(500), constructor: screen(240) }, Object.assign({}, before, { constructor: screen(200) }))[0].faults);
+    assert.equal(ctor.length, 1, 'a start that moves an un-named part called "constructor" is refused');
+    assert.match(ctor[0], /\(constructor: Wall \{"rect":\[200,0,20,400\][^)]*→ Wall \{"rect":\[240,0,20,400\][^)]*\) — record-01 carried rows on "mirror" only/);
+    const chain = startFaults(recordChainFaults(two({ mirror: mirror(360), screen: screen(480) })));
+    assert.equal(chain.length, 1, 'the chain gate refuses it for a chain of two');
+    assert.match(chain[0], /^record-02: start is not where the round began: lab\.json start differs from record-01\/parts\.before\.json on part\(s\) no carried row names \(screen:/);
+}
+
+test('a carried first Record: every part no carried row names keeps its parts.before.json entry in the hand-back\'s start, refused by name otherwise, in the folder and chain gates (negative controls: the check removed, the wrong file compared, a named part included, added parts ignored, the named set built as {} are red)', async () => {
+    await assertCarriedStartGate(recordFolder);
+    const src = fs.readFileSync(path.join(REPO, 'site/app-assets/maxi-record-folder.js'), 'utf8');
+    const ARM = 'if (lab[CARRIED_KEY] !== undefined) { return carriedStartFaults(start, before, lab[CARRIED_KEY], firstName); }';
+    const NAMED = 'carried.changes.forEach(function (c) { named[c.name] = true; });';
+    const NOW = 'const was = unnamed(before), now = unnamed(start);';
+    const PROTO = 'const named = Object.create(null);';
+    for (const [label, from, to] of [
+        ['the check removed', ARM, 'if (lab[CARRIED_KEY] !== undefined) { return []; }'],
+        ['the check comparing parts.after.json', ARM, 'if (lab[CARRIED_KEY] !== undefined) { return carriedStartFaults(start, JSON.parse(textOf(first[FILES.partsAfter])), lab[CARRIED_KEY], firstName); }'],
+        ['a named part included', NAMED, ''],
+        ['a check that ignores added parts', NOW, NOW + ' Object.keys(now).forEach(function (k) { if (!Object.prototype.hasOwnProperty.call(was, k)) { delete now[k]; } });'],
+        ['the named set built as {}', PROTO, 'const named = {};']]) {
+        assert.equal(src.split(from).length, 2, label + ': the plant target moved — the control would measure nothing');
+        const p = await plantedFolder(src.replace(from, to));
+        try { await assert.rejects(() => assertCarriedStartGate(p.m), assert.AssertionError, label + ' planted is RED'); } finally { p.dispose(); }
+    }
+    const p = await plantedFolder(src);
+    try { await assertCarriedStartGate(p.m); } finally { p.dispose(); }
 });
 
 // ── the human's teaching words: lab.json TEACHING_KEY, owned here ─────────────────────────────────

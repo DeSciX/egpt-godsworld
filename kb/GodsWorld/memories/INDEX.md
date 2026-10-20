@@ -65,4 +65,3 @@ A Record memory is what a loop run built from a person's outline and published f
 |---|---|---|---|---|
 | mm-dse-tunnel-rebuild-olc2 | dse-tunnel-rebuild | imagine the 3D double slit with the detector screen moved 40 pixels farther from the slit wall | mm-dse-tunnel-rebuild-olc2-seen.md | memories/mm-dse-tunnel-rebuild-olc2/clip-03.mp4 |
 | mm-dse-tunnel-rebuild-p41c | dse-tunnel-rebuild | In the 3D double slit, move the detector screen farther from the slits, to x 400, and show how the bands on it change | mm-dse-tunnel-rebuild-p41c-seen.md | memories/mm-dse-tunnel-rebuild-p41c/clip-01.mp4 |
-| mm-dse-tunnel-rebuild-t41a | dse-tunnel-rebuild | imagine the 3D double slit with the detector screen moved 40 pixels farther from the slit wall | mm-dse-tunnel-rebuild-t41a-seen.md | memories/mm-dse-tunnel-rebuild-t41a/clip-03.mp4 |
