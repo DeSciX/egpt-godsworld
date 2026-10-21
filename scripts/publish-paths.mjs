@@ -20,7 +20,8 @@
 import { execFileSync } from 'node:child_process';
 
 export const PUBLISHED = Object.freeze(['site/', 'minimaxi/', 'plugin/', 'kb/', 'scripts/', 'docs/rules.md', 'docs/concepts/',
-    '.descix/manifests/', 'assets/system_instructions.md', '.publish/', 'LICENSE.md']);
+    '.descix/manifests/', 'assets/system_instructions.md', '.publish/', 'LICENSE.md', '.beast/award-policy.md',
+    '.github/ISSUE_TEMPLATE/bounty.md']);
 export const PUBLISHED_EXCEPT = Object.freeze(['scripts/test/specialists.test.mjs', 'scripts/test/publish-scrub.test.mjs',
     'scripts/test/twin-deps.test.mjs', 'scripts/test/published-tree.test.mjs']);
 
