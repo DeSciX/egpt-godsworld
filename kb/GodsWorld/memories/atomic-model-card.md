@@ -1,6 +1,6 @@
 # Memory: Atomic model — card
 
-load: GYM scene id `atomic-model` · 2D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/atomic-model.js
+load: GYM scene id `atomic-model` · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/atomic-model.js
 
 tile: Particles bind and stay bound. Stable orbits without quantum numbers.
 

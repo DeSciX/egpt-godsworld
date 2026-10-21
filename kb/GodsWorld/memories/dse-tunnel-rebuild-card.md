@@ -1,6 +1,6 @@
 # Memory: Double slit — card
 
-load: GYM scene id `dse-tunnel-rebuild` (mode `2d`, also `3d`; the GYM tile opens in `3d`) · 2D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/dse-tunnel-rebuild.js
+load: GYM scene id `dse-tunnel-rebuild` (mode `2d`, also `3d`; the GYM tile opens in `3d`) · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/dse-tunnel-rebuild.js
 
 tile: Two slits, one particle at a time. Feynman's “only mystery,” with no amplitudes to add.
 

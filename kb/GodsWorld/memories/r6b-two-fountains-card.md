@@ -1,6 +1,6 @@
 # Memory: 6B · Two Fountains — card
 
-load: GYM scene id `r6b-two-fountains` · 2D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/two-source.js
+load: GYM scene id `r6b-two-fountains` · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/two-source.js
 
 group: Light Lab
 

@@ -1,6 +1,6 @@
 # Memory: 1A · Mirror (3D) — card
 
-load: GYM scene id `cl1a-mirror-3d` · 3D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/mirror-3d.js
+load: GYM scene id `cl1a-mirror-3d` · 3D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/mirror-3d.js
 
 group: Collision Lab · 3D
 

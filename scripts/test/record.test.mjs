@@ -514,7 +514,8 @@ test('what the world\'s Record carried from before Record was pressed is set asi
     const maxiMove = { tick: 331, name: 'mirror', op: 'move', by: 'maxi', from: { rect: [360, 80, 20, 240] }, to: { rect: [290, 80, 20, 240] } };
     const maxiSet = { tick: 489, name: 'mirror', op: 'setDeclared', by: 'maxi', from: { orientationDeg: 45 }, to: { orientationDeg: 30 } };
     const folder = serializeRecordFolder({ changes: [maxiMove, maxiSet], clips: [{ bytes: bytes('maxi'), firstTick: 182, lastTick: 482 }, { bytes: bytes('human'), firstTick: 490, lastTick: 790 }], partsBefore: PARTS, partsAfter: PARTS, project: PROJECT });
-    const worlds = [{ folder, filmed: ['dragTo', SEGMENT_HAND], start: PARTS, scene: { label: '1A · Mirror', id: 'cl1a-mirror', mode: null, renderer: 'p5' },
+    const afterMaxi = { mirror: ['Wall', { rect: [290, 80, 20, 240], orientationDeg: 30 }] };   // the start: where Maxi's two carried rows left the mirror
+    const worlds = [{ folder, filmed: ['dragTo', SEGMENT_HAND], start: afterMaxi, scene: { label: '1A · Mirror', id: 'cl1a-mirror', mode: null, renderer: 'p5' },
         carried: { changes: [maxiMove, maxiSet], clips: [{ hand: 'dragTo', firstTick: 182, lastTick: 482 }] } }];
     const [rec] = recordsOf(worlds, null, []);
     assert.deepEqual(rec.faults, []);

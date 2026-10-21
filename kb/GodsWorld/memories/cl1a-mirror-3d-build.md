@@ -1,7 +1,7 @@
 # Memory: 1A · Mirror (3D) — build
 
-load: GYM scene id `cl1a-mirror-3d` · 3D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/mirror-3d.js
-source sha256 c11869c40ea34d83531866c9421b66a861c78a95fd469f209049bc2e80df85d4 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/mirror-3d.js
+load: GYM scene id `cl1a-mirror-3d` · 3D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/mirror-3d.js
+source sha256 c11869c40ea34d83531866c9421b66a861c78a95fd469f209049bc2e80df85d4 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/mirror-3d.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: the cl1a mirror as a slab in a 3D world, hit square on. orientationDeg 45 on the mirror sends the beam up as in 2D (the 2θ law); 0, as here, sends it straight back. predict: depth 40 instead of 160 with z −80 unchanged spans z −80 to −40 (the slab is z −80, depth 160 → −80 to +80 now), so it no longer contains z 0 where the beam runs; predict most of the beam passes it unless z moves to −20 as well; watch. is2D true on the emitter would flatten the beam to the z 0 plane. The clip (memories/cl1a-mirror-3d/clip.mp4, default camera, looking back along x) showed one pale-to-orange stream between the slab's face and the emitter side: the beam in and the recoloured beam out on one line, nothing past the plate.

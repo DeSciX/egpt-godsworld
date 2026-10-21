@@ -1,6 +1,6 @@
 # Memory: A pool — card
 
-load: GYM scene id `r5-fountain-pool` · 2D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/self-interference.js
+load: GYM scene id `r5-fountain-pool` · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/self-interference.js
 
 tile: One source. Rings. Interference as the geometry of random walks, not a wave.
 
