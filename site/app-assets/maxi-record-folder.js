@@ -172,17 +172,40 @@ export const START_NOT_OPENING = 'start is not where the round began';
  * that Record carried nothing (lab.json CARRIED_KEY absent) it opened as the round began (maxi-lab.js beginChain rotates the
  * world's Record, or a world booted inside the round opens its Record, and THE START is read right then), so the start IS
  * its parts.before.json — a start that disagrees is refused as START_NOT_OPENING. When it carried rows the start is its
- * world's parts after those rows: no file of the folder states that block and the package exports no reader that derives
- * it from parts.before.json and the rows, so nothing is checked there. A first Record whose files do not parse is the
- * package's gate to name. → [fault].
+ * world's parts after those rows, so only the parts NO carried row names are judged: each keeps its parts.before.json entry
+ * in the start (present or absent alike), and one that differs is refused as START_NOT_OPENING naming it. A first Record
+ * whose files do not parse, or whose carried value is not rows, is the package's or carriedFaults' to name. → [fault].
  */
 function startOpeningFaults(start, first, firstName) {
     let lab, before;
     try { lab = JSON.parse(textOf(first[FILES.lab])); before = JSON.parse(textOf(first[FILES.partsBefore])); } catch (e) { return []; }
-    if (!lab || lab[CARRIED_KEY] !== undefined || partsBlockFaults(before).length || partsBlockFaults(start).length) { return []; }
+    if (!lab || partsBlockFaults(before).length || partsBlockFaults(start).length) { return []; }
+    if (lab[CARRIED_KEY] !== undefined) { return carriedStartFaults(start, before, lab[CARRIED_KEY], firstName); }
     if (partsEqual(start, before)) { return []; }
     return [START_NOT_OPENING + ': lab.json ' + START_KEY + ' is not ' + firstName + '/' + FILES.partsBefore + ' (' + partsDiffText(before, start).split('\n').join('; ') +
         ') — ' + firstName + ' carried nothing, so it opened as the round began and where it opened is the start'];
+}
+
+/**
+ * startOpeningFaults' arm for a first Record that CARRIED rows (`carried`: its lab.json CARRIED_KEY): the parts of
+ * parts.before.json ∪ the start that no carried row names (a row names its part by `name`; no op is read) must hold the same
+ * entry in both. → [fault]; [] when `carried` is not {changes: [rows]} (carriedFaults names that).
+ */
+function carriedStartFaults(start, before, carried, firstName) {
+    // The full check (the start IS parts.before.json with the carried rows applied) waits on the package's row applier.
+    if (!carried || typeof carried !== 'object' || !Array.isArray(carried.changes) || carried.changes.some(function (c) { return rowFaults(c).length; })) { return []; }
+    const named = Object.create(null);   // a part may be called "constructor"
+    carried.changes.forEach(function (c) { named[c.name] = true; });
+    const unnamed = function (block) {
+        const out = {};
+        Object.keys(block).filter(function (k) { return !named[k]; }).forEach(function (k) { out[k] = block[k]; });
+        return out;
+    };
+    const was = unnamed(before), now = unnamed(start);
+    if (partsEqual(now, was)) { return []; }
+    const rowParts = Object.keys(named).map(function (n) { return '"' + n + '"'; }).join(', ');
+    return [START_NOT_OPENING + ': lab.json ' + START_KEY + ' differs from ' + firstName + '/' + FILES.partsBefore + ' on part(s) no carried row names (' +
+        partsDiffText(was, now).split('\n').join('; ') + ') — ' + firstName + ' carried rows on ' + rowParts + ' only, so every other part opened as the round began'];
 }
 
 // ── a closed Record, as the lab hands it to a producer ────────────────────────────────────────

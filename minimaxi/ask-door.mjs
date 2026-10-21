@@ -32,10 +32,28 @@ export const BRAINS = Object.freeze(['none', 'platform']);
 
 /**
  * The published CLI this repo runs, pinned: the ONE owner of the version (scripts/test/cli-pin.test.mjs holds every
- * `npx -y -p` pin of @descix/cli in the tracked tree, and every npm dependency on it with its lock, to it). Plain
- * `npx descix` resolves the wrong package.
+ * `npx -y -p` pin of @descix/cli in the published tree to it; the twin-only scripts/test/twin-deps.test.mjs holds every
+ * npm dependency on it with its lock). Plain `npx descix` resolves the wrong package.
  */
-export const DESCIX_CLI = '@descix/cli@4.1.0';
+export const DESCIX_CLI = '@descix/cli@4.2.0';
+
+/** DESCIX_CLI's exact version, the ONE parse of the pin (a pin that is not an exact <major>.<minor>.<patch> version throws at load). */
+export const DESCIX_CLI_VERSION = (() => {
+    const m = /^@descix\/cli@(\d+\.\d+\.\d+)$/.exec(DESCIX_CLI);
+    if (!m) { throw new Error('ask-door.mjs DESCIX_CLI is not an exact @descix/cli version (<major>.<minor>.<patch>): ' + JSON.stringify(DESCIX_CLI)); }
+    return m[1];
+})();
+
+/**
+ * The app SDK whose `./share` contract that CLI runs on `descix site upload` (site/share.json): the ONE owner of its
+ * version and tarball integrity. scripts/test/share.test.mjs reads the tarball from npm's cache by this integrity;
+ * the twin-only scripts/test/twin-deps.test.mjs holds the twin's root package.json and lock to it.
+ */
+export const DESCIX_APP_SDK = Object.freeze({
+    name: '@descix/app-sdk',
+    version: '0.6.0',
+    integrity: 'sha512-0oLf/yqRTtAw+QnF00K+CaLwPYDnFNlAwK3jigNrYlI+LlE6RyuQN/JWm/iGtw4BGfSadcVYBnRtXom6JFF/TA=='
+});
 
 export const CLI_ARGV = Object.freeze(['-y', '-p', DESCIX_CLI, 'descix', 'mcp', 'execute', '--tool', ASK.command]);
 

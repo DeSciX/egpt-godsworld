@@ -5,6 +5,7 @@
  * gen-memories-seen.mjs — the ONE writer of a seen memory, from a run's Record folder (the sketch-projects design §6).
  *
  *   node scripts/gen-memories-seen.mjs <minimaxi/out/<run>/record> --looked-by <kind>:<role> --stills <N> --account "<words>" [--clip <clip>.mp4] [--looked-by … for another look] [--owl-look <N> [--answered-by <role>]] [--draft]
+ *   node scripts/gen-memories-seen.mjs --rerender <id> [<id> …]   (regenerate a published Record memory from its served Record)
  *   (minimaxi/loop.mjs imports writeSeenMemory and calls it on a LOCAL Owl's approve, with that Owl's look; USAGE spells the CLI out)
  *
  * The input is the run's Record folder: record-01/, record-02/, … (site/app-assets/maxi-record-folder.js owns the layout,
@@ -175,21 +176,11 @@ export function readRun(recordDir) {
 export const CHANGE_PREFIX = 'change: ';
 export const PART_PREFIX = 'part ';
 const NO_CHANGE = CHANGE_PREFIX + '(none: no act changed a declared part in this Record)';
-/** The line of a parts diff that is empty: END equals the side it starts from (diffStart's `file`). */
-function noPartDiff(file) { return PART_PREFIX + '(none): parts.after.json equals ' + file; }
-
-/**
- * THE side a memory's parts diff starts from, named: the producer's start (lab.json START_KEY, through the Record owner's
- * startOf) — the parts the round began from. A Record written before Records carried their start
- * (the memories published before it) states only its own parts.before.json, so its diff starts there and every line that
- * prints it says so by the file's name; the plan check refuses such a Record (recordPlanFaults), so no new memory is
- * published from one.
- */
-export function diffStart(files) {
-    const lab = jsonOf(files, FILES.lab);
-    if (lab && Object.prototype.hasOwnProperty.call(lab, START_KEY)) { return { parts: startOf(files), file: 'lab.json ' + START_KEY }; }
-    return { parts: jsonOf(files, FILES.partsBefore), file: FILES.partsBefore };
-}
+/** The side a memory's parts diff starts from, by name: the producer's start (lab.json START_KEY), read only through the
+ *  Record owner's startOf, which throws by name on a Record that carries none. */
+export const START_SIDE = 'lab.json ' + START_KEY;
+/** The line of a parts diff that is empty: END equals the start. */
+const NO_PART_DIFF = PART_PREFIX + '(none): parts.after.json equals ' + START_SIDE;
 
 function partsSide(v, file) {
     if (v === undefined) { return { missing: file + ' is not in the folder' }; }
@@ -209,7 +200,7 @@ function carriedRowCount(lab) {
  * THE lines a seen memory states from its Record, in order: one memo line per record.json change row (the owner's
  * changeText: `op` in the §6 vocabulary, a move's from/to in the shape its entry declares, setDeclared/add/remove/fork
  * as written; a carried row opens with CARRIED_MARK), then one line per parts entry that differs between the side the diff
- * starts from (diffStart: the producer's start) and parts.after.json. The memories gate re-renders these from the published folder (site/memories/<id>/) and compares,
+ * starts from (the producer's start, startOf; a Record that carries none is refused by name) and parts.after.json. The memories gate re-renders these from the published folder (site/memories/<id>/) and compares,
  * so a hand edit of either is red.
  */
 export function recordLines(files) {
@@ -217,11 +208,10 @@ export function recordLines(files) {
     const rows = record && Array.isArray(record.changes) ? record.changes : [];
     const carried = carriedRowCount(jsonOf(files, FILES.lab));
     const lines = rows.length ? rows.map(function (c, i) { return CHANGE_PREFIX + (i < carried ? CARRIED_MARK : '') + changeText(c); }) : [NO_CHANGE];
-    const from = diffStart(files);
-    const before = partsSide(from.parts, from.file);
+    const before = { parts: startOf(files) };   // THROWS by name when the Record carries no start: no other file stands in for it
     const after = partsSide(jsonOf(files, FILES.partsAfter), FILES.partsAfter);
-    if (before.missing || after.missing) {
-        lines.push(PART_PREFIX + '(not stated): ' + [before.missing, after.missing].filter(Boolean).join('; ') + ' — the parts diff waits on it');
+    if (after.missing) {
+        lines.push(PART_PREFIX + '(not stated): ' + after.missing + ' — the parts diff waits on it');
         return lines;
     }
     const names = Object.keys(before.parts).concat(Object.keys(after.parts).filter(function (n) { return !(n in before.parts); }));
@@ -229,7 +219,7 @@ export function recordLines(files) {
         const side = function (v) { return v === undefined ? '(absent)' : JSON.stringify(v); };
         return PART_PREFIX + n + ': ' + side(before.parts[n]) + ' → ' + side(after.parts[n]);
     });
-    return lines.concat(diff.length ? diff : [noPartDiff(from.file)]);
+    return lines.concat(diff.length ? diff : [NO_PART_DIFF]);
 }
 /** The Record's lines as they stand in a memory text (every line opening with CHANGE_PREFIX or PART_PREFIX), in order. */
 export function recordLinesOf(text) {
@@ -308,8 +298,8 @@ export function claimsRecord(text) { return String(text).includes(RECORD_HEADER)
 
 /**
  * The gate on a published seen memory: [] when it neither claims a Record (claimsRecord) nor has one served; else its
- * served folder site/memories/<id>/ must hold a complete Record and its Record lines must be exactly recordLines of that
- * folder. It triggers on the TEXT as well as the folder, so a deleted record.json or a hand-written change: line is red.
+ * served folder site/memories/<id>/ must hold a complete Record that states its plan (the plan check: a start, and a round
+ * that does not end where it started) and its Record lines must be exactly recordLines of that folder. It triggers on the TEXT as well as the folder, so a deleted record.json or a hand-written change: line is red.
  */
 export function publishedRecordFaults(text, id, siteDir) {
     const dir = path.join(siteDir, 'memories', id);
@@ -319,7 +309,9 @@ export function publishedRecordFaults(text, id, siteDir) {
     }
     const files = readRecordFolder(dir);
     const bad = recordFolderFaults(files).map(function (f) { return id + ': site/memories/' + id + '/ is not a complete Record — ' + f; });
-    const want = recordLines(files);
+    publishedPlanFaults(files).forEach(function (f) { bad.push(id + ': site/memories/' + id + '/ does not state its plan (the plan check, recordPlanFaults) — ' + f); });
+    let want;
+    try { want = recordLines(files); } catch (e) { bad.push(id + ': site/memories/' + id + '/ states no parts diff — ' + e.message); return bad; }
     const got = recordLinesOf(text);
     if (JSON.stringify(want) !== JSON.stringify(got)) {
         bad.push(id + '-seen.md: its Record lines are not the ones its served Record states (regenerate with scripts/gen-memories-seen.mjs; never edit them by hand):\n  want ' + want.join('\n       ') + '\n  got  ' + got.join('\n       '));
@@ -332,6 +324,15 @@ export function publishedRecordFaults(text, id, siteDir) {
 }
 
 /**
+ * The plan check on a served Record: the owner's recordPlanFaults of its plan (planOf) against the served folder, a chain of
+ * one. Only the hand-back Record is served, so this is the check readRun ran at publishing minus the earlier Records' rows;
+ * a Record with no start, or one that ends where it started (NO_CHANGE), is refused here by the owner's own words.
+ */
+function publishedPlanFaults(files) {
+    try { return recordPlanFaults(planOf(files), [files]); } catch (e) { return [e.message]; }
+}
+
+/**
  * The whole text, held: re-render the memory from its served Record folder and the looks its own looked lines carry, and
  * require byte equality. The served folder holds every input except the looks. Of a look, only its kind, role, still count,
  * clip and the account of a human or seat look are carried by its line (the looker's own words, owned by no file).
@@ -339,18 +340,26 @@ export function publishedRecordFaults(text, id, siteDir) {
  * the Record lines, the Owl's or the Builder's words, the header, the Threads line, the Owl's looked line.
  */
 function rerenderFaults(text, id, files) {
-    const lab = jsonOf(files, FILES.lab) || {};
-    const looks = parseLooked(text).filter(function (k) { return !k.malformed; }).map(function (k) {
-        return { by: k.by, who: k.who, stills: k.stills, account: k.account, clip: k.clip.slice(('memories/' + id + '/').length) };
-    });
     let want;
-    try {
-        want = renderSeenMemory({ lab: lab, id: id, record: jsonOf(files, FILES.record), files: files, handBack: lab.handBack || {}, complete: true, faults: [] }, looks, { draft: false });
-    } catch (e) { return [id + '-seen.md cannot be re-rendered from its served Record and its looked lines: ' + e.message]; }
+    try { want = renderPublished(text, id, files); } catch (e) { return [id + '-seen.md cannot be re-rendered from its served Record and its looked lines: ' + e.message]; }
     if (want === String(text)) { return []; }
     const a = String(text).split('\n'), b = want.split('\n');
     let i = 0; while (i < a.length && a[i] === b[i]) { i++; }
     return [id + '-seen.md is not the text the generator renders from its served Record and its looked lines (regenerate with scripts/gen-memories-seen.mjs; never edit it by hand); first difference at line ' + (i + 1) + ':\n  want ' + String(b[i]).slice(0, 200) + '\n  got  ' + String(a[i]).slice(0, 200)];
+}
+
+/**
+ * THE re-render of a published Record memory: the text the generator writes from its served Record folder `files`
+ * (site/memories/<id>/, readRecordFolder) and the looks its own looked lines carry (`text`, its current text). The memories
+ * gate compares against it; after a generator change or a data change to a served Record, the memory is regenerated by
+ * writing this, never by hand. THROWS what renderSeenMemory throws (a Record with no start: the owner's startOf, by name).
+ */
+export function renderPublished(text, id, files) {
+    const lab = jsonOf(files, FILES.lab) || {};
+    const looks = parseLooked(text).filter(function (k) { return !k.malformed; }).map(function (k) {
+        return { by: k.by, who: k.who, stills: k.stills, account: k.account, clip: k.clip.slice(('memories/' + id + '/').length) };
+    });
+    return renderSeenMemory({ lab: lab, id: id, record: jsonOf(files, FILES.record), files: files, handBack: lab.handBack || {}, complete: true, faults: [] }, looks, { draft: false });
 }
 
 /** Every path a text cites under memories/<id>/ (relative to that folder; a sentence's closing dot is not part of a path). */
@@ -504,7 +513,7 @@ export function renderSeenMemory(run, look, opts) {
     const seen = Object.keys(SEEN_ACCOUNT).map(function (k) { return k + ' — ' + oneLine(quoted(lab, 'owl.seen.' + k)); }).join('; ');
     return head.concat(looked, roundsLines(lab), [
         '',
-        'Changes (record.json, one row per act, in order) and the parts diff (' + diffStart(run.files).file + ' → parts.after.json):'
+        'Changes (record.json, one row per act, in order) and the parts diff (' + START_SIDE + ' → parts.after.json):'
     ], recordLines(run.files), teachingLines(lab), [
         '',
         'Outline (the person): ' + oneLine(lab.outline),
@@ -575,7 +584,7 @@ export function writeSeenMemory(recordDir, look, opts) {
 }
 
 export const USAGE = 'usage: gen-memories-seen.mjs <minimaxi/out/<run>/record> --looked-by <kind>:<role> --stills <N> --account "<what the looker saw: contact, after, passes>" [--clip <clip>.mp4] [--looked-by … again for another look] [--owl-look <N> [--answered-by <role>]] [--draft] — writes one line `' + LOOKED_SHAPE +
-    '` per look, in the order given; each --looked-by opens a look and its --stills, --account and --clip (default: the hand-back clip) follow it; --owl-look <N> is the local Owl\'s look on N stills, its account built from the Record by owlLook (a local-owl look is never typed); <role> names the looker by role (lowercase kebab words, at least two, e.g. lab-owner, godsworld-seat-author), never by a person\'s name; only a complete Record is published, and --draft writes under <run>/memory/ only';
+    '` per look, in the order given; each --looked-by opens a look and its --stills, --account and --clip (default: the hand-back clip) follow it; --owl-look <N> is the local Owl\'s look on N stills, its account built from the Record by owlLook (a local-owl look is never typed); <role> names the looker by role (lowercase kebab words, at least two, e.g. lab-owner, godsworld-seat-author), never by a person\'s name; only a complete Record is published, and --draft writes under <run>/memory/ only; `gen-memories-seen.mjs --rerender <id> [<id> …]` regenerates a published Record memory from its served Record and its own looked lines (renderPublished)';
 
 const LOOK_ARGS = ['--stills', '--account', '--clip', '--answered-by'];
 /** The CLI's arguments → {dir, looks, draft}. Throws (naming USAGE) on anything missing: no look, no memory. */
@@ -617,7 +626,32 @@ export function parseCliArgs(argv) {
     };
 }
 
+/** Regenerate a PUBLISHED Record memory in place (`--rerender <id>`): renderPublished of its served Record
+ *  (<root>/site/memories/<id>/) and the looks its own looked lines carry, written over <root>/kb/GodsWorld/memories/<id>-seen.md.
+ *  THROWS by name, writing nothing, when the memory is not there, no Record is served for it, or the served Record fails the
+ *  folder gate or the plan check. → {id, memory, changed}. */
+export function rerenderPublished(id, opts) {
+    const root = path.resolve((opts && opts.root) || REPO);
+    const md = path.join(root, 'kb', 'GodsWorld', 'memories', id + '-seen.md');
+    const dir = path.join(root, 'site', 'memories', id);
+    if (!fs.existsSync(md)) { throw new Error('[gen-memories-seen] --rerender: no published memory at ' + path.relative(root, md) + ' — nothing was written.'); }
+    if (!fs.existsSync(path.join(dir, FILES.record))) { throw new Error('[gen-memories-seen] --rerender: ' + id + ' has no Record served at ' + path.relative(root, dir) + '/ — only a Record memory is re-rendered; nothing was written.'); }
+    const files = readRecordFolder(dir);
+    const faults = recordFolderFaults(files).concat(publishedPlanFaults(files));
+    if (faults.length) { throw new Error('[gen-memories-seen] --rerender: the Record served for ' + id + ' is not publishable (the folder gate and the plan check) — nothing was written:\n- ' + faults.join('\n- ')); }
+    const was = fs.readFileSync(md, 'utf8');
+    const text = renderPublished(was, id, files);
+    fs.writeFileSync(md, text);
+    return { id: id, memory: path.relative(root, md), changed: text !== was };
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    if (process.argv[2] === '--rerender') {
+        const ids = process.argv.slice(3);
+        if (!ids.length || ids.some(function (i) { return !MEMORY_ID.test(i); })) { console.error('[gen-memories-seen] --rerender takes one or more published memory ids (mm-…), got ' + JSON.stringify(ids)); process.exit(2); }
+        try { ids.forEach(function (i) { console.log(JSON.stringify(rerenderPublished(i))); }); } catch (e) { console.error(e.message); process.exit(1); }
+        process.exit(0);
+    }
     let a;
     try { a = parseCliArgs(process.argv.slice(2)); } catch (e) { console.error(e.message); process.exit(2); }
     try {

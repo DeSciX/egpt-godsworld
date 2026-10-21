@@ -30,9 +30,9 @@ export const BREAKPOINTS = Object.freeze({ width: 720, height: 600 });
 export const MOBILE_QUERY = `(max-width: ${BREAKPOINTS.width}px), (pointer: coarse) and (max-height: ${BREAKPOINTS.height}px)`;
 
 /**
- * The CHROME rule, about the DEVICE: a coarse pointer on a small screen (portrait or landscape). Never the frame: at boot the
- * frame is still the shell's default SplitView width (a 960 px desktop window frames the page at 684 px), so a frame rule
- * would strip a desktop's chrome. The device-* features read the screen inside the shell's frame (measured: they agree with
+ * The CHROME rule, about the DEVICE: a coarse pointer on a small screen (portrait or landscape). Never the frame:
+ * the first paint is share.json's default_view (CodeSite) on the app's own domain, but SplitView on the store (descix.net, no binding: a 960 px desktop window frames the page at 684 px), where a frame rule would strip a desktop's chrome.
+ * The device-* features read the screen inside the shell's frame (measured: they agree with
  * screen.width/height). An iPad (coarse, 768x1024 either way round) is not a phone: CodeSite.
  */
 export const PHONE_QUERY = `(pointer: coarse) and (max-device-width: ${BREAKPOINTS.width}px), (pointer: coarse) and (max-device-height: ${BREAKPOINTS.height}px)`;
