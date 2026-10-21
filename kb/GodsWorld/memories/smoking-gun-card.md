@@ -1,6 +1,6 @@
 # Memory: Smoking Gun — card
 
-load: GYM scene id `smoking-gun` · 3D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/smoking-gun.js
+load: GYM scene id `smoking-gun` · 3D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/smoking-gun.js
 
 group: Smoking Gun
 

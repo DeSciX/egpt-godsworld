@@ -1,7 +1,7 @@
 # Memory: 6A · Two Sources — build
 
-load: GYM scene id `r6a-two-source` · 2D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/two-source.js
-source sha256 3bffe76607939c69ed56a01c82f2caa79a14631ad6cb1762ee2436a5a10ea997 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/two-source.js
+load: GYM scene id `r6a-two-source` · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/two-source.js
+source sha256 3bffe76607939c69ed56a01c82f2caa79a14631ad6cb1762ee2436a5a10ea997 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/two-source.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: two r4 sources 64 px apart. Further apart: center [cx − 64, cy] and [cx + 64, cy] (128 px = λ/2); predict a stronger lattice between them, and watch whether the one ring round both splits into two. Three sources: a third addObject at [cx, cy − 64]. Unequal: give one burstSize 36. The clip (memories/r6a-two-source/clip.mp4) showed two overlapping red disks with two holes at ≈(270,203) and (333,203), one faint ring of radius ≈105 round the pair by ≈400 ticks, and a denser lattice between the holes.

@@ -134,13 +134,22 @@ const PARSE_RULES = Object.freeze([
 ]);
 // The pin scanner's own lines, the one named exception (this file only).
 const SCANNER_LINES = Object.freeze([/^const PIN_PREFIX = /, /^const PIN_RE = /]);
-const isComment = (l) => /^\s*(?:\*|\/\*|\/\/)/.test(l);
+/**
+ * A line's code, its comments removed: the close of a block comment begun on an earlier line (`*` + `/`, or a body line
+ * `* …` ending in one), every block comment closed on the line, and then nothing at all when what is left is a comment
+ * (`//`, a block comment's body line `* …`, or an opening `/*` not closed on the line). Code after a comment is read.
+ */
+const codeOf = (l) => {
+    const s = String(l).replace(/^\s*(?:\*(?!\/)[^]*?)?\*\//, '').replace(/\/\*[^]*?\*\//g, ' ');
+    return /^\s*(?:\*|\/\*|\/\/)/.test(s) ? '' : s;
+};
 
 /** The code lines of one script's text that parse the CLI pin: [{file, line, why}]. */
 function parsersIn(file, text) {
     return String(text).split('\n').flatMap((l, i) => {
-        if (isComment(l) || (file === SELF && SCANNER_LINES.some((re) => re.test(l)))) { return []; }
-        const rule = PARSE_RULES.find((r) => r.re.test(l));
+        if (file === SELF && SCANNER_LINES.some((re) => re.test(l))) { return []; }
+        const code = codeOf(l);
+        const rule = PARSE_RULES.find((r) => r.re.test(code));
         return rule ? [{ file: file, line: i + 1, why: rule.why }] : [];
     });
 }
@@ -162,10 +171,16 @@ test('DESCIX_CLI is parsed once, in its owner: no other tracked script parses th
         "    const v = " + C + ".split('@')[2];",
         "    const v = " + C + ".replace('" + P + "', '');",
         "    const v = " + C + ".slice(" + C + ".lastIndexOf('@') + 1);",
-        '    const m = /^' + PE + '(\\d+)\\.(\\d+)\\.(\\d+)$/.exec(pin);'
+        '    const m = /^' + PE + '(\\d+)\\.(\\d+)\\.(\\d+)$/.exec(pin);',
+        "/* note */ export const e4 = " + C + ".split('@')[2];",
+        "    /* a */ /* b */ const v = " + C + ".split('@')[2];",
+        "*/ const v = " + C + ".split('@')[2];",
+        " * the end of a doc */ const v = " + C + ".split('@')[2];"
     ];
     for (const plant of plants) { assert.equal(parsersIn('scripts/test/x.test.mjs', plant).length, 1, 'planted spelling not refused: ' + plant); }
-    for (const ok of ["    assert.equal(h.pin, " + C + ");", "    const argv = ['-y', '-p', " + C + ", 'descix'];", "const CLI = process.env." + C, ' * ' + C + '. A comment is not code.']) {
+    for (const ok of ["    assert.equal(h.pin, " + C + ");", "    const argv = ['-y', '-p', " + C + ", 'descix'];", "const CLI = process.env." + C, ' * ' + C + '. A comment is not code.',
+        "// " + C + ".split('@')[2]", "    /* " + C + ".split('@')[2] */", "/* " + C + ".split('@')[2], a block comment not closed on its line",
+        "    const argv = ['-p', " + C + "]; /* " + C + ".split('@')[2] */"]) {
         assert.deepEqual(parsersIn('scripts/test/x.test.mjs', ok), [], 'a whole-value use is not a parse: ' + ok);
     }
     assert.equal(parsersIn('scripts/test/x.test.mjs', 'const PIN_RE = ' + String(PIN_RE) + ';').length, 1, 'the scanner line outside this file is a parse');

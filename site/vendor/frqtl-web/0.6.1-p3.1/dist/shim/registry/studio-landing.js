@@ -1,0 +1,67 @@
+/* Copyright 2023-2026 by Essam Abadir */
+
+/**
+ * studio-landing.js — the ONE record of how STUDIO resolved the deep link it opened with, as host-view.js records
+ * its view outcome: STUDIO's resolver (lib/features/ide/studio-landing-of.js::studioLandingOf) decides the row and
+ * AuthorView.jsx writes it on `document.documentElement` under STUDIO_LANDING_ATTR, through recordStudioLanding,
+ * and a gate that opens a link (a showcase tile, showcase-link.js) reads that attribute instead of STUDIO's DOM or
+ * its error copy.
+ *
+ *   STUDIO_LANDING_ATTR          the <html> attribute carrying the outcome id
+ *   STUDIO_LANDING_OUTCOMES      the closed table: one row per branch of STUDIO's link resolution, `{ id, means }`
+ *   recordStudioLanding(root, id) writes `id` on `root` (an Element, or null to only validate); an id outside the
+ *                                table THROWS — that is a defect in the writer, never a landing
+ *
+ * The rows are the branches the resolution already takes, no more: the link's keys are read by the one parser
+ * (lib/features/ide/deep-link.js) and the refusal of a key STUDIO does not own is its deepLinkRefusalOf. `ok` says the
+ * linked scene RESOLVED and was handed to STUDIO's selection path; whether that scene then boots is the boot record's
+ * business (boot-phases.js), not this one's.
+ *
+ * Lives in the registry, published by `./registry`: the outcome is the landing of the link showcaseHref writes, so a
+ * gate following a tile takes both from one module instance; the parser's own home (lib/features) has no package
+ * door, and shim may not import features.
+ *
+ * Host-neutral ESM with no imports: it runs unchanged in node and in a page.
+ */
+
+/** The <html> attribute STUDIO records its deep-link landing on. */
+export const STUDIO_LANDING_ATTR = 'data-frqtl-studio-landing';
+
+/** The closed table of STUDIO deep-link landings, in the order the resolver tests them (lib/features/ide/test/studio-landing-of.test.mjs holds it). */
+export const STUDIO_LANDING_OUTCOMES = Object.freeze([
+    { id: 'refused-key',
+      means: 'the link carries a key STUDIO does not own, or a deleted key (deep-link.js deepLinkRefusalOf): the refusal is on the deep-link strip and the opening rung opens' },
+    { id: 'conflict',
+      means: 'the link names both a walkthrough and a saved project: nothing opens' },
+    { id: 'mode-without-walkthrough',
+      means: 'the link names a mode and no walkthrough: nothing opens' },
+    { id: 'unknown-walkthrough',
+      means: 'the linked walkthrough is not in the walkthrough registry (walkthroughById): nothing opens' },
+    { id: 'unknown-mode',
+      means: 'the linked mode is not one the linked rung declares (walkthroughModes): nothing opens' },
+    { id: 'project-unreadable',
+      means: 'the linked saved project is present but its folder is refused by the load: nothing opens' },
+    { id: 'project-not-found',
+      means: 'no saved project of the linked name in this browser: nothing opens' },
+    { id: 'ok',
+      means: 'the linked walkthrough (in the linked mode, else its default) or saved project resolved and was handed to STUDIO\'s selection path' },
+    { id: 'first-contact',
+      means: 'no STUDIO deep link: the walkthrough registry\'s opening rung opens' },
+].map(Object.freeze));
+
+const IDS = new Set(STUDIO_LANDING_OUTCOMES.map((r) => r.id));
+
+/**
+ * @param {Element|null} root  the document element STUDIO runs in (null: validate only)
+ * @param {string} id          a STUDIO_LANDING_OUTCOMES id
+ * @returns {string} id
+ * @throws {Error} an id the table does not list
+ */
+export function recordStudioLanding(root, id) {
+    if (!IDS.has(id)) {
+        throw new Error('[studio-landing] \'' + id + '\' is not a STUDIO_LANDING_OUTCOMES row — declared: [' +
+            [...IDS].join(', ') + ']. (FAIL-LOUD.)');
+    }
+    if (root) { root.setAttribute(STUDIO_LANDING_ATTR, id); }
+    return id;
+}

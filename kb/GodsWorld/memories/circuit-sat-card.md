@@ -1,6 +1,6 @@
 # Memory: Circuit SAT — card
 
-load: GYM scene id `circuit-sat` · 2D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/circuit-sat.js
+load: GYM scene id `circuit-sat` · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/circuit-sat.js
 
 tile: A half-adder settles on its own answer. No search algorithm runs.
 

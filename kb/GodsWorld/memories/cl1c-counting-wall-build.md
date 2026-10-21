@@ -1,7 +1,7 @@
 # Memory: 1C · Counting Wall — build
 
-load: GYM scene id `cl1c-counting-wall` · 2D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/counting-wall.js
-source sha256 b21b52e34b8f3d5e282f7b063659d545a2b667580759b890be8f8501a9bac763 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/counting-wall.js
+load: GYM scene id `cl1c-counting-wall` · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/counting-wall.js
+source sha256 b21b52e34b8f3d5e282f7b063659d545a2b667580759b890be8f8501a9bac763 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/counting-wall.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: a spray and a screen that counts by destroying. A narrower screen: rect [360, 100, 20, 200] catches only the middle of the spray. A see-through counter: preset 'transparent-probe' (counts without stopping; dse-one-emitter uses it) — then predict the right side filling with red. A second chart on the same wall is one more LiveChart with source: screen. The clip (memories/cl1c-counting-wall/clip.mp4) showed the red field stopping dead at the green wall by ≈400 ticks and the chart panel staying an empty dark box (no bars were drawn in that recording).

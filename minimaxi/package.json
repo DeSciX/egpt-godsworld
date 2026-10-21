@@ -5,8 +5,8 @@
   "type": "module",
   "license": "SEE LICENSE IN LICENSE.md",
   "dependencies": {
-    "@descix/frqtl-node": "0.6.0",
-    "@descix/frqtl-web": "0.6.0",
+    "@descix/frqtl-node": "0.6.1-p3.1",
+    "@descix/frqtl-web": "0.6.1-p3.1",
     "playwright": "1.61.0"
   }
 }

@@ -1,6 +1,6 @@
 # Memory: 3 · Omni Source — card
 
-load: GYM scene id `r3-omni-source` · 2D · source site/vendor/frqtl-web/0.6.0/dist/frqtl/scenes/omni-source.js
+load: GYM scene id `r3-omni-source` · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/omni-source.js
 
 group: Light Lab
 
