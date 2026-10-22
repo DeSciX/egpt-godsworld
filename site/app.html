@@ -147,7 +147,23 @@
     "@descix/frqtl-web/registry": "./vendor/frqtl-web/0.6.1-p3.1/dist/shim/registry/index.js",
     "@descix/frqtl-web/project": "./vendor/frqtl-web/0.6.1-p3.1/dist/shim/project/index.js",
     "@descix/frqtl-web/host-view": "./vendor/frqtl-web/0.6.1-p3.1/dist/shim/host/index.js",
-    "@descix/frqtl-web/site-graph": "./vendor/frqtl-web/0.6.1-p3.1/dist/shim/engine/site-graph.js"
+    "@descix/frqtl-web/site-graph": "./vendor/frqtl-web/0.6.1-p3.1/dist/shim/engine/site-graph.js",
+    "./app-assets/frqtl-web-project.js": "./app-assets/frqtl-web-project.js?v=c84a09c763880998",
+    "./app-assets/maxi-ask.js": "./app-assets/maxi-ask.js?v=5aea5d9911a6b3b2",
+    "./app-assets/maxi-card.js": "./app-assets/maxi-card.js?v=1353ee1c3b8011c2",
+    "./app-assets/maxi-hand-tool.js": "./app-assets/maxi-hand-tool.js?v=ab8f883d722fe33a",
+    "./app-assets/maxi-hands.js": "./app-assets/maxi-hands.js?v=69a6126b2830e61e",
+    "./app-assets/maxi-host-view.js": "./app-assets/maxi-host-view.js?v=2d90dc258ca751e1",
+    "./app-assets/maxi-icons.js": "./app-assets/maxi-icons.js?v=1d497dd14315db55",
+    "./app-assets/maxi-intro.js": "./app-assets/maxi-intro.js?v=d934e2b8a60d8e86",
+    "./app-assets/maxi-lab.js": "./app-assets/maxi-lab.js?v=ad2d5beffd353762",
+    "./app-assets/maxi-local-memory.js": "./app-assets/maxi-local-memory.js?v=3b0c942ea7d28f1e",
+    "./app-assets/maxi-loop.js": "./app-assets/maxi-loop.js?v=eb5ec3a684060846",
+    "./app-assets/maxi-record-folder.js": "./app-assets/maxi-record-folder.js?v=10f7f865968228cb",
+    "./app-assets/maxi-record.js": "./app-assets/maxi-record.js?v=46af9c1343138863",
+    "./app-assets/maxi-roles.js": "./app-assets/maxi-roles.js?v=7e5137534b9e05eb",
+    "./app-assets/maxi-scene.js": "./app-assets/maxi-scene.js?v=e5886ce522913a16",
+    "./app-assets/maxi-talk.js": "./app-assets/maxi-talk.js?v=473703003e058130"
   }
 }
 </script>
@@ -183,7 +199,7 @@
     </div>
   </div>
   <!-- The conversation, WORDS only: Tony's outline, Maxi's plan, the Builder's "built — watch" with its clip,
-       the Owl's verdict (app-assets/maxi-loop.js), and every clip the lab handed Maxi with his answer. -->
+       the Owl's verdict (maxi-loop.js), and every clip the lab handed Maxi with his answer. -->
   <aside id="talk" aria-live="polite">
     <div class="talk-head"><span>Maxi</span><button id="talk-new" type="button" title="Start a new conversation with Maxi">New conversation</button></div>
     <div id="talk-lines"></div>
@@ -193,12 +209,12 @@
     <div class="code-head" id="code-title"></div>
     <pre id="code-text"></pre>
   </aside>
-  <!-- The scene's card, read from the frqtl SDK's registry (app-assets/maxi-card.js); the Info button shows it. -->
+  <!-- The scene's card, read from the frqtl SDK's registry (maxi-card.js); the Info button shows it. -->
   <aside id="info" hidden aria-labelledby="info-title">
     <div class="info-head" id="info-title"></div>
     <div id="info-body"></div>
   </aside>
-  <!-- The demonstrations this browser keeps (app-assets/maxi-local-memory.js), kept when a Record completes; the Memories button shows them. -->
+  <!-- The demonstrations this browser keeps (maxi-local-memory.js), kept when a Record completes; the Memories button shows them. -->
   <aside id="memories" hidden aria-labelledby="memories-title">
     <div class="memories-head" id="memories-title">Your memories<small>Kept in this browser only; Maxi sees one only when you Send or Discuss it. A Record is kept here when you stop it; closing its card (×) removes it.</small></div>
     <div id="memories-status"></div>
@@ -233,12 +249,12 @@
     window.removeEventListener('error', note, true);
     seen.forEach(function (f) { console.error('[maxi-lab boot] ' + (f.script ? 'a module graph failed to load under ' + f.script : (f.file || 'a module') + ' failed to run:'), f.error || f.message || ''); });
     if (window.MaxiLab) { return; }
-    var lab = document.querySelector('script[type="module"][src$="app-assets/maxi-lab.js"]');
+    var mods = document.querySelectorAll('script[type="module"][src]'); var lab = mods[mods.length - 1];   // the lab's, the last (intro.test)
     var ran = seen.filter(function (f) { return 'file' in f && f.file; })[0];
     (seen.some(function (f) { return f.script; }) ? failedRequest() : Promise.resolve(null)).then(function (req) {
       var why = req ? req.url + ' did not load (' + (typeof req.status === 'number' ? 'HTTP ' + req.status : req.status) + ')'
         : ran ? ran.file + ' failed to run'
-        : (lab ? lab.src : 'app-assets/maxi-lab.js') + ' did not start';
+        : (lab ? lab.src : 'maxi-lab.js') + ' did not start';
       document.getElementById('status').textContent = 'Maxi\'s Lab could not start';
       var bar = document.getElementById('error');
       bar.textContent = 'Maxi\'s Lab could not start: ' + why + '. The details are in the browser console.';
@@ -250,7 +266,7 @@
 </script>
 <!-- The DeSciX bridge first (classic), then the lab; maxi-lab.js imports maxi-host-view.js, the one view declaration (NoChrome on a phone, CodeSite otherwise). -->
 <script src="DeSciXAppSDK.js"></script>
-<script type="module" src="app-assets/maxi-intro.js"></script>
-<script type="module" src="app-assets/maxi-lab.js"></script>
+<script type="module" src="./app-assets/maxi-intro.js?v=d934e2b8a60d8e86"></script>
+<script type="module" src="./app-assets/maxi-lab.js?v=ad2d5beffd353762"></script>
 </body>
 </html>

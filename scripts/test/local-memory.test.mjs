@@ -33,6 +33,7 @@ import { recordsOf, SEGMENT_HAND } from '../../site/app-assets/maxi-record.js';
 import { footageUserInput, DISCUSS_HEAD, DISCUSS_QUESTION, TEACHING_HEAD, LOOK_QUESTION } from '../../site/app-assets/maxi-ask.js';
 import { manifestFor, serializeManifest } from '../../site/app-assets/frqtl-web-project.js';
 import { publishedFiles } from '../publish-paths.mjs';
+import { renderBlock } from '../gen-import-maps.mjs';
 import { distUrl } from '../frqtl-web-pin.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -205,8 +206,11 @@ const DYNAMIC_IMPORTS_ALLOWED = { 'minimaxi/body.mjs': "await import(distUrl(exp
  */
 export function writerFaults(sources) {
     const faults = [];
-    for (const [f, src] of Object.entries(sources)) {
+    const GENERATED_MAP = renderBlock();
+    for (const [f, text] of Object.entries(sources)) {
         if (f === OWNER) { continue; }
+        // a page's generated import map (the generator's text exactly; hands.test holds it) versions every site module's URL and loads none
+        const src = f.endsWith('.html') ? text.split(GENERATED_MAP).join('') : text;
         if (f !== STORE_CALLER && MODULE_LITERAL.test(src)) { faults.push(f + ' names the store module maxi-local-memory.js — only ' + STORE_CALLER + ' holds the store'); }
         if (/indexeddb|idbfactory|idbdatabase|idbobjectstore/i.test(src)) { faults.push(f + ' names IndexedDB: only ' + OWNER + ' keeps local memories'); }
         if (src.includes(memory.DB_NAME)) { faults.push(f + ' names the memories database ' + JSON.stringify(memory.DB_NAME)); }
@@ -258,6 +262,8 @@ test('the owner is the only writer of local memories, by reference: one importer
         ['window.indexedDB', add(STORE_CALLER, "\nwindow.indexedDB.open('x', 1);\n"), /maxi-lab\.js names IndexedDB/],
         ['the database by name', add('site/app-assets/maxi-record.js', "\nconst n = '" + memory.DB_NAME + "';\n"), /names the memories database/],
         ['a page script', Object.assign({}, src, { 'site/app.html': src['site/app.html'].replace('</body>', '<script>indexedDB.deleteDatabase("x")</script></body>') }), /site\/app\.html names IndexedDB/],
+        ['a page script naming the store', Object.assign({}, src, { 'site/app.html': src['site/app.html'].replace('</body>', '<script type="module" src="./app-assets/maxi-local-memory.js"></script></body>') }), /site\/app\.html names the store module/],
+        ['a hand-edited map row', Object.assign({}, src, { 'site/scene.html': src['site/scene.html'].replace('"imports": {', '"imports": {\n    "x": "./app-assets/maxi-local-memory.js",') }), /site\/scene\.html names the store module/],
         ['the verifier\'s r2: a template-literal dynamic import', add('site/app-assets/maxi-hands.js', "\nimport(`./maxi-local-${'memory'}.js`).then((m) => m.openMemories().save(x));\n"), /maxi-hands\.js has 1 dynamic import\(/],
         ['the verifier\'s r2: a concatenated dynamic import', add('site/app-assets/maxi-hands.js', "\nimport('./maxi-local-' + 'memory.js').then((m) => m.openMemories().save(x));\n"), /maxi-hands\.js has 1 dynamic import\(/],
         ['the verifier\'s r2: an alias of globalThis, then a computed read', add(STORE_CALLER, "\nconst g = globalThis; const db = g['indexed'+'DB'];\n"), /maxi-lab\.js binds a name to self\|window\|globalThis/],
