@@ -26,6 +26,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { publishedFiles, isPublishedIn, viewOf } from '../publish-paths.mjs';
+import { moduleRows } from '../gen-import-maps.mjs';
 
 import {
     INTRO_TEXT, EXPLAINERS, ENTRY_LABELS, INTRO_SEEN_KEY, PADS, PADS_LEDE,
@@ -345,12 +346,15 @@ test('readSeen: the stored flag, or null when storage throws (the page still ren
 
 // ── 5. the page loads it without blocking the lab ────────────────────────────────────────────
 
+/** A page's module-script tag for app-assets/<file>: its src is the generator's row value (scripts/gen-import-maps.mjs moduleRows). */
+const moduleScript = (file) => '<script type="module" src="' + moduleRows()['./app-assets/' + file] + '"></script>';
+
 export function pageFaults(html, src) {
     const faults = [];
     const style = html.indexOf('</style>');
     if (html.indexOf('</style>\n<link rel="stylesheet" href="app-assets/maxi-intro.css">') !== style) { faults.push('app.html: the intro stylesheet is not the line after </style>'); }
-    const intro = html.indexOf('<script type="module" src="app-assets/maxi-intro.js"></script>');
-    const lab = html.indexOf('<script type="module" src="app-assets/maxi-lab.js"></script>');
+    const intro = html.indexOf(moduleScript('maxi-intro.js'));
+    const lab = html.indexOf(moduleScript('maxi-lab.js'));
     if (intro === -1 || lab === -1 || intro > lab) { faults.push('app.html: maxi-intro.js is not loaded before maxi-lab.js'); }
     const topLevel = src.split('\n').filter((l) => /^\S/.test(l) && /\bawait\b/.test(l));
     if (topLevel.length) { faults.push('maxi-intro.js awaits at its top level (the lab would wait): ' + topLevel[0]); }
@@ -361,7 +365,8 @@ test('app.html loads the intro stylesheet and module ahead of the lab; the modul
     const html = read('site/app.html');
     const src = read('site/app-assets/maxi-intro.js');
     assert.deepEqual(pageFaults(html, src), []);
-    const swapped = html.replace('<script type="module" src="app-assets/maxi-intro.js"></script>\n', '').replace('</body>', '<script type="module" src="app-assets/maxi-intro.js"></script>\n</body>');
+    const introTag = moduleScript('maxi-intro.js');
+    const swapped = html.replace(introTag + '\n', '').replace('</body>', introTag + '\n</body>');
     assert.deepEqual(pageFaults(swapped, src), ['app.html: maxi-intro.js is not loaded before maxi-lab.js']);
     assert.deepEqual(pageFaults(html, src + '\nawait Promise.resolve();\n'), ['maxi-intro.js awaits at its top level (the lab would wait): await Promise.resolve();']);
     assert.deepEqual(pageFaults(html.replace('<link rel="stylesheet" href="app-assets/maxi-intro.css">\n', ''), src), ['app.html: the intro stylesheet is not the line after </style>']);

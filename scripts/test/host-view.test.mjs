@@ -26,6 +26,7 @@
  */
 
 import { test } from 'node:test';
+import { moduleRows } from '../gen-import-maps.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -52,7 +53,8 @@ function siteTexts() {
 }
 
 /** The module scripts' and classic scripts' src, in document order. */
-const scriptSrcs = (html) => [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]);
+// each src as the plain site path: a module's src carries ./ and its ?v= version (scripts/gen-import-maps.mjs writes it)
+const scriptSrcs = (html) => [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1].split('?')[0].replace(/^\.\//, ''));
 
 // The publisher's SDK file documents view.set in its own comments; it is the shell's bridge, not a writer of this site.
 const NOT_A_WRITER = new Set(['DeSciXAppSDK.js']);
@@ -202,7 +204,7 @@ test('the copied host-view.js build is gone and nothing loads it; the pages reac
     const plant = (rel, text, back = false) => copyFaults(Object.assign({}, files, { [rel]: text }), back);
     assert.match(copyFaults(files, true).join(), /site\/app-assets\/host-view\.js is back/);
     assert.match(plant('app.html', files['app.html'].replace('<script src="DeSciXAppSDK.js"></script>\n', '<script src="DeSciXAppSDK.js"></script>\n<script type="module" src="app-assets/host-view.js"></script>\n')).join(), /app\.html: names host-view\.js/);
-    assert.match(plant('index.html', files['index.html'].replace('app-assets/maxi-host-view.js', 'app-assets/host-view.js')).join(), /index\.html: names host-view\.js[\s\S]*index\.html does not load DeSciXAppSDK\.js and then/);
+    assert.match(plant('index.html', files['index.html'].replace('src="' + moduleRows()['./' + OWNER] + '"', 'src="./app-assets/host-view.js"')).join(), /index\.html: names host-view\.js[\s\S]*index\.html does not load DeSciXAppSDK\.js and then/);
     assert.match(plant('app-assets/maxi-lab.js', files['app-assets/maxi-lab.js'].replace("import { MOBILE_QUERY, hostView } from './maxi-host-view.js';\n", '')).join(), /maxi-lab\.js does not import hostView/);
     assert.match(plant(OWNER, files[OWNER].replace("from '@descix/frqtl-web/host-view'", "from '../vendor/frqtl-web/0.6.0/dist/shim/host/index.js'")).join(), /does not import declareHostView from @descix\/frqtl-web\/host-view/);
 });

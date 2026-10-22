@@ -3,15 +3,24 @@
 
 /**
  * gen-import-maps.mjs — the ONE writer of the site's import maps: the block between IMPORT_MAP_MARKERS in each page
- * that imports the vendored @descix/frqtl-web by specifier (PAGES: the front page, index.html, for its host-view declaration;
- * the lab, app.html; and the scene frame, scene.html),
- * and of the ONE site module that reaches the package by path, PROJECT_DOOR.
+ * that loads a site module (PAGES: the front page, index.html, for its host-view declaration; the lab, app.html; and the
+ * scene frame, scene.html), of the src of each page's module scripts, and of the ONE site module that reaches the package
+ * by path, PROJECT_DOOR.
  *
- * The map is the package's own, never re-typed here: `pageImportMapFor(SITE_ROOT)` from the vendored `./project` — every
- * sketch row (FRQTL_WEB_SPECIFIERS, the table a scene's imports must name) plus every host row (FRQTL_WEB_HOST_SPECIFIERS:
- * ./boot, ./registry, ./project). The map has no dist-manifest row: a page reads the manifest from the root it holds
- * (`new URL('dist-manifest.json', root)`; maxi-lab.js). The site's pages sit at the site root, so the relative root
- * `./vendor/…` resolves under ANY path prefix (`descix serve`, PROD).
+ * A page's map is two tables:
+ *   - the package's own, never re-typed here: `pageImportMapFor(SITE_ROOT)` from the vendored `./project` — every sketch
+ *     row (FRQTL_WEB_SPECIFIERS, the table a scene's imports must name) plus every host row (FRQTL_WEB_HOST_SPECIFIERS:
+ *     ./boot, ./registry, ./project). It has no dist-manifest row: a page reads the manifest from the root it holds
+ *     (`new URL('dist-manifest.json', root)`; maxi-lab.js). The vendored files need no version of their own: their
+ *     path carries the package version, and a published version's bytes never change (sdk-copy.test.mjs).
+ *   - the site's own modules (moduleRows: EVERY site/app-assets/*.js): its plain URL → the same URL + `?v=<content hash>`.
+ *     The edge may cache a site file for a year as immutable (it guesses that from the file's name), so a module a
+ *     browser fetched once must never be asked for again under the same URL once its bytes change. The key is the URL
+ *     a relative import resolves to (`./frqtl-web-project.js` from app-assets/maxi-hands.js), so the modules import each
+ *     other plainly and every import is remapped; the html is never cached (no-store), so a new map reaches every browser.
+ *     A module script's src is not an import, so the map cannot reach it: each page's `<script type="module" src>` is
+ *     written to its module's row value here (renderPage), the same URL, so an entry and an importer are one instance.
+ * The site's pages sit at the site root, so every relative value resolves under ANY path prefix (`descix serve`, PROD).
  *
  * PROJECT_DOOR (site/app-assets/frqtl-web-project.js) re-exports the map's ./project row as a relative import, so a site
  * module that node imports too (maxi-hands.js, maxi-record-folder.js) reaches the package's Record format: node has no
@@ -22,12 +31,13 @@
  * the lab's frame and node import no part otherwise.
  *
  *   node scripts/gen-import-maps.mjs             # print the block
- *   node scripts/gen-import-maps.mjs --write     # rewrite ONLY what sits between the markers of each page, and the door
- *   node scripts/gen-import-maps.mjs --check     # exit 1 when any page's block, or the door, is stale
+ *   node scripts/gen-import-maps.mjs --write     # rewrite the door, then ONLY each page's block and module-script srcs
+ *   node scripts/gen-import-maps.mjs --check     # exit 1 when the door, any page's block or any module-script src is stale
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { REPO, PINNED, SITE_DIST, distUrl, exportFile } from './frqtl-web-pin.mjs';
 
@@ -45,24 +55,106 @@ export const IMPORT_MAP_MARKERS = Object.freeze({
     end: '<!-- IMPORT-MAP:END -->'
 });
 
-/** The pages that import the package by specifier (site-relative): index.html through maxi-host-view.js only. */
+/** The pages that load a site module (site-relative): index.html loads maxi-host-view.js only. */
 export const PAGES = Object.freeze(['index.html', 'app.html', 'scene.html']);
 
 /** The vendored dist root as seen from a page at the site root: an import-map value must be a URL or start with /, ./ or ../. */
 export const SITE_ROOT = './' + SITE_DIST + '/';
 
-/** The page's one import map: the package's pageImportMapFor at the vendored root. */
+/** The package's import map at the vendored root (pageImportMapFor): the rows node's resolve hook reads too (scripts/test/site-import-map.mjs). */
 export function siteImportMap() {
     return pageImportMapFor(SITE_ROOT);
 }
 
-export function renderBlock() {
-    const json = JSON.stringify(siteImportMap(), null, 2);
+/** The site's own modules' directory (site-relative): every .js in it is versioned (moduleRows). */
+export const MODULE_DIR = 'app-assets';
+/** The repo's site/, the default site every function below reads. */
+export const SITE_DIR = path.join(REPO, 'site');
+
+/** A module's version: the first 16 hex of its bytes' sha256, a function of the bytes alone (never a build number or a date): the platform's purge never reaches a ?v= URL, so one v never names two contents. */
+export function contentVersion(bytes) {
+    return createHash('sha256').update(bytes).digest('hex').slice(0, 16);
+}
+
+/**
+ * The site's own modules' rows: './app-assets/<f>.js' → './app-assets/<f>.js?v=<contentVersion>', for EVERY .js in MODULE_DIR,
+ * read from `siteDir`'s bytes as they are now. THROWS when the directory holds none.
+ */
+export function moduleRows(siteDir = SITE_DIR) {
+    const dir = path.join(siteDir, MODULE_DIR);
+    const files = fs.readdirSync(dir).filter(function (f) { return f.endsWith('.js'); }).sort();
+    if (!files.length) { throw new Error('[gen-import-maps] ' + dir + ' holds no .js module to version. (FAIL-LOUD.)'); }
+    const rows = {};
+    for (const f of files) {
+        const at = './' + MODULE_DIR + '/' + f;
+        rows[at] = at + '?v=' + contentVersion(fs.readFileSync(path.join(dir, f)));
+    }
+    return rows;
+}
+
+/** A page's one import map: the package's rows, then the site's modules' rows. THROWS when a key is in both. */
+export function pageImportMap(siteDir = SITE_DIR) {
+    const pkg = siteImportMap().imports;
+    const mine = moduleRows(siteDir);
+    const both = Object.keys(mine).filter(function (k) { return Object.prototype.hasOwnProperty.call(pkg, k); });
+    if (both.length) { throw new Error('[gen-import-maps] the package\'s map and the site\'s module rows both key ' + both.join(', ') + '. (FAIL-LOUD.)'); }
+    return { imports: Object.assign({}, pkg, mine) };
+}
+
+export function renderBlock(siteDir = SITE_DIR) {
+    const json = JSON.stringify(pageImportMap(siteDir), null, 2);
     return IMPORT_MAP_MARKERS.begin + '\n<script type="importmap">\n' + json + '\n</script>\n' + IMPORT_MAP_MARKERS.end;
 }
 
-/** One page with its block rendered: {next, stale}. THROWS when the page lacks exactly one marker pair. */
-export function renderPage(text, where) {
+/** The ONE form a page loads a site module in: `<script type="module" src="…"></script>`, its src written here. */
+const MODULE_SCRIPT = /<script type="module" src="([^"]*)"><\/script>/g;
+
+/** A page's module-script srcs written to their modules' row values. THROWS naming the page when one names no site module. */
+function renderModuleSrcs(text, where, rows) {
+    return text.replace(MODULE_SCRIPT, function (tag, src) {
+        const plain = './' + src.split('?')[0].replace(/^\.\//, '');
+        if (!Object.prototype.hasOwnProperty.call(rows, plain)) {
+            throw new Error('[gen-import-maps] ' + where + ' loads the module script ' + JSON.stringify(src) + ', which is not a site module in ' +
+                MODULE_DIR + '/ (moduleRows): a page\'s module script is one of the site\'s versioned modules. (FAIL-LOUD.)');
+        }
+        return '<script type="module" src="' + rows[plain] + '"></script>';
+    });
+}
+
+/** A mention of a site module's file, in any case: what a page may hold only in the ONE versioned tag. */
+const MODULE_MENTION = new RegExp(MODULE_DIR.replace(/[-]/g, '\\-') + '/[^"\'`\\s<>]*\\.js', 'i');
+
+/**
+ * The ways `page` (rendered: its block and versioned tags written) could reach a site module other than through its ONE
+ * versioned tag. Outside the generated block and those tags, it refuses:
+ *   - any mention of <MODULE_DIR>/<name>.js (any case, quoted or not; a comment too: a page names a module by its bare name);
+ *   - any <script> whose type is module (any attribute order, quote style or case) or importmap;
+ *   - any <link> whose rel names modulepreload (or any preload of a .js).
+ * Returns the faults, each naming the text at fault.
+ */
+export function strayModuleFaults(page) {
+    const m = IMPORT_MAP_MARKERS;
+    const b = page.indexOf(m.begin);
+    const e = page.indexOf(m.end);
+    let rest = b === -1 || e === -1 ? page : page.slice(0, b) + page.slice(e + m.end.length);
+    rest = rest.replace(MODULE_SCRIPT, function (tag, src) { return /\?v=[0-9a-f]{16}$/.test(src) ? '' : tag; });
+    const faults = [];
+    const at = (i) => JSON.stringify(rest.slice(Math.max(0, i - 40), i + 60));
+    const mention = new RegExp(MODULE_MENTION.source, 'gi');
+    for (let hit; (hit = mention.exec(rest));) { faults.push('names ' + hit[0] + ' outside its versioned tag: ' + at(hit.index)); }
+    for (const tag of rest.matchAll(/<script\b[^>]*>/gi)) {
+        const type = /\btype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag[0]);
+        const value = type ? (type[1] || type[2] || type[3] || '').trim().toLowerCase() : '';
+        if (value === 'module' || value === 'importmap') { faults.push('has a script of type ' + value + ' outside the generated block and the versioned tags: ' + at(tag.index)); }
+    }
+    for (const tag of rest.matchAll(/<link\b[^>]*>/gi)) {
+        if (/\bmodulepreload\b/i.test(tag[0]) || (/\bpreload\b/i.test(tag[0]) && /\.js\b/i.test(tag[0]))) { faults.push('preloads a script: ' + at(tag.index)); }
+    }
+    return faults;
+}
+
+/** One page with its block and its module-script srcs rendered: {next, stale}. THROWS when the page lacks exactly one marker pair. */
+export function renderPage(text, where, siteDir = SITE_DIR) {
     const m = IMPORT_MAP_MARKERS;
     const b = text.indexOf(m.begin);
     const e = text.indexOf(m.end);
@@ -70,9 +162,13 @@ export function renderPage(text, where) {
         throw new Error('[gen-import-maps] ' + where + ' does not carry exactly one import-map block — put these two lines, once, in its <head> ' +
             'before any module script:\n' + m.begin + '\n' + m.end);
     }
-    const current = text.slice(b, e + m.end.length);
-    const block = renderBlock();
-    return { next: text.slice(0, b) + block + text.slice(e + m.end.length), stale: current !== block };
+    const next = renderModuleSrcs(text.slice(0, b) + renderBlock(siteDir) + text.slice(e + m.end.length), where, moduleRows(siteDir));
+    const stray = strayModuleFaults(next);
+    if (stray.length) {
+        throw new Error('[gen-import-maps] ' + where + ' reaches a site module other than through its one versioned tag ' +
+            '(<script type="module" src="./' + MODULE_DIR + '/<name>.js"></script>, its src written here):\n  ' + stray.join('\n  ') + ' (FAIL-LOUD.)');
+    }
+    return { next: next, stale: next !== text };
 }
 
 export const SPECIFIER_COUNT = FRQTL_WEB_SPECIFIERS.length;
@@ -121,6 +217,29 @@ export function renderProjectDoor() {
         'export * from \'' + fromDoorOf(PROJECT_SPECIFIER) + '\';\n';
 }
 
+/** Rewrite (write) or compare the door under `siteDir`: true when it was stale. */
+export function writeDoor(siteDir = SITE_DIR, write = true) {
+    const doorFile = path.join(siteDir, PROJECT_DOOR);
+    const door = renderProjectDoor();
+    if (fs.existsSync(doorFile) && fs.readFileSync(doorFile, 'utf8') === door) { return false; }
+    if (write) { fs.writeFileSync(doorFile, door); }
+    return true;
+}
+
+/** Rewrite (write) or compare every page under `siteDir` against its modules' bytes as they are now: the stale pages, site-relative. */
+export function writePages(siteDir = SITE_DIR, write = true) {
+    const stale = [];
+    for (const page of PAGES) {
+        const file = path.join(siteDir, page);
+        const r = renderPage(fs.readFileSync(file, 'utf8'), 'site/' + page, siteDir);
+        if (r.stale) {
+            stale.push('site/' + page);
+            if (write) { fs.writeFileSync(file, r.next); }
+        }
+    }
+    return stale;
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
     const mode = process.argv[2];
     if (process.argv.length > 3 || (mode !== undefined && mode !== '--write' && mode !== '--check')) {
@@ -128,25 +247,14 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
         process.exit(2);
     }
     if (mode === undefined) { process.stdout.write(renderBlock() + '\n'); process.exit(0); }
-    const stale = [];
-    const doorFile = path.join(REPO, 'site', PROJECT_DOOR);
-    const door = renderProjectDoor();
-    if (!fs.existsSync(doorFile) || fs.readFileSync(doorFile, 'utf8') !== door) {
-        stale.push('site/' + PROJECT_DOOR);
-        if (mode === '--write') { fs.writeFileSync(doorFile, door); }
-    }
-    for (const page of PAGES) {
-        const file = path.join(REPO, 'site', page);
-        const r = renderPage(fs.readFileSync(file, 'utf8'), 'site/' + page);
-        if (r.stale) {
-            stale.push('site/' + page);
-            if (mode === '--write') { fs.writeFileSync(file, r.next); }
-        }
-    }
+    const write = mode === '--write';
+    // the door first: the pages version its bytes as written
+    const stale = (writeDoor(SITE_DIR, write) ? ['site/' + PROJECT_DOOR] : []).concat(writePages(SITE_DIR, write));
     if (mode === '--check' && stale.length) {
         console.error('[gen-import-maps] stale: ' + stale.join(', ') + ' — run node scripts/gen-import-maps.mjs --write');
         process.exit(1);
     }
-    console.log('[gen-import-maps] ' + (mode === '--write' ? 'wrote ' + (stale.join(', ') || 'nothing (already current)') : 'current') +
-        ' — ' + PINNED.name + '@' + PINNED.version + ', ' + SPECIFIER_COUNT + ' sketch rows + ' + HOST_COUNT + ' host rows (pageImportMapFor), and the ./project door');
+    console.log('[gen-import-maps] ' + (write ? 'wrote ' + (stale.join(', ') || 'nothing (already current)') : 'current') +
+        ' — ' + PINNED.name + '@' + PINNED.version + ', ' + SPECIFIER_COUNT + ' sketch rows + ' + HOST_COUNT + ' host rows (pageImportMapFor), ' +
+        Object.keys(moduleRows()).length + ' site module rows (' + MODULE_DIR + '/, content-versioned), and the ./project door');
 }
