@@ -232,7 +232,9 @@ test('the page empties the Imagine box only when the loop takes the outline — 
     const wire = fnBody('wireUi');
     const submit = wire.slice(wire.indexOf("el.imagine.addEventListener('submit'"), wire.indexOf('});', wire.indexOf("el.imagine.addEventListener('submit'")));
     assert.ok(submit.length > 0 && !submit.includes('imagineText.value ='), 'the submit handler clears the box before the loop takes the outline');
-    assert.equal((LAB_SRC.match(/imagineText\.value = /g) || []).length, 1, 'one place empties the box');
+    assert.equal((LAB_SRC.match(/imagineText\.value = ''/g) || []).length, 1, 'one place empties the box');
+    assert.deepEqual(LAB_SRC.match(/imagineText\.value = (?!'')[^;]*/g), ['imagineText.value = outline'], 'the only other write puts a question the platform refused for sign-in back in the box');
+    assert.match(fnBody('imagine'), /if \(isSignInRefusal\([^\n]*\n\s*if \(!el\.imagineText\.value\.trim\(\)\) \{ el\.imagineText\.value = outline; \}/, 'the box is refilled only on the sign-in refusal, and only when empty');
     assert.ok(/hand: \{ get enabled\(\) \{ return !!\(state\.hand && state\.hand\.enabled\); \} \}/.test(fnBody('theLoop')), 'the page loop is not given a LIVE view of the Hand');
 });
 

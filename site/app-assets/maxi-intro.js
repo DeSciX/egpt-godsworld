@@ -16,6 +16,8 @@
  * button close it. While it is open the rest of the page is inert, so focus and keys stay in the walk-through.
  */
 
+import { authStateOf, pageAuth } from './maxi-auth.js';
+
 /** The intro text: two paragraphs, spelling corrected only; scripts/test/intro.test.mjs pins it by sha256. */
 export const INTRO_TEXT = `Welcome to Godsworld, the training ground for Maxi. Maxi is a Cybernetic assistant but not artificial intelligence in the way large language models are. You might say that LLMs were built in the image of quants and coders where statistical sequences of words and symbolic equations are thought to be "intelligence." Maxi is built in the image of artists and real people - when you imagine yourself in the park flying a kite you don't sound out the words in your mind or work out the Navier-Stokes equations to adjust for the wind. You use your imagination first and then describe it in words later. That's what Maxi is learning to do in Godsworld - as you play with Maxi remember it is just barely a toddler.`
     + '\n\n'
@@ -62,26 +64,15 @@ export const INTRO_SEEN_KEY = 'egpt-godsworld:maxi-intro:seen';
 export const ENTRY_LABELS = Object.freeze({ login: 'Login to enter Godsworld', enter: 'Enter Godsworld' });
 
 /**
- * The entry button's rule, from what DeSciX.ready() resolved and what powch.isAuthenticated() returned.
- * The shell publishes powch and nobody is signed in → login; signed in, standalone, or no powch → enter.
- * `authenticated` must be a boolean whenever powch is published (the bridge answered it); anything else
- * is refused by name, never guessed.
- * @param {{mode: string, members?: string[], authenticated?: boolean}} bridge
+ * The entry button's rule, from the sign-in state (maxi-auth.js authStateOf, the one owner of reading it: what
+ * DeSciX.ready() resolved and what powch.isAuthenticated() returned). The shell publishes powch and nobody is signed in →
+ * login; signed in, standalone, or no powch → enter. A wrong answer is refused by authStateOf, never guessed.
+ * @param {{mode: string, members?: string[], authenticated?: boolean|null}} bridge
  * @returns {{action: 'login'|'enter', label: string}}
  */
 export function buttonLabelFor(bridge) {
-    if (!bridge || typeof bridge.mode !== 'string') {
-        throw new Error('[maxi-intro] buttonLabelFor needs what DeSciX.ready() resolved ({mode, members}); got ' + JSON.stringify(bridge));
-    }
-    if (bridge.mode !== 'shell') { return { action: 'enter', label: ENTRY_LABELS.enter }; }
-    if (!Array.isArray(bridge.members)) {
-        throw new Error('[maxi-intro] DeSciX.ready() resolved shell without a members array: ' + JSON.stringify(bridge));
-    }
-    if (!bridge.members.includes('powch')) { return { action: 'enter', label: ENTRY_LABELS.enter }; }
-    if (typeof bridge.authenticated !== 'boolean') {
-        throw new Error('[maxi-intro] the shell publishes powch but isAuthenticated() gave ' + JSON.stringify(bridge.authenticated) + ', not a boolean');
-    }
-    return bridge.authenticated ? { action: 'enter', label: ENTRY_LABELS.enter } : { action: 'login', label: ENTRY_LABELS.login };
+    const auth = authStateOf(bridge, bridge ? bridge.authenticated : undefined);
+    return auth.powch && !auth.authenticated ? { action: 'login', label: ENTRY_LABELS.login } : { action: 'enter', label: ENTRY_LABELS.enter };
 }
 
 /**
@@ -254,23 +245,20 @@ export function installIntro(win) {
         panel.scrollTop = 0;
     };
 
-    // The entry button's act, decided once the bridge settles (DeSciX.ready() never blocks the lab).
+    // The entry button's act, decided once the bridge settles (DeSciX.ready() never blocks the lab), and decided again
+    // whenever the sign-in state changes (maxi-auth.js re-reads it): a sign-in through the shell's SIGN IN shows here.
     let act = null;
     let settleError = null;   // a bridge that failed to settle stays shown on every re-open
-    const settle = (async () => {
-        if (!win.DeSciX || typeof win.DeSciX.ready !== 'function') {
-            throw new Error('window.DeSciX is missing: DeSciXAppSDK.js is not beside this page.');
-        }
-        const r = await win.DeSciX.ready();
-        const bridge = { mode: r && r.mode, members: r && r.members };
-        if (bridge.mode === 'shell' && Array.isArray(bridge.members) && bridge.members.includes('powch')) {
-            bridge.authenticated = await win.DeSciX.powch.isAuthenticated();
-        }
-        return buttonLabelFor(bridge);
-    })();
-    settle.then((decided) => {
+    const auth = pageAuth(win);
+    const decide = (state) => {
+        const decided = buttonLabelFor(state);
         act = decided.action;
         entry.textContent = decided.label;
+        return decided;
+    };
+    const settle = auth.settled.then(decide);
+    auth.onChange((state) => { decide(state); });
+    settle.then(() => {
         entry.disabled = false;
     }, (err) => {
         settleError = err;

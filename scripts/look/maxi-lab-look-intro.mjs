@@ -22,6 +22,8 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 
+import { EXPLAINERS } from '../../site/app-assets/maxi-intro.js';
+
 function argOf(flag, dflt) { const i = process.argv.indexOf(flag); return i === -1 ? dflt : process.argv[i + 1]; }
 const URL_ = argOf('--url', null);
 const PW_DIR = argOf('--playwright', null);
@@ -105,7 +107,7 @@ try {
         check(label === 'Login to enter Godsworld', 'A: unsigned shell with powch → the button reads "Login to enter Godsworld" (read: ' + label + ')');
         const rings = await page.$$eval('.intro-ring:not([hidden])', (rs) => rs.map((r) => r.dataset.for));
         note('rings shown', rings);
-        check(!rings.includes('btn-fullscreen') && rings.length === 10 && rings.includes('btn-info'), 'A: desktop draws a ring on every shown control, Info included, and none on the hidden Full screen (rings: ' + rings.length + ')');
+        check(!rings.includes('btn-fullscreen') && rings.length === Object.keys(EXPLAINERS).length - 1 && rings.includes('btn-info'), 'A: desktop draws a ring on every shown control (every EXPLAINERS row but Full screen), Info included, and none on the hidden Full screen (rings: ' + rings.length + ')');
         const pads = await page.evaluate(() => {
             const sec = document.querySelector('#intro .intro-pads');
             const disc = (cap) => { const d = sec && sec.querySelector('.intro-pad[data-pad="' + cap + '"]'); const r = d && d.getBoundingClientRect(); return r ? { x: r.left, w: r.width, cap: d.textContent } : null; };

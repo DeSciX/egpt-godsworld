@@ -32,6 +32,7 @@ import { HANDS, inventoryOf } from '../../site/app-assets/maxi-hands.js';
 import { createLoop, LOOP_LIMITS, threadBrain, labBody } from '../../site/app-assets/maxi-loop.js';
 import { assembleLoopRecords, changesAsText, completenessWords } from '../../site/app-assets/maxi-record-folder.js';
 import { loopRowsOf } from '../../site/app-assets/maxi-talk.js';
+import { isSignInRefusal, signInRefusal, SIGN_IN_NOTICE, SIGN_IN_MARK } from '../../site/app-assets/maxi-auth.js';
 import { fakeRunner, sdkCameraControl, withSketch, recordDoors } from './fake-runner.mjs';
 import { replayDoor } from './replay-door.mjs';
 
@@ -412,8 +413,8 @@ const QUESTION = FIXTURE_Q.outline;
 const ANSWER_REPLY = FIXTURE_Q.designer[0].response;
 
 /** The loop on the mirror lab with a body that LOGS every hand it is asked to run (a reading inventory included). */
-function runLogged(fixture, rolesModule) {
-    const door = replayDoor(fixture, PREFACES);
+function runLogged(fixture, rolesModule, call) {
+    const door = call ? { call, sent: [] } : replayDoor(fixture, PREFACES);
     const m = mirrorLab();
     const inner = labBody({ hands: HANDS, lab: m.lab });
     const acts = [];
@@ -481,7 +482,8 @@ const LAB_SRC = fs.readFileSync(path.join(HERE, '..', '..', 'site', 'app-assets'
 function pageImagine(src, r) {
     const at = src.indexOf('\nasync function imagine(');
     assert.ok(at !== -1, 'maxi-lab.js has no async function imagine()');
-    const rows = [], painted = [], cards = [], enabled = [], status = [];
+    const rows = [], painted = [], cards = [], enabled = [], status = [], classes = [];
+    const box = { value: '', focus() {} };
     r.events.length = 0;
     const state = { host: 'ready', records: null, loop: r.loop };
     const deps = {
@@ -491,11 +493,12 @@ function pageImagine(src, r) {
         showError: (err, owner) => painted.push({ owner, text: String((err && err.message) || err) }),
         clearError: (owner) => painted.push({ owner, cleared: true }),
         setConversationEnabled: (on) => enabled.push(on), renderStatus: () => status.push(r.loop.running ? 'Maxi is working' : 'idle'),
-        el: { imagineText: { focus() {} } }
+        el: { imagineText: box },
+        pageAuth: () => ({ refresh: () => new Promise(() => {}) }), isSignInRefusal, window: {}
     };
     const imagine = new Function(...Object.keys(deps), src.slice(at + 1, src.indexOf('\n}\n', at) + 2) + '\nreturn imagine;')(...Object.values(deps));
-    const paintRows = () => r.events.forEach((e) => loopRowsOf(e).forEach((row) => { if (!row.pending) { rows.push(row.who + ': ' + row.text); } }));
-    return { imagine: async (m) => { try { return await imagine(m); } finally { paintRows(); } }, rows, painted, cards, enabled, status, state };
+    const paintRows = () => r.events.forEach((e) => loopRowsOf(e).forEach((row) => { if (!row.pending) { rows.push(row.who + ': ' + row.text); classes.push(row.cls); } }));
+    return { imagine: async (m) => { try { return await imagine(m); } finally { paintRows(); } }, rows, classes, painted, cards, enabled, status, state, box };
 }
 
 test('the page\'s imagine(): a question paints the answer row with its memory files, no error, no demonstration card, no Records, and the status clears (negative controls: the answered branch removed throws the Record assembly into the error bar; an outline still paints the card)', async () => {
@@ -524,4 +527,68 @@ test('the page\'s imagine(): a question paints the answer row with its memory fi
     assert.equal(o.cards.length, 1);
     assert.ok(Array.isArray(o.state.records) && o.state.records.length >= 1);
     assert.deepEqual(o.painted, [{ owner: 'loop', cleared: true }]);
+});
+
+// ── a visitor nobody signed in, and an answer that names no memory: the strip shows a notice, never a red stop ──
+
+/** maxi-lab.js's commandDoor() (its own source, `src` for a plant) in a shell whose DeSciX.call is `call`. */
+function pageDoor(src, call) {
+    const at = src.indexOf('\nasync function commandDoor(');
+    assert.ok(at !== -1, 'maxi-lab.js has no async function commandDoor()');
+    const deps = { state: { host: 'shell' }, window: { DeSciX: { call } }, signInRefusal };
+    return new Function(...Object.keys(deps), src.slice(at + 1, src.indexOf('\n}\n', at) + 2) + '\nreturn commandDoor;')(...Object.values(deps));
+}
+/** The platform's refusal of a question from a visitor nobody signed in, as the shell's call rejected it on PROD. */
+const NOT_SIGNED_IN = async () => { throw new Error('User not authenticated'); };
+
+test('a question while nobody is signed in: a Lab notice in the plain style naming the shell\'s SIGN IN, no error bar, the question back in its box (negative controls: the door passing the refusal on raw, and imagine without its sign-in branch, are each red)', async () => {
+    const fx = Object.assign({}, FIXTURE, { outline: QUESTION, designer: [] });
+    const p = pageImagine(LAB_SRC, runLogged(fx, null, pageDoor(LAB_SRC, NOT_SIGNED_IN)));
+    await assert.rejects(p.imagine(QUESTION), (err) => isSignInRefusal(err.message) && /the platform said: User not authenticated/.test(err.message));
+    assert.deepEqual(p.rows, ['You: ' + QUESTION, 'Lab: ' + SIGN_IN_NOTICE]);
+    assert.deepEqual(p.classes, ['talk-tony', 'talk-lab'], 'the notice is the Lab\'s plain style, not talk-refused');
+    assert.match(SIGN_IN_NOTICE, /SIGN IN/); assert.match(SIGN_IN_NOTICE, /question is kept/);
+    assert.deepEqual(p.painted, [{ owner: 'loop', cleared: true }], 'no red error bar');
+    assert.equal(p.box.value, QUESTION, 'the question is kept in the box');
+    // a refusal that is not the sign-in one still stops red, by name (fail loud stays)
+    const other = pageImagine(LAB_SRC, runLogged(fx, null, pageDoor(LAB_SRC, async () => { throw new Error('Request entity too large'); })));
+    await assert.rejects(other.imagine(QUESTION), /Maxi stopped: designer: the question was NOT answered — Request entity too large/);
+    assert.deepEqual(other.classes, ['talk-tony', 'talk-refused']);
+    assert.equal(other.painted[0].owner, 'loop'); assert.match(other.painted[0].text, /Request entity too large/);
+    // plant 1: the door passes the platform's refusal on raw (the old page): Maxi stopped, in red
+    const rawDoor = LAB_SRC.replace('catch (err) { throw signInRefusal(err); }', 'catch (err) { throw err; }');
+    assert.notEqual(rawDoor, LAB_SRC);
+    const q = pageImagine(LAB_SRC, runLogged(fx, null, pageDoor(rawDoor, NOT_SIGNED_IN)));
+    await assert.rejects(q.imagine(QUESTION), /Maxi stopped: designer: the question was NOT answered — User not authenticated/);
+    assert.deepEqual(q.classes, ['talk-tony', 'talk-refused'], 'negative control: the raw refusal is the red stop the PROD strip showed');
+    // plant 2: imagine without its sign-in branch: the error bar is painted and the box stays empty
+    const noBranch = LAB_SRC.replace(/if \(isSignInRefusal\([^\n]*\n[^\n]*\n[^\n]*\n        \} else \{\n            showError\(err, 'loop'\);\n        \}/, "showError(err, 'loop');");
+    assert.notEqual(noBranch, LAB_SRC);
+    const b = pageImagine(noBranch, runLogged(fx, null, pageDoor(LAB_SRC, NOT_SIGNED_IN)));
+    await assert.rejects(b.imagine(QUESTION));
+    assert.equal(b.painted[0].owner, 'loop'); assert.ok(isSignInRefusal(b.painted[0].text), 'negative control: the error bar painted');
+    assert.equal(b.box.value, '', 'negative control: the question is not kept');
+});
+
+/** A question answered in words whose json:answer lists a memory the words never name (the PROD reply's shape, shortened). */
+const UNNAMED_REPLY = 'THIS IS: a question\nThis is the double slit rebuilt as a tunnel: one emitter, two slits, a detector wall.\n```json:answer\n{"memories": ["dse-tunnel-rebuild-build.md"]}\n```';
+
+test('an answer whose words name no memory: Maxi\'s words in his own row, then a Lab notice; the loop keeps the fault on {answered} (negative control: the old parser, which threw, hides the answer in a red stop)', async () => {
+    const fx = Object.assign({}, FIXTURE, { outline: QUESTION, designer: [ans('designer', 1, UNNAMED_REPLY)] });
+    const p = pageImagine(LAB_SRC, runLogged(fx));
+    const out = await p.imagine(QUESTION);
+    assert.deepEqual(out.answered.unnamed, ['dse-tunnel-rebuild-build.md'], 'the loop keeps the fault');
+    assert.deepEqual(p.rows, ['You: ' + QUESTION, 'Maxi: This is the double slit rebuilt as a tunnel: one emitter, two slits, a detector wall.',
+        'Lab: Maxi named no memory for this answer: he lists dse-tunnel-rebuild-build.md as drawn on, and the answer never names it.']);
+    assert.deepEqual(p.classes, ['talk-tony', 'talk-maxi', 'talk-lab']);
+    assert.deepEqual(p.painted, [{ owner: 'loop', cleared: true }]);
+    // the plant: the old parser (an unnamed memory THROWS) — the answer is swallowed into a red stop
+    const oldRoles = Object.assign({}, roles, { parseDesignerReply: (reply, stage) => {
+        const r = roles.parseDesignerReply(reply, stage);
+        if (r.answer && r.answer.unnamed.length) { throw new Error('[designer → answer]: ' + roles.unnamedFault(r.answer.unnamed) + ' The reply was: ' + reply.slice(0, 400)); }
+        return r;
+    } });
+    const q = pageImagine(LAB_SRC, runLogged(fx, oldRoles));
+    await assert.rejects(q.imagine(QUESTION), /Maxi stopped: \[designer → answer\]: the answer's words never name dse-tunnel-rebuild-build\.md/);
+    assert.deepEqual(q.classes, ['talk-tony', 'talk-refused'], 'negative control: no Maxi row, a red stop');
 });

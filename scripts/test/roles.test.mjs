@@ -47,7 +47,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
     ROLES, ROLE_ORDER, parsePlan, parseBuilderReply, parseVerdict, designerTurn, builderTurn, owlTurn, PARSERS, SEEN_ACCOUNT,
     stageOf, emptyStage, stageWords, extentWords, planOnStage, LOADING_HANDS, PLAN_REFUSED_KEYS, loadArgsOf, REFUSAL_ASK,
-    parseDesignerReply, readingOf, READING_LINE, DESIGNER_READINGS, PLAN_KEYS, ANSWER_KEYS, TALK_RULE, HANDOFF_TAGS, LAST_CLIP, LAST_CLIP_RULE
+    parseDesignerReply, readingOf, READING_LINE, DESIGNER_READINGS, PLAN_KEYS, ANSWER_KEYS, TALK_RULE, HANDOFF_TAGS, LAST_CLIP, LAST_CLIP_RULE, unnamedFault
 } from '../../site/app-assets/maxi-roles.js';
 import { HANDS, INVENTORY_KEYS, SKETCH_KEYS, inventoryOf } from '../../site/app-assets/maxi-hands.js';
 import { fakeRunner, sdkCameraControl } from './fake-runner.mjs';
@@ -533,18 +533,18 @@ test('designer: the first line reads the message; an outline parses its plan, a 
     const o = parseDesignerReply(READ('outline') + '\nTony, I will start from the mirror.\n' + PLAN_BLOCK, STAGE);
     assert.deepEqual([o.reading, o.answer, o.plan, o.words], ['outline', null, PLAN, 'Tony, I will start from the mirror.']);
     const q = parseDesignerReply(READ('question') + '\n' + ANSWER_WORDS + '\n' + ANSWER_BLOCK, STAGE);
-    assert.deepEqual([q.reading, q.answer, q.plan, q.words], ['question', { words: ANSWER_WORDS, memories: ['dse-tunnel-rebuild-card.md'] }, null, null]);
+    assert.deepEqual([q.reading, q.answer, q.plan, q.words], ['question', { words: ANSWER_WORDS, memories: ['dse-tunnel-rebuild-card.md'], unnamed: [] }, null, null]);
     const b = parseDesignerReply(READ('both') + '\n' + ANSWER_WORDS + '\n' + ANSWER_BLOCK + '\nNow the build: the mirror at 30 degrees.\n' + PLAN_BLOCK, STAGE);
     assert.deepEqual([b.reading, b.answer.memories, b.plan, b.words], ['both', ['dse-tunnel-rebuild-card.md'], PLAN, 'Now the build: the mirror at 30 degrees.']);
     assert.equal(readingOf('  \n' + READ('question') + '.\nwords').reading, 'question', 'leading blank lines and a closing full stop are read');
-    assert.throws(() => parseDesignerReply(READ('question') + '\nFrom dse-tunnel-rebuild-card: the claim.\n' + ANSWER_BLOCK, STAGE), /the answer's words never name dse-tunnel-rebuild-card\.md/, 'a file is named by its whole file name, extension included');
-    // the name check is a whole-token match, never a substring (planted substring matches are red here)
-    const named = (words, file) => parseDesignerReply(READ('question') + '\n' + words + '\n' + fence(HANDOFF_TAGS.answer, JSON.stringify({ memories: [file] })), STAGE).answer.memories;
-    assert.throws(() => named('The card says so.', 'card.md'), /never name card\.md/, '"card" does not name card.md');
-    assert.throws(() => named('I have a view.', 'a.md'), /never name a\.md/, '"a" does not name a.md');
-    assert.throws(() => named('See my-card.md for it.', 'card.md'), /never name card\.md/, 'my-card.md does not name card.md');
-    assert.throws(() => named('See card.mdx for it.', 'card.md'), /never name card\.md/, 'card.mdx does not name card.md');
-    for (const ok of ['See card.md.', '(card.md)', '`card.md`', 'kb/GodsWorld/memories/card.md says so', 'card.md, then']) { assert.deepEqual(named(ok, 'card.md'), ['card.md'], JSON.stringify(ok) + ' names card.md'); }
+    assert.deepEqual(parseDesignerReply(READ('question') + '\nFrom dse-tunnel-rebuild-card: the claim.\n' + ANSWER_BLOCK, STAGE).answer.unnamed, ['dse-tunnel-rebuild-card.md'], 'a file is named by its whole file name, extension included');
+    // the name check is a whole-token match, never a substring (planted substring matches are red here); an unnamed file is DATA on a question
+    const named = (words, file) => parseDesignerReply(READ('question') + '\n' + words + '\n' + fence(HANDOFF_TAGS.answer, JSON.stringify({ memories: [file] })), STAGE).answer.unnamed;
+    assert.deepEqual(named('The card says so.', 'card.md'), ['card.md'], '"card" does not name card.md');
+    assert.deepEqual(named('I have a view.', 'a.md'), ['a.md'], '"a" does not name a.md');
+    assert.deepEqual(named('See my-card.md for it.', 'card.md'), ['card.md'], 'my-card.md does not name card.md');
+    assert.deepEqual(named('See card.mdx for it.', 'card.md'), ['card.md'], 'card.mdx does not name card.md');
+    for (const ok of ['See card.md.', '(card.md)', '`card.md`', 'kb/GodsWorld/memories/card.md says so', 'card.md, then']) { assert.deepEqual(named(ok, 'card.md'), [], JSON.stringify(ok) + ' names card.md'); }
     assert.deepEqual(parseDesignerReply(READ('question') + '\nkb/GodsWorld/robotic-imagination.md says so.\n' + fence(HANDOFF_TAGS.answer, '{"memories": ["kb/GodsWorld/robotic-imagination.md"]}'), STAGE).answer.memories, ['kb/GodsWorld/robotic-imagination.md'], 'a kb-relative path is a file name');
     // the reading line
     assert.throws(() => parseDesignerReply('Tony, I will start from the mirror.\n' + PLAN_BLOCK, STAGE), /^Error: \[designer → reading\]: the reply's first line must read the message — one of "THIS IS: an outline", "THIS IS: a question", "THIS IS: a question and an outline" — got "Tony, I will start from the mirror\."/);
@@ -566,12 +566,44 @@ test('designer: the first line reads the message; an outline parses its plan, a 
     }
     assert.throws(() => answer({ memories: ['dse-tunnel-rebuild-card.md'], confidence: 1 }), /a json:answer block carries only memories, got `confidence`/);
     assert.deepEqual(ANSWER_KEYS, ['memories']);
-    assert.throws(() => answer({ memories: ['dse-tunnel-rebuild-card.md', 'r2-wave-card.md'] }), /the answer's words never name r2-wave-card\.md — a memory an answer draws on is named in its words/);
+    assert.deepEqual(answer({ memories: ['dse-tunnel-rebuild-card.md', 'r2-wave-card.md'] }).answer, { words: ANSWER_WORDS, memories: ['dse-tunnel-rebuild-card.md', 'r2-wave-card.md'], unnamed: ['r2-wave-card.md'] });
     assert.throws(() => answer({ memories: ['dse-tunnel-rebuild-card.md'] }, ''), /the answer is the words before the json:answer block, and there are none/);
     assert.throws(() => parseDesignerReply(READ('question') + '\n' + ANSWER_WORDS + '\n' + fence(HANDOFF_TAGS.answer, "{memories: ['x.md']}"), STAGE), /\[designer → answer\]: the block body is not strict JSON/);
     // the plan keeps parsePlan's checks inside a reading
     assert.throws(() => parseDesignerReply(READ('outline') + '\n' + fence(HANDOFF_TAGS.plan, JSON.stringify(Object.assign({}, PLAN, { hands: ['teleport'] }))), STAGE), /names no such hand: teleport/);
     assert.deepEqual(Object.keys(o.plan), PLAN_KEYS, 'a plan carries exactly PLAN_KEYS');
+});
+
+test('an unnamed memory is the ONE relaxed answer fault: data on a question alone; with a plan it still THROWS, and every other answer fault still throws (negative controls: a parser that throws on it, or returns data for a missing-words answer, is red)', () => {
+    const q = (words, body, tail) => parseDesignerReply(READ(tail ? 'both' : 'question') + '\n' + words + '\n' + fence(HANDOFF_TAGS.answer, JSON.stringify(body)) + (tail || ''), STAGE);
+    const relaxed = (parse) => {
+        const faults = [];
+        let r = null;
+        try { r = parse('The tunnel has two slits.', { memories: ['dse-tunnel-rebuild-build.md'] }); } catch (err) { faults.push('a question with an unnamed memory threw: ' + err.message); }
+        if (r && JSON.stringify(r.answer.unnamed) !== '["dse-tunnel-rebuild-build.md"]') { faults.push('unnamed is ' + JSON.stringify(r.answer.unnamed)); }
+        for (const [what, words, body, tail] of [
+            ['an answer with a plan after it', 'The tunnel has two slits.', { memories: ['dse-tunnel-rebuild-build.md'] }, '\nNow the build.\n' + PLAN_BLOCK],
+            ['no words', '', { memories: ['a.md'] }],
+            ['no memories', 'words', { memories: [] }],
+            ['a plan field in the answer', 'a.md says so.', { memories: ['a.md'], hands: ['see'] }]]) {
+            let threw = false;
+            try { parse(words, body, tail); } catch (err) { threw = true; }
+            if (!threw) { faults.push(what + ' did not throw'); }
+        }
+        let planOnQuestion = false;
+        try { parseDesignerReply(READ('question') + '\nI would build it.\n' + PLAN_BLOCK, STAGE); } catch (err) { planOnQuestion = /found 0 json:answer and 1 json:plan/.test(err.message); }
+        if (!planOnQuestion) { faults.push('an action block on a question turn did not throw'); }
+        return faults;
+    };
+    assert.deepEqual(relaxed(q), []);
+    assert.throws(() => q('The tunnel has two slits.', { memories: ['dse-tunnel-rebuild-build.md'] }, '\nNow the build.\n' + PLAN_BLOCK), /^Error: \[designer → answer\]: the answer's words never name dse-tunnel-rebuild-build\.md — a memory an answer draws on is named in its words\. The reply was: /);
+    assert.equal(unnamedFault(['x.md', 'y.md']), 'the answer\'s words never name x.md, y.md — a memory an answer draws on is named in its words.');
+    assert.throws(() => unnamedFault([]), /unnamedFault needs the memory files/);
+    // negative controls: the old parser (throws on unnamed) and an over-relaxed one (no words passes) are each red
+    const old = (w, b, t) => { const r = q(w, b, t); if (r.answer && r.answer.unnamed.length) { throw new Error(unnamedFault(r.answer.unnamed)); } return r; };
+    assert.match(relaxed(old).join(), /a question with an unnamed memory threw/);
+    const loose = (w, b, t) => (w ? q(w, b, t) : { answer: { words: '', memories: b.memories, unnamed: [] } });
+    assert.match(relaxed(loose).join(), /no words did not throw/);
 });
 
 test(TALK_RULE + ': the rule lives once in the persona, as its own section; the Designer\'s preface points at it by name and gives only the reply\'s shape (negative controls: a missing section, a restated clause)', () => {
