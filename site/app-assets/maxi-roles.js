@@ -655,8 +655,10 @@ export function namesFile(words, file) {
 }
 
 /**
- * The json:answer block of `text` (the reply after its reading line) → {words, memories}. THROWS on a malformed answer.
- * This parser checks the FORMAT of each memory file (a KB file name, named in the words as a whole token); it cannot
+ * The json:answer block of `text` (the reply after its reading line) → {words, memories, unnamed}. THROWS on a malformed answer.
+ * `unnamed` is data, not a throw: the listed memory files the words never name as a whole token (namesFile), so the
+ * page can show the answer and the fault apart; parseDesignerReply still THROWS on it when a plan follows, and the node
+ * trial refuses it (minimaxi/loop.mjs). This parser checks the FORMAT of each memory file (a KB file name); it cannot
  * list the knowledge base (DOM-free, no file system), so it never checks that a file EXISTS. The node driver
  * (minimaxi/loop.mjs) refuses an answer naming a file that is not under kb/GodsWorld; the page relies on this format check.
  */
@@ -676,13 +678,20 @@ function parseAnswer(text, block, reply) {
     if (badNames.length) { throw new Error(where + ': `memories` holds file names of the knowledge base (<name>.md), got ' + badNames.map(function (f) { return JSON.stringify(f); }).join(', ') + '. The block was: ' + quote(block.body)); }
     const words = text.slice(0, block.start).trim();
     if (!words) { throw new Error(where + ': the answer is the words before the json:answer block, and there are none. The reply was: ' + quote(reply)); }
-    const unnamed = m.filter(function (f) { return !namesFile(words, f); });
-    if (unnamed.length) { throw new Error(where + ': the answer\'s words never name ' + unnamed.join(', ') + ' — a memory an answer draws on is named in its words. The reply was: ' + quote(reply)); }
-    return { words: words, memories: m.slice() };
+    return { words: words, memories: m.slice(), unnamed: m.filter(function (f) { return !namesFile(words, f); }) };
 }
 
 /**
- * Designer → {reading, answer: {words, memories}|null, plan|null, words|null} — the one parser of the Designer's reply.
+ * The fault of an answer whose words never name memory files its json:answer block lists, in words: THE one text of it
+ * (the loop's stop for an answer with a plan, the node trial's refusal, the strip's notice reads `unnamed` itself).
+ */
+export function unnamedFault(unnamed) {
+    if (!Array.isArray(unnamed) || !unnamed.length) { throw new Error('[designer → answer] unnamedFault needs the memory files the words never name, got ' + JSON.stringify(unnamed)); }
+    return 'the answer\'s words never name ' + unnamed.join(', ') + ' — a memory an answer draws on is named in its words.';
+}
+
+/**
+ * Designer → {reading, answer: {words, memories, unnamed}|null, plan|null, words|null} — the one parser of the Designer's reply.
  * The first line reads the message (readingOf); the reading decides the blocks:
  *   outline  → exactly one json:plan and no json:answer (parsePlan: {plan, words});
  *   question → exactly one json:answer and no json:plan: an answer in words, no build;
@@ -706,6 +715,8 @@ export function parseDesignerReply(reply, stage) {
     }
     const answer = answers.length ? parseAnswer(r.rest, answers[0], reply) : null;
     if (!plans.length) { return { reading: r.reading, answer: answer, plan: null, words: null }; }
+    // a build never starts on an answer whose words leave a listed memory unnamed: only a question alone carries the fault on
+    if (answer && answer.unnamed.length) { throw new Error('[designer → answer]: ' + unnamedFault(answer.unnamed) + ' The reply was: ' + quote(reply)); }
     const planned = parsePlan(answer ? r.rest.slice(answers[0].end) : r.rest, stage);
     return { reading: r.reading, answer: answer, plan: planned.plan, words: planned.words };
 }

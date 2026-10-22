@@ -33,6 +33,7 @@ import { assembleLoopRecords, changesAsText, completenessWords, folderHere, scen
 import { openMemories, memoryKey, memoryNote, memoryMedia, memoryTeaching } from './maxi-local-memory.js';
 import * as roles from './maxi-roles.js';
 import { loopRowsOf } from './maxi-talk.js';
+import { pageAuth, signInRefusal, isSignInRefusal, SIGNED_IN_NOTICE } from './maxi-auth.js';
 import { ASK, createThread, footageUserInput, plainWords } from './maxi-ask.js';
 import { loadPageIcons, iconButton } from './maxi-icons.js';
 import { MOBILE_QUERY, hostView } from './maxi-host-view.js';
@@ -803,13 +804,15 @@ async function deleteMemory(key) {
 // ── the question door: footage to Maxi, from the page itself ───────────────────────────────
 
 // The shell's command door, or a refusal naming it. DeSciX.call itself throws standalone; an
-// embedded page with no readable bus ('embedded-no-bridge') is refused here by the same name.
-function commandDoor(command, params) {
+// embedded page with no readable bus ('embedded-no-bridge') is refused here by the same name. The platform's refusal of a
+// visitor nobody signed in is passed on as the lab's sign-in refusal (maxi-auth.js signInRefusal); every other, unchanged.
+async function commandDoor(command, params) {
     if (state.host !== 'shell') {
         throw new Error('the lab asks Maxi through the DeSciX App Shell\'s command door, window.DeSciX.call(\'' + command +
             '\'), and this page is running ' + state.host + ' — there is no shell above it, so nothing was asked' + (params && params.media ? ' (the clip is kept: MaxiLab.clips()).' : '.'));
     }
-    return window.DeSciX.call(command, params);
+    try { return await window.DeSciX.call(command, params); }
+    catch (err) { throw signInRefusal(err); }
 }
 
 function thread() {
@@ -983,6 +986,8 @@ async function imagine(outline) {
     if (state.host === 'pending') { throw new Error('imagine: the DeSciX bridge has not settled yet (DeSciX.ready() pending) — nothing was asked; try again in a moment.'); }
     setConversationEnabled(false);
     let recording = false;
+    // the sign-in state is re-read at each Send (maxi-auth.js): the status line follows a sign-in made since the last read
+    pageAuth(window).refresh().then(renderStatus, function (err) { console.error('[maxi-lab] the sign-in state could not be re-read:', err); renderStatus(); });
     try {
         if (!state.chain) { await beginChain('loop'); recording = true; }   // a human Record that is on is refused by the loop itself, by name
         const out = await theLoop().imagine(outline);
@@ -1000,7 +1005,12 @@ async function imagine(outline) {
         clearError('loop');
         return out;
     } catch (err) {
-        showError(err, 'loop');
+        if (isSignInRefusal(String((err && err.message) || err))) {   // not a fault: the strip's notice says sign in; the question goes back in its box
+            if (!el.imagineText.value.trim()) { el.imagineText.value = outline; }
+            clearError('loop');
+        } else {
+            showError(err, 'loop');
+        }
         throw err;
     } finally {
         if (recording) { abandonChain(); }
@@ -1135,11 +1145,20 @@ function clearError(owner) {
     if (el.error.dataset.owner === owner) { showError(null); }
 }
 
+/** The status line's sign-in part, from maxi-auth.js's last read: signed in / signed out, or what could not be read. */
+function signInWords(auth) {
+    if (auth.error) { return 'sign-in unread: ' + String(auth.error.message || auth.error); }
+    if (!auth.state) { return 'sign-in …'; }
+    if (!auth.state.powch) { return 'no sign-in here'; }
+    return auth.state.authenticated ? 'signed in' : 'signed out';
+}
+
 function renderStatus() {
     const sc = state.scene;
     const parts = ['host: ' + state.host + (state.view ? ' (' + state.view + ')' : ''), 'frqtl-web ' + (sdk.version || '…')];
     if (state.thread && state.thread.id) { parts.push('Maxi thread · ' + state.thread.turns + ' turn' + (state.thread.turns === 1 ? '' : 's')); }
     if (state.loop && state.loop.running) { parts.push('Maxi is working'); }
+    parts.push(signInWords(pageAuth(window)));
     if (state.loading) { parts.push('booting ' + state.loading + ' …'); }
     else if (sc) { parts.push(sc.label + ' · ' + sc.renderer + ' · tick ' + (sc.record ? sc.tick() : '-') + (sc.runner.isRunning ? '' : ' · PAUSED')); }
     else { parts.push('no scene'); }
@@ -1322,6 +1341,11 @@ const ready = (async function main() {
     renderStatus();
     await settleHost();
     setConversationEnabled(true);   // standalone too: an outline there is refused loudly, naming the shell's door
+    // a sign-in made after the page loaded (the shell's SIGN IN) shows on the status line and in the conversation, no reload
+    pageAuth(window).onChange(function (now) {
+        if (now.authenticated === true) { talkLine('Lab', SIGNED_IN_NOTICE, 'talk-lab'); }
+        renderStatus();
+    });
     return loadScene(firstScene());
 })();
 ready.catch(function (err) { showError(err); console.error('[maxi-lab] boot failed:', err); });

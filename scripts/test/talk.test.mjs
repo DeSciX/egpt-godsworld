@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 
 import { loopRowsOf, LOOP_ROWS, ROLE_ROW, DONE_REFUSED, ANSWERED } from '../../site/app-assets/maxi-talk.js';
 import { VERDICTS, SEEN_ACCOUNT } from '../../site/app-assets/maxi-roles.js';
+import { signInRefusal, SIGN_IN_NOTICE, SIGN_IN_MARK } from '../../site/app-assets/maxi-auth.js';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (f) => fs.readFileSync(path.join(REPO, f), 'utf8');
@@ -64,13 +65,15 @@ test('builder:done-refused shows the refusal verbatim as a Lab refusal row, the 
 });
 
 test('designer:answer shows Maxi\'s words and the memory files they drew on, in his own row (negative controls: no memories, no words, each throws by name; the row removed from the table is red)', () => {
-    const rows = loopRowsOf({ role: 'designer', kind: ANSWERED, reading: 'question', words: 'The card dse-tunnel-rebuild-card.md says so.', memories: ['dse-tunnel-rebuild-card.md'] });
+    const rows = loopRowsOf({ role: 'designer', kind: ANSWERED, reading: 'question', words: 'The card dse-tunnel-rebuild-card.md says so.', memories: ['dse-tunnel-rebuild-card.md'], unnamed: [] });
     assert.deepEqual(rows.map((r) => [r.who, r.cls]), [[ROLE_ROW.designer[0], ROLE_ROW.designer[1]]], 'one row, Maxi\'s');
     assert.equal(rows[0].text, 'The card dse-tunnel-rebuild-card.md says so.\nFrom my memories: dse-tunnel-rebuild-card.md');
     assert.equal(rows[0].clip, undefined, 'an answer carries no clip');
-    assert.throws(() => loopRowsOf({ role: 'designer', kind: ANSWERED, words: 'w', memories: [] }), /designer:answer event names no memory files/);
+    assert.throws(() => loopRowsOf({ role: 'designer', kind: ANSWERED, words: 'w', memories: [], unnamed: [] }), /designer:answer event names no memory files/);
     assert.throws(() => loopRowsOf({ role: 'designer', kind: ANSWERED, words: 'w' }), /designer:answer event names no memory files/);
-    assert.throws(() => loopRowsOf({ role: 'designer', kind: ANSWERED, words: ' ', memories: ['a.md'] }), /designer:answer event carries no `words`/);
+    assert.throws(() => loopRowsOf({ role: 'designer', kind: ANSWERED, words: ' ', memories: ['a.md'], unnamed: [] }), /designer:answer event carries no `words`/);
+    assert.throws(() => loopRowsOf({ role: 'designer', kind: ANSWERED, words: 'w', memories: ['a.md'] }), /`unnamed` lists the memory files the answer never names/, 'an event without its unnamed list throws by name');
+    assert.throws(() => loopRowsOf({ role: 'designer', kind: ANSWERED, words: 'w', memories: ['a.md'], unnamed: ['b.md'] }), /`unnamed` lists the memory files/, 'an unnamed file outside memories throws');
     const without = Object.assign({}, LOOP_ROWS); delete without['designer:' + ANSWERED];
     assert.deepEqual(emittedKinds(read('site/app-assets/maxi-loop.js')).filter((k) => !without[k]), ['designer:' + ANSWERED], 'negative control: the loop emits an answer the table without its row cannot show');
 });
@@ -91,4 +94,41 @@ test('maxi-lab.js paints the loop through loopRowsOf only (negative control: a p
     const planted = lab.replace('    const rows = loopRowsOf(e);\n', "    if (e.role === 'builder' && e.kind === 'done-refused') { talkLine('Lab', e.refusal, 'talk-refused'); return; }\n    const rows = loopRowsOf(e);\n");
     assert.notEqual(planted, lab);
     assert.deepEqual(own(planted), ['holds a role:kind branch of its own']);
+});
+
+/** The talk rows of `e` through a LOOP_ROWS entry planted back to the old shape (`old`), for the negative controls below. */
+const OLD_ANSWER = (e) => {
+    if (!Array.isArray(e.memories) || !e.memories.length) { throw new Error('names no memory files'); }
+    return [{ who: ROLE_ROW.designer[0], cls: ROLE_ROW.designer[1], text: e.words + '\nFrom my memories: ' + e.memories.join(', ') }];
+};
+const OLD_STOPPED = (e) => [{ who: ROLE_ROW.loop[0], cls: ROLE_ROW.loop[1], text: e.words }];
+
+/** The faults of a table's rows for the two events this bite shows differently. */
+function noticeFaults(rowsOf) {
+    const faults = [];
+    const a = rowsOf({ role: 'designer', kind: ANSWERED, reading: 'question', words: 'This is the tunnel.', memories: ['dse-tunnel-rebuild-build.md'], unnamed: ['dse-tunnel-rebuild-build.md'] });
+    if (JSON.stringify(a.map((r) => r.cls)) !== JSON.stringify(['talk-maxi', 'talk-lab'])) { faults.push('an unnamed answer shows ' + a.map((r) => r.cls).join(', ')); }
+    else {
+        if (a[0].text !== 'This is the tunnel.') { faults.push('Maxi\'s row is ' + JSON.stringify(a[0].text)); }
+        if (!/^Maxi named no memory for this answer: he lists dse-tunnel-rebuild-build\.md as drawn on/.test(a[1].text)) { faults.push('the notice is ' + JSON.stringify(a[1].text)); }
+    }
+    const some = rowsOf({ role: 'designer', kind: ANSWERED, words: 'a.md says so.', memories: ['a.md', 'b.md'], unnamed: ['b.md'] });
+    if (some.length !== 2 || some[0].text !== 'a.md says so.\nFrom my memories: a.md' || !/^Maxi named only some of the memories for this answer: he lists b\.md/.test(some[1].text)) { faults.push('a partly named answer shows ' + JSON.stringify(some)); }
+    const words = 'Maxi stopped: designer: the question was NOT answered — ' + signInRefusal(new Error('User not authenticated')).message;
+    const s = rowsOf({ role: 'loop', kind: 'stopped', words });
+    if (s.length !== 1 || s[0].cls !== 'talk-lab' || s[0].text !== SIGN_IN_NOTICE) { faults.push('a sign-in stop shows ' + JSON.stringify(s)); }
+    const other = rowsOf({ role: 'loop', kind: 'stopped', words: 'Maxi stopped: designer: the question was NOT answered — Request entity too large' });
+    if (other[0].cls !== 'talk-refused' || !/Request entity too large/.test(other[0].text)) { faults.push('another stop shows ' + JSON.stringify(other)); }
+    return faults;
+}
+
+test('a Lab notice, never a red stop: an answer naming no memory keeps Maxi\'s words in his row with the notice under it; a sign-in refusal is the SIGN IN notice; every other stop stays red (negative controls: the old answer and stop rows are each red)', () => {
+    assert.deepEqual(ROLE_ROW.lab, ['Lab', 'talk-lab']);
+    assert.notEqual(ROLE_ROW.lab[1], ROLE_ROW.loop[1], 'the notice is not the refusal style');
+    assert.deepEqual(noticeFaults(loopRowsOf), []);
+    assert.equal(signInRefusal(new Error('Request entity too large')).message, 'Request entity too large', 'any other refusal passes unchanged');
+    assert.ok(signInRefusal(new Error('User not authenticated')).message.startsWith(SIGN_IN_MARK));
+    const plant = (key, fn) => (e) => (e.role + ':' + e.kind === key ? fn(e) : loopRowsOf(e));
+    assert.match(noticeFaults(plant('designer:' + ANSWERED, OLD_ANSWER)).join(), /an unnamed answer shows talk-maxi$|an unnamed answer shows talk-maxi,/);
+    assert.match(noticeFaults(plant('loop:stopped', OLD_STOPPED)).join(), /a sign-in stop shows/);
 });

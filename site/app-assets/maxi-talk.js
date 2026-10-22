@@ -9,14 +9,19 @@
  */
 
 import { ROLES, SEEN_ACCOUNT, VERDICTS } from './maxi-roles.js';
+import { isSignInRefusal, SIGN_IN_NOTICE } from './maxi-auth.js';
 
-/** Who speaks a row, and its style: the loop's own refusals and stops are the Lab's, styled as refusals. */
+/**
+ * Who speaks a row, and its style: the loop's own refusals and stops are the Lab's, styled as refusals; a Lab NOTICE
+ * (`lab`: the sign-in a question waits on, a memory an answer left unnamed) is the Lab's in its plain style.
+ */
 export const ROLE_ROW = Object.freeze({
     tony: Object.freeze(['You', 'talk-tony']),
     designer: Object.freeze([ROLES.designer.name, 'talk-maxi']),
     builder: Object.freeze([ROLES.builder.name, 'talk-builder']),
     owl: Object.freeze([ROLES.owl.name, 'talk-owl']),
-    loop: Object.freeze(['Lab', 'talk-refused'])
+    loop: Object.freeze(['Lab', 'talk-refused']),
+    lab: Object.freeze(['Lab', 'talk-lab'])
 });
 
 /** The event of a refused json:done (the loop's doneRefusal): {role:'builder', kind:DONE_REFUSED, round, words, refusal}. */
@@ -24,7 +29,8 @@ export const DONE_REFUSED = 'done-refused';
 
 /**
  * The event of the Designer's answer to a question (maxi-roles.js parseDesignerReply): {role:'designer', kind:ANSWERED,
- * words, memories, reading}. Its row is Maxi's words, then the memory files the answer drew on, as he named them.
+ * words, memories, unnamed, reading}. Its row is Maxi's words, then the memory files the answer drew on that its words
+ * name; the listed files the answer never names (`unnamed`, the answer's fault) follow as a Lab notice, never hiding the answer.
  */
 export const ANSWERED = 'answer';
 
@@ -71,10 +77,20 @@ export const LOOP_ROWS = Object.freeze(Object.assign({
         if (!Array.isArray(e.memories) || !e.memories.length || !e.memories.every(function (m) { return typeof m === 'string' && m; })) {
             throw new Error('[maxi-lab] the loop\'s designer:' + ANSWERED + ' event names no memory files (`memories`, the files the answer drew on), got ' + JSON.stringify(e.memories));
         }
-        return [row('designer', e.words + '\nFrom my memories: ' + e.memories.join(', '))];
+        if (!Array.isArray(e.unnamed) || !e.unnamed.every(function (m) { return e.memories.indexOf(m) !== -1; })) {
+            throw new Error('[maxi-lab] the loop\'s designer:' + ANSWERED + ' event\'s `unnamed` lists the memory files the answer never names (some of `memories`), got ' + JSON.stringify(e.unnamed));
+        }
+        const named = e.memories.filter(function (m) { return e.unnamed.indexOf(m) === -1; });
+        const rows = [row('designer', e.words + (named.length ? '\nFrom my memories: ' + named.join(', ') : ''))];
+        if (e.unnamed.length) {
+            rows.push(row('lab', (named.length ? 'Maxi named only some of the memories for this answer' : 'Maxi named no memory for this answer') +
+                ': he lists ' + e.unnamed.join(', ') + ' as drawn on, and the answer never names ' + (e.unnamed.length > 1 ? 'them' : 'it') + '.'));
+        }
+        return rows;
     },
     'loop:refused': function (e) { return [row('loop', e.words)]; },
-    'loop:stopped': function (e) { return [row('loop', e.words)]; }
+    // a question the platform refused because nobody is signed in (maxi-auth.js): a Lab notice, never a red stop
+    'loop:stopped': function (e) { return [isSignInRefusal(e.words) ? row('lab', SIGN_IN_NOTICE) : row('loop', e.words)]; }
 }, VERDICTS.reduce(function (o, v) { o['owl:' + v] = owlRow; return o; }, {})));
 
 /** The pending row a role's `asking` shows until its answer lands. */
