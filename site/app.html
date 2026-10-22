@@ -207,6 +207,47 @@
 </main>
 <div id="says" hidden></div>
 <div id="error" hidden></div>
+<!-- The boot reporter (classic, before every module script; scripts/test/boot-report.test.mjs): a module graph that fails to load or
+     run never reaches maxi-lab.js's showError. A 404 in a graph fires `error` on its <script> element only; a throw fires window `error`.
+     Every module script runs before DOMContentLoaded, so window.MaxiLab then is the verdict: present, this stands down; absent,
+     #status and #error say the lab could not start, naming the failed URL (Resource Timing's status; WebKit has none, so it asks again). -->
+<script>
+(function () {
+  var seen = [];
+  function note(ev) {
+    var t = ev.target;
+    if (t && t.tagName === 'SCRIPT') { if (t.type === 'module') { seen.push({ script: t.src }); } return; }
+    if (t === window && 'filename' in ev) { seen.push({ file: ev.filename || null, message: ev.message, error: ev.error }); }
+  }
+  function failedRequest() {
+    var mine = performance.getEntriesByType('resource').filter(function (e) { return e.initiatorType === 'script' && e.name.indexOf(location.origin + '/') === 0; });
+    var hit = mine.filter(function (e) { return e.responseStatus >= 400; })[0];
+    if (hit) { return Promise.resolve({ url: hit.name, status: hit.responseStatus }); }
+    if (mine.some(function (e) { return typeof e.responseStatus === 'number'; })) { return Promise.resolve(null); }
+    return Promise.all(mine.map(function (e) {
+      return fetch(e.name, { method: 'HEAD' }).then(function (r) { return r.ok ? null : { url: e.name, status: r.status }; }, function () { return { url: e.name, status: 'no response' }; });
+    })).then(function (rows) { return rows.filter(Boolean)[0] || null; });
+  }
+  window.addEventListener('error', note, true);
+  document.addEventListener('DOMContentLoaded', function () {
+    window.removeEventListener('error', note, true);
+    seen.forEach(function (f) { console.error('[maxi-lab boot] ' + (f.script ? 'a module graph failed to load under ' + f.script : (f.file || 'a module') + ' failed to run:'), f.error || f.message || ''); });
+    if (window.MaxiLab) { return; }
+    var lab = document.querySelector('script[type="module"][src$="app-assets/maxi-lab.js"]');
+    var ran = seen.filter(function (f) { return 'file' in f && f.file; })[0];
+    (seen.some(function (f) { return f.script; }) ? failedRequest() : Promise.resolve(null)).then(function (req) {
+      var why = req ? req.url + ' did not load (' + (typeof req.status === 'number' ? 'HTTP ' + req.status : req.status) + ')'
+        : ran ? ran.file + ' failed to run'
+        : (lab ? lab.src : 'app-assets/maxi-lab.js') + ' did not start';
+      document.getElementById('status').textContent = 'Maxi\'s Lab could not start';
+      var bar = document.getElementById('error');
+      bar.textContent = 'Maxi\'s Lab could not start: ' + why + '. The details are in the browser console.';
+      bar.hidden = false;
+      console.error('[maxi-lab boot] Maxi\'s Lab could not start: ' + why + '.');
+    });
+  }, { once: true });
+})();
+</script>
 <!-- The DeSciX bridge first (classic), then the lab; maxi-lab.js imports maxi-host-view.js, the one view declaration (NoChrome on a phone, CodeSite otherwise). -->
 <script src="DeSciXAppSDK.js"></script>
 <script type="module" src="app-assets/maxi-intro.js"></script>
