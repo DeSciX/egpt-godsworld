@@ -41,6 +41,7 @@
 'use strict';
 
 import { HANDS, CLIP_FACTS, INVENTORY_KEYS, SKETCH_KEYS, spansOf } from './maxi-hands.js';
+import { BRIEF_WORDS } from './maxi-persona-brief.js';   // generated from the persona's Brief clause by briefWordLimit (below)
 
 /** The fence tags of the hand-offs (the hands' own tag is the persona's `json:call:<hand>`). */
 export const HANDOFF_TAGS = Object.freeze({ plan: 'json:plan', answer: 'json:answer', call: 'json:call:', done: 'json:done', verdict: 'json:verdict' });
@@ -133,19 +134,50 @@ export const TALK_RULE = 'IMAGINING VERSUS TALKING';
 export const READING_LINE = 'THIS IS:';
 export const DESIGNER_READINGS = Object.freeze({ outline: 'an outline', question: 'a question', both: 'a question and an outline' });
 
+/**
+ * The persona's Brief clause, the ONE reader of its figure: the section HOW YOU SPEAK of `persona` (the text of
+ * assets/system_instructions.md), its line "- Brief means …", and in it "under <N> words" → N. THROWS by name when the
+ * section, the clause or the figure is absent: there is no default. The figure reaches the Designer preface through
+ * maxi-persona-brief.js, which scripts/gen-plugin-agents.mjs writes from this reader (the page has no persona to read).
+ */
+export const BRIEF_SECTION = 'HOW YOU SPEAK';
+export function briefWordLimit(persona) {
+    const where = '[roles] briefWordLimit';
+    if (typeof persona !== 'string' || !persona.trim()) { throw new Error(where + ' needs the persona text, got ' + JSON.stringify(persona)); }
+    const lines = persona.split('\n');
+    const sec = lines.indexOf(BRIEF_SECTION);
+    if (sec === -1) { throw new Error(where + ': the persona has no ' + BRIEF_SECTION + ' section — the Brief clause lives there.'); }
+    const next = lines.findIndex(function (l, i) { return i > sec && /^[A-Z][A-Z ,'’—()-]+$/.test(l) && l.length > 8; });
+    const clause = lines.slice(sec + 1, next === -1 ? undefined : next).filter(function (l) { return /^- Brief means\b/.test(l); });
+    if (clause.length !== 1) { throw new Error(where + ': ' + BRIEF_SECTION + ' must carry ONE Brief clause ("- Brief means …"), found ' + clause.length + '.'); }
+    const m = /\bunder (\d+) words\b/.exec(clause[0]);
+    if (!m) { throw new Error(where + ': the Brief clause names no "under <N> words" figure: ' + JSON.stringify(clause[0])); }
+    return Number(m[1]);
+}
+if (!Number.isInteger(BRIEF_WORDS) || BRIEF_WORDS <= 0) {
+    throw new Error('[roles] maxi-persona-brief.js BRIEF_WORDS must be the Brief clause\'s figure (a positive integer), got ' + JSON.stringify(BRIEF_WORDS) + ' — run node scripts/gen-plugin-agents.mjs --write.');
+}
+
 const DESIGNER_PREFACE = [
     'ROLE FOR THIS THREAD: you are Maxi in your DESIGNER role — the orchestrator. The person is Tony; you are',
-    'JARVIS. Two sub-agents work for you on threads of their own: the Builder (your implementer — the director',
-    'of engineering) builds what you plan, with the hands, and hands back a clip; the Owl (a distinct verifier —',
-    'your QA team) watches that clip against Tony\'s outline and the Builder\'s prediction and approves or sends',
-    'it back. You never use a hand on this thread and you never judge a clip: you plan, or you answer.',
+    'JARVIS. Building and checking are your own processes, how you think, never other people: as the Builder you',
+    'build what you plan, with the hands, and film a clip; as the Owl you watch that clip against Tony\'s outline and',
+    'the prediction, and approve it or send it back. Each runs on a thread of its own. In talk you speak of what you',
+    'built and what you checked, never of "my Builder" or "the Owl who checked". On this thread you never use a hand',
+    'and you never judge a clip: you plan, or you answer.',
     '',
     'FIRST, READ THE MESSAGE (' + TALK_RULE + ', in your persona). The FIRST line of your reply says what it is,',
     'exactly one of:'].concat(Object.keys(DESIGNER_READINGS).map(function (k) { return '  ' + READING_LINE + ' ' + DESIGNER_READINGS[k]; }), [
     '- ' + DESIGNER_READINGS.outline + ': plan it, as below, ending with the json:plan block;',
-    '- ' + DESIGNER_READINGS.question + ' (or a conversation): answer Tony in words, from your memories, and name in your words',
-    '  every memory file you drew on. END with ONE block listing exactly the files your words name (a file the words do',
-    '  not name is refused), and nothing for the Builder: no plan, no hand, no clip.',
+    '- ' + DESIGNER_READINGS.question + ' (or a conversation): answer Tony in words, as a person speaks, from your memories.',
+    '  END with ONE block listing the memory files you drew on (at least one); the block is how you thought about it,',
+    '  not speech. When something in your memories or your library is worth Tony\'s time, say so as a person would and',
+    '  hand the link in the sentence (an egpt library path becomes https://egpt.descix.net/#<path>); never a bibliography,',
+    '  a file name or a path as a citation. Nothing for the Builder: no plan, no hand, no clip.',
+    '  Your words keep your persona\'s Brief clause (' + BRIEF_SECTION + '): under ' + BRIEF_WORDS + ' words unless the person asks for more or is',
+    '  building with you; the answer first, one offer at most.',
+    'A plan\'s steps follow the outline, however brief your words: \'slowly\' or \'step by step\' is several small',
+    'steps, each filmed, and the stage\'s mode (2d or 3d) stays as Tony has it unless the outline changes it.',
     '```' + HANDOFF_TAGS.answer,
     '{"memories": ["<a memory file you drew on, e.g. <id>-card.md>", "…"]}',
     '```',
@@ -153,8 +185,8 @@ const DESIGNER_PREFACE = [
     '',
     'Plan from your memories. Follow steps 1 and 2 of BUILDING FROM AN OUTLINE: list the parts, name the anchor,',
     'place every part relative to a rect you can read. Start from the scene in your memories closest to the',
-    'outline and say which memory file you drew on ("in Experiment A we did this … we could combine that with Y',
-    'from Experiment B"). A variant is a known sketch with one or two parameters changed: name them. Plan hands',
+    'outline and say which scene you start from, by its name. A variant is a known sketch with one or two',
+    'parameters changed: name them. Plan hands',
     'that can make each change. A scene is a SKETCH whose `export const parts = {…}` block is the one region a hand',
     'rewrites (THE SKETCH, your hands table):',
     '- a part\'s own parameter (an angle, a behaviour, a burst) is a setDeclared {name, patch}: one row in the',
@@ -201,7 +233,7 @@ const DESIGNER_PREFACE = [
 ]).join('\n');
 
 const BUILDER_PREFACE = [
-    'ROLE FOR THIS THREAD: you are Maxi\'s BUILDER — the implementer sub-agent (the director of engineering).',
+    'ROLE FOR THIS THREAD: you are Maxi BUILDING — Maxi\'s own hands, one of his own processes, not a sub-agent or another party.',
     'Maxi, the Designer, wrote the plan below for Tony\'s outline. You build it in the lab with your hands — any',
     'hand, any API the SDK offers — and your acceptance criterion is a CLIP: the last clip you film is what you',
     'hand back, and a distinct verifier (the Owl) will judge it against the outline and your prediction. You',
@@ -644,21 +676,9 @@ export function readingOf(reply) {
 }
 
 /**
- * Whether `words` name the memory file `file` as a whole token: its file name WITH its extension (dse-tunnel-rebuild-card.md),
- * not followed by a further name character and not preceded by one (a path before it, kb/GodsWorld/<file>, still names it).
- * "card" does not name card.md; "my-card.md" does not name card.md.
- */
-export function namesFile(words, file) {
-    const base = String(file).slice(String(file).lastIndexOf('/') + 1);
-    const re = new RegExp('(^|[^A-Za-z0-9._-])' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![A-Za-z0-9_-])');
-    return re.test(String(words));
-}
-
-/**
- * The json:answer block of `text` (the reply after its reading line) → {words, memories, unnamed}. THROWS on a malformed answer.
- * `unnamed` is data, not a throw: the listed memory files the words never name as a whole token (namesFile), so the
- * page can show the answer and the fault apart; parseDesignerReply still THROWS on it when a plan follows, and the node
- * trial refuses it (minimaxi/loop.mjs). This parser checks the FORMAT of each memory file (a KB file name); it cannot
+ * The json:answer block of `text` (the reply after its reading line) → {words, memories}. THROWS on a malformed answer.
+ * `memories` is how Maxi thought about it: the words need not name a file (he speaks as a person speaks, naming a
+ * source by author or title only when asked or when the point turns on it). This parser checks the FORMAT of each memory file (a KB file name); it cannot
  * list the knowledge base (DOM-free, no file system), so it never checks that a file EXISTS. The node driver
  * (minimaxi/loop.mjs) refuses an answer naming a file that is not under kb/GodsWorld; the page relies on this format check.
  */
@@ -678,20 +698,11 @@ function parseAnswer(text, block, reply) {
     if (badNames.length) { throw new Error(where + ': `memories` holds file names of the knowledge base (<name>.md), got ' + badNames.map(function (f) { return JSON.stringify(f); }).join(', ') + '. The block was: ' + quote(block.body)); }
     const words = text.slice(0, block.start).trim();
     if (!words) { throw new Error(where + ': the answer is the words before the json:answer block, and there are none. The reply was: ' + quote(reply)); }
-    return { words: words, memories: m.slice(), unnamed: m.filter(function (f) { return !namesFile(words, f); }) };
+    return { words: words, memories: m.slice() };
 }
 
 /**
- * The fault of an answer whose words never name memory files its json:answer block lists, in words: THE one text of it
- * (the loop's stop for an answer with a plan, the node trial's refusal, the strip's notice reads `unnamed` itself).
- */
-export function unnamedFault(unnamed) {
-    if (!Array.isArray(unnamed) || !unnamed.length) { throw new Error('[designer → answer] unnamedFault needs the memory files the words never name, got ' + JSON.stringify(unnamed)); }
-    return 'the answer\'s words never name ' + unnamed.join(', ') + ' — a memory an answer draws on is named in its words.';
-}
-
-/**
- * Designer → {reading, answer: {words, memories, unnamed}|null, plan|null, words|null} — the one parser of the Designer's reply.
+ * Designer → {reading, answer: {words, memories}|null, plan|null, words|null} — the one parser of the Designer's reply.
  * The first line reads the message (readingOf); the reading decides the blocks:
  *   outline  → exactly one json:plan and no json:answer (parsePlan: {plan, words});
  *   question → exactly one json:answer and no json:plan: an answer in words, no build;
@@ -715,8 +726,6 @@ export function parseDesignerReply(reply, stage) {
     }
     const answer = answers.length ? parseAnswer(r.rest, answers[0], reply) : null;
     if (!plans.length) { return { reading: r.reading, answer: answer, plan: null, words: null }; }
-    // a build never starts on an answer whose words leave a listed memory unnamed: only a question alone carries the fault on
-    if (answer && answer.unnamed.length) { throw new Error('[designer → answer]: ' + unnamedFault(answer.unnamed) + ' The reply was: ' + quote(reply)); }
     const planned = parsePlan(answer ? r.rest.slice(answers[0].end) : r.rest, stage);
     return { reading: r.reading, answer: answer, plan: planned.plan, words: planned.words };
 }

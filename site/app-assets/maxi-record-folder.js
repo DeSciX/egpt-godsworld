@@ -213,16 +213,41 @@ export function folderHere(out) {
     if (!out || typeof out !== 'object' || !out.files || typeof out.files !== 'object' || !out.record || !Array.isArray(out.clips)) {
         throw new Error('[record-folder] a closed Record is rec.stop()\'s {files, record, clips}, got ' + JSON.stringify(out && Object.keys(out)) + '.');
     }
-    const files = {};
-    Object.keys(out.files).forEach(function (f) {
-        const v = out.files[f];
-        if (typeof v === 'string') { files[f] = v; }
-        else if (v && typeof v === 'object' && typeof v.length === 'number' && typeof v.BYTES_PER_ELEMENT === 'number') { files[f] = new Uint8Array(v); }
-        else if (v && typeof v === 'object' && typeof v.text === 'string') { files[f] = v.text; }              // crossed as {text}
-        else if (v && typeof v === 'object' && typeof v.base64 === 'string') { files[f] = bytesOfBase64(v.base64); }   // crossed as {base64}
-        else { throw new Error('[record-folder] the closed Record\'s ' + f + ' is neither text nor bytes.'); }
+    return { files: filesHere(out.files, 'the closed Record'), record: JSON.parse(JSON.stringify(out.record)), clips: JSON.parse(JSON.stringify(out.clips)) };
+}
+
+/**
+ * A Record folder's files as they cross out of this realm (to node, or to the visitor as a download): each file {text} when
+ * it is text, {base64} when it is bytes. filesHere reads it back. THROWS on a file that is neither.
+ */
+export function filesAcross(files) {
+    if (!files || typeof files !== 'object' || Array.isArray(files)) { throw new Error('[record-folder] a Record folder\'s files are {<path>: text | bytes}, got ' + JSON.stringify(files) + '.'); }
+    const out = {};
+    Object.keys(files).forEach(function (f) {
+        const v = files[f];
+        if (typeof v === 'string') { out[f] = { text: v }; }
+        else if (v && typeof v === 'object' && typeof v.length === 'number' && typeof v.BYTES_PER_ELEMENT === 'number') { out[f] = { base64: base64OfBytes(v) }; }
+        else { throw new Error('[record-folder] the Record folder\'s ' + f + ' is neither text nor bytes.'); }
     });
-    return { files: files, record: JSON.parse(JSON.stringify(out.record)), clips: JSON.parse(JSON.stringify(out.clips)) };
+    return out;
+}
+
+/**
+ * A Record folder's files as THIS realm's values: text stays text, bytes are copied into this realm's Uint8Array, a file that
+ * crossed as {text} or {base64} (filesAcross) is read back. THROWS naming `where` and the file on anything else.
+ */
+export function filesHere(files, where) {
+    if (!files || typeof files !== 'object' || Array.isArray(files)) { throw new Error('[record-folder] ' + (where || 'a Record folder') + '\'s files are {<path>: text | bytes}, got ' + JSON.stringify(files) + '.'); }
+    const out = {};
+    Object.keys(files).forEach(function (f) {
+        const v = files[f];
+        if (typeof v === 'string') { out[f] = v; }
+        else if (v && typeof v === 'object' && typeof v.length === 'number' && typeof v.BYTES_PER_ELEMENT === 'number') { out[f] = new Uint8Array(v); }
+        else if (v && typeof v === 'object' && typeof v.text === 'string') { out[f] = v.text; }              // crossed as {text}
+        else if (v && typeof v === 'object' && typeof v.base64 === 'string') { out[f] = bytesOfBase64(v.base64); }   // crossed as {base64}
+        else { throw new Error('[record-folder] ' + (where || 'a Record folder') + '\'s ' + f + ' is neither text nor bytes.'); }
+    });
+    return out;
 }
 
 /**

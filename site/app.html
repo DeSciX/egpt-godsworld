@@ -21,7 +21,8 @@
   header button#btn-record svg.icon { fill: var(--err); }
   #status { color: var(--dim); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60vw; }
   main { flex: 1; display: flex; min-height: 0; }
-  #stage { flex: 1; position: relative; min-width: 0; background: #000; }
+  #stage-col { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  #stage { flex: 1; position: relative; min-width: 0; min-height: 0; background: #000; }
   #stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
   header button#btn-record[aria-pressed="true"] { border-color: var(--err); color: var(--err); }
   #demo { position: absolute; right: 12px; bottom: 12px; width: min(360px, calc(100vw - 24px)); background: var(--bar); border: 1px solid var(--cyan); border-radius: 6px; padding: 8px; z-index: 4; box-shadow: 0 0 12px rgba(95,211,255,.35); }
@@ -75,6 +76,10 @@
   aside#memories { box-sizing: border-box; width: min(420px, 100vw); border-left: 1px solid var(--line); background: var(--bar); display: flex; flex-direction: column; min-height: 0; }
   aside#memories .memories-head { padding: 6px 10px; color: var(--cyan); border-bottom: 1px solid var(--line); }
   aside#memories .memories-head small { display: block; color: var(--dim); font-size: 11px; }
+  #memories-doors { padding: 6px 12px 0; }
+  #memories-doors button { background: #111a24; color: var(--cyan); border: 1px solid var(--cyan); border-radius: 4px; padding: 4px 10px; font: inherit; font-size: 12px; }
+  #memories-doors button:disabled { color: var(--dim); border-color: var(--line); opacity: .7; }
+  #memories-download-note { margin: 4px 0 0; color: var(--dim); font-size: 11px; }
   #memories-status { padding: 4px 12px; color: var(--dim); font-size: 11.5px; }
   #memories-status.memories-error { color: var(--err); white-space: pre-wrap; }
   #memories-list { padding: 4px 12px 12px; overflow: auto; flex: 1; font: 13px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
@@ -91,6 +96,31 @@
   .memory form input { flex: 1; min-width: 0; background: #05070a; color: var(--ink); border: 1px solid var(--cyan); border-radius: 4px; padding: 4px 6px; font: inherit; }
   #says { padding: 6px 12px; border-top: 1px solid var(--line); background: var(--bar); color: var(--cyan); }
   #error { padding: 8px 12px; background: #1a0000; color: var(--err); border-top: 1px solid #b6161c; white-space: pre-wrap; font-size: 12px; }
+  /* The Imagination drawer: Maxi's three processes, docked at the bottom of the stage column; collapsed it is one line (the
+     ticker: the last process line), open its turns lie over the bottom of the stage, so the scene's size never changes. */
+  #imagination { flex: none; background: var(--bar); border-top: 1px solid var(--line); }
+  #imagination-toggle { display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box; height: 28px; padding: 0 10px; background: none; color: var(--ink); border: 0; font: 12px/1.3 system-ui, -apple-system, Segoe UI, sans-serif; text-align: left; cursor: pointer; }
+  #imagination-toggle b { flex: none; color: var(--cyan); font-size: 11px; letter-spacing: .04em; }
+  #imagination-ticker { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+  #imagination-toggle .imagination-chevron::before { content: '\25B4'; color: var(--cyan); }
+  #imagination.open #imagination-toggle .imagination-chevron::before { content: '\25BE'; }
+  #imagination-lines { position: absolute; left: 0; right: 0; bottom: 0; max-height: 70%; overflow: auto; box-sizing: border-box; padding: 6px 12px 10px; background: var(--bar); border-top: 1px solid var(--cyan); z-index: 5; box-shadow: 0 -6px 16px rgba(0,0,0,.55); font: 12.5px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
+  #imagination-lines[hidden] { display: none; }
+  .imagination-turn { margin: 0 0 10px; }
+  .imagination-turn h3 { margin: 6px 0 4px; font-size: 11px; letter-spacing: .04em; color: var(--ink); font-weight: 600; }
+  .imagination-process { margin: 0 0 6px 8px; padding-left: 8px; border-left: 2px solid var(--line); }
+  .imagination-process b { display: block; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+  .imagination-process.talk-designing b { color: var(--cyan); }
+  .imagination-process.talk-builder b { color: #ffb070; }
+  .imagination-process.talk-owl b { color: #c7a6ff; }
+  .imagination-process p { margin: 2px 0 4px; white-space: pre-wrap; }
+  .imagination-process p.talk-refused { color: var(--err); }
+  .imagination-process p.talk-approve { color: #8fe3a1; }
+  .imagination-process video { width: min(100%, 360px); margin: 4px 0; background: #000; border-radius: 4px; display: block; }
+  .talk-thinking p { color: var(--dim); font-style: italic; }
+  .talk-thinking.talk-thought p { font-style: normal; }
+  .talk-thinking.talk-refused p { color: var(--err); }
+  a.talk-to-drawer { color: var(--cyan); text-decoration: none; font-style: normal; padding: 0 2px; }
   @media (max-width: 720px), (pointer: coarse) and (max-height: 600px) {
     html, body { height: 100dvh; }
     body { min-height: 0; overflow: hidden; }
@@ -157,14 +187,15 @@
     "./app-assets/maxi-host-view.js": "./app-assets/maxi-host-view.js?v=2d90dc258ca751e1",
     "./app-assets/maxi-icons.js": "./app-assets/maxi-icons.js?v=1d497dd14315db55",
     "./app-assets/maxi-intro.js": "./app-assets/maxi-intro.js?v=30bd35e108283f6e",
-    "./app-assets/maxi-lab.js": "./app-assets/maxi-lab.js?v=f52722eaedd35591",
-    "./app-assets/maxi-local-memory.js": "./app-assets/maxi-local-memory.js?v=3b0c942ea7d28f1e",
-    "./app-assets/maxi-loop.js": "./app-assets/maxi-loop.js?v=e102ea84b79289a0",
-    "./app-assets/maxi-record-folder.js": "./app-assets/maxi-record-folder.js?v=10f7f865968228cb",
+    "./app-assets/maxi-lab.js": "./app-assets/maxi-lab.js?v=5a7512b32ce4a734",
+    "./app-assets/maxi-local-memory.js": "./app-assets/maxi-local-memory.js?v=07deef3a0dc8664b",
+    "./app-assets/maxi-loop.js": "./app-assets/maxi-loop.js?v=30548dcbedf75328",
+    "./app-assets/maxi-persona-brief.js": "./app-assets/maxi-persona-brief.js?v=d60be606de6db9cf",
+    "./app-assets/maxi-record-folder.js": "./app-assets/maxi-record-folder.js?v=438a47ecdb728bd7",
     "./app-assets/maxi-record.js": "./app-assets/maxi-record.js?v=46af9c1343138863",
-    "./app-assets/maxi-roles.js": "./app-assets/maxi-roles.js?v=301557532884f75a",
+    "./app-assets/maxi-roles.js": "./app-assets/maxi-roles.js?v=973d63e7a2ad3354",
     "./app-assets/maxi-scene.js": "./app-assets/maxi-scene.js?v=e5886ce522913a16",
-    "./app-assets/maxi-talk.js": "./app-assets/maxi-talk.js?v=0d1f8f952be945f8"
+    "./app-assets/maxi-talk.js": "./app-assets/maxi-talk.js?v=b944d79df1033b90"
   }
 }
 </script>
@@ -185,6 +216,7 @@
   <span id="status">booting …</span>
 </header>
 <main>
+  <div id="stage-col">
   <div id="stage">
     <!-- The demonstration card: what Record just filmed (first clip + the change lines), handed to Maxi by its Send; his answer is on the strip. -->
     <div id="demo" hidden>
@@ -198,9 +230,18 @@
         <button id="demo-send" type="submit">Send to Maxi</button>
       </form>
     </div>
+    <!-- The Imagination drawer's turns (maxi-lab.js renderLoop): one group per outline, id imagination-turn-<n>; open, it lies over the bottom of the stage. -->
+    <div id="imagination-lines" role="region" aria-label="How I thought about it" hidden></div>
   </div>
-  <!-- The conversation, WORDS only: Tony's outline, Maxi's plan, the Builder's "built — watch" with its clip,
-       the Owl's verdict (maxi-loop.js), and every clip the lab handed Maxi with his answer. -->
+  <div id="says" hidden></div>
+  <div id="error" hidden></div>
+  <!-- How Maxi thought about it: Designing, Building, Checking (his three processes, never speakers). Collapsed: the last process line. -->
+  <section id="imagination" aria-label="How I thought about it">
+    <button id="imagination-toggle" type="button" aria-expanded="false" aria-controls="imagination-lines" title="How I thought about it: what Maxi planned, built and checked for each outline (open or close)"><b id="imagination-title">How I thought about it</b><span id="imagination-ticker">nothing yet</span><span class="imagination-chevron" aria-hidden="true"></span></button>
+  </section>
+  </div>
+  <!-- The conversation, WORDS only: the visitor's words and Maxi's (his answers, the Thinking line of each outline, the approved
+       clip), the Lab's facts, and every clip the lab handed Maxi with his answer. His processes are in the Imagination drawer. -->
   <aside id="talk" aria-live="polite">
     <div class="talk-head"><span>Maxi</span><button id="talk-new" type="button" title="Start a new conversation with Maxi">New conversation</button></div>
     <div id="talk-lines"></div>
@@ -218,12 +259,12 @@
   <!-- The demonstrations this browser keeps (maxi-local-memory.js), kept when a Record completes; the Memories button shows them. -->
   <aside id="memories" hidden aria-labelledby="memories-title">
     <div class="memories-head" id="memories-title">Your memories<small>Kept in this browser only; Maxi sees one only when you Send or Discuss it. A Record is kept here when you stop it; closing its card (×) removes it.</small></div>
+    <div id="memories-doors"><button id="memories-download" type="button" disabled title="No completed Record of the scene on the stage is kept in this browser yet: press Record, then Stop.">Download this Record</button>
+      <p id="memories-download-note">Inside the DeSciX shell the file may not arrive yet; opened standalone, the lab downloads it.</p></div>
     <div id="memories-status"></div>
     <div id="memories-list"></div>
   </aside>
 </main>
-<div id="says" hidden></div>
-<div id="error" hidden></div>
 <!-- The boot reporter (classic, before every module script; scripts/test/boot-report.test.mjs): a module graph that fails to load or
      run never reaches maxi-lab.js's showError. A 404 in a graph fires `error` on its <script> element only; a throw fires window `error`.
      Every module script runs before DOMContentLoaded, so window.MaxiLab then is the verdict: present, this stands down; absent,
@@ -268,6 +309,6 @@
 <!-- The DeSciX bridge first (classic), then the lab; maxi-lab.js imports maxi-host-view.js, the one view declaration (NoChrome on a phone, CodeSite otherwise). -->
 <script src="DeSciXAppSDK.js"></script>
 <script type="module" src="./app-assets/maxi-intro.js?v=30bd35e108283f6e"></script>
-<script type="module" src="./app-assets/maxi-lab.js?v=f52722eaedd35591"></script>
+<script type="module" src="./app-assets/maxi-lab.js?v=5a7512b32ce4a734"></script>
 </body>
 </html>

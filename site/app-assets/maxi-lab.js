@@ -29,10 +29,10 @@ import { HANDS, publishHands, assertAdapterCoversHands, inventoryObjects, invent
 import { attachHandTool, handKeyAction } from './maxi-hand-tool.js';
 import { attachRecorder, recordKeyAction, paintCard, clipUrlLedger } from './maxi-record.js';
 import { createLoop, threadBrain, labBody, refuseWhileWorking } from './maxi-loop.js';
-import { assembleLoopRecords, changesAsText, completenessWords, folderHere, sceneFacts, base64OfBytes, MAX_SEGMENTS, FILES, CARRIED_KEY, TEACHING_KEY, parseRecordFolder, projectEntryOf, partsEqual } from './maxi-record-folder.js';
-import { openMemories, memoryKey, memoryNote, memoryMedia, memoryTeaching } from './maxi-local-memory.js';
+import { assembleLoopRecords, changesAsText, completenessWords, folderHere, filesAcross, sceneFacts, base64OfBytes, MAX_SEGMENTS, FILES, CARRIED_KEY, TEACHING_KEY, parseRecordFolder, projectEntryOf, partsEqual } from './maxi-record-folder.js';
+import { openMemories, memoryKey, memoryNote, memoryMedia, memoryTeaching, memoryBundle } from './maxi-local-memory.js';
 import * as roles from './maxi-roles.js';
-import { loopRowsOf } from './maxi-talk.js';
+import { loopRowsOf, thinkingOf, thinkingLine, thinkingSummary, turnAnchor, tickerOf, conversationFaults, isPageRow, plainTalk, registerSlips, slipWords, IMAGINATION_TITLE } from './maxi-talk.js';
 import { pageAuth, signInRefusal, isSignInRefusal, SIGNED_IN_NOTICE } from './maxi-auth.js';
 import { ASK, createThread, footageUserInput, plainWords } from './maxi-ask.js';
 import { loadPageIcons, iconButton } from './maxi-icons.js';
@@ -115,6 +115,11 @@ const el = {
     talk: document.getElementById('talk'),
     talkLines: document.getElementById('talk-lines'),
     talkNew: document.getElementById('talk-new'),
+    imagination: document.getElementById('imagination'),
+    imaginationToggle: document.getElementById('imagination-toggle'),
+    imaginationTicker: document.getElementById('imagination-ticker'),
+    imaginationLines: document.getElementById('imagination-lines'),
+    imaginationTitle: document.getElementById('imagination-title'),
     imagine: document.getElementById('imagine'),
     imagineText: document.getElementById('imagine-text'),
     imagineSend: document.getElementById('imagine-send'),
@@ -131,6 +136,7 @@ const el = {
     memoriesPane: document.getElementById('memories'),
     memoriesStatus: document.getElementById('memories-status'),
     memoriesList: document.getElementById('memories-list'),
+    memoriesDownload: document.getElementById('memories-download'),
     status: document.getElementById('status'),
     says: document.getElementById('says'),
     error: document.getElementById('error')
@@ -199,6 +205,7 @@ async function mountScene(spec) {
         resumeRecorder();
         renderCode();
         renderInfo();
+        renderDownload();
         syncPicker();
         return summary(state.scene);
     } catch (err) {
@@ -431,9 +438,7 @@ function chainForNode(ch) {
     return {
         producer: ch.producer, unheld: ch.unheld,
         worlds: ch.worlds.map(function (w) {
-            const files = {};
-            Object.keys(w.folder.files).forEach(function (f) { const v = w.folder.files[f]; files[f] = typeof v === 'string' ? { text: v } : { base64: base64OfBytes(v) }; });
-            return { folder: { files: files, record: w.folder.record, clips: w.folder.clips }, filmed: w.filmed, carried: w.carried, start: w.start, scene: w.scene };
+            return { folder: { files: filesAcross(w.folder.files), record: w.folder.record, clips: w.folder.clips }, filmed: w.filmed, carried: w.carried, start: w.start, scene: w.scene };
         })
     };
 }
@@ -610,14 +615,14 @@ function closeDemonstration() {
         clearError('record');
         renderStatus();
         if (!d.discarded) { return Promise.resolve({ discarded: false }); }
-        talkLine('Lab', 'the demonstration was discarded unsent (the card was closed before Send to Maxi).', 'talk-user');
+        labFact('the demonstration was discarded unsent (the card was closed before Send to Maxi).');
         const keeping = state.completed;
         state.completed = null;
         if (!keeping || !last) { return Promise.resolve({ discarded: true, removed: null }); }
         return keeping.then(function (k) {
             if (k.key !== memoryKey(last)) { throw new Error('memories: the kept memory ' + k.key + ' is not the discarded demonstration\'s ' + memoryKey(last) + ' — nothing was removed.'); }
             return state.memories.remove(k.key).then(function (r) {
-                talkLine('Lab', 'removed from Your memories: ' + k.key + ' (its card was closed unsent).', 'talk-lab');
+                labFact('removed from Your memories: ' + k.key + ' (its card was closed unsent).');
                 return renderMemories().then(function () { return { discarded: true, removed: r.removed }; });
             });
         }, function () { return { discarded: true, removed: null }; }).catch(memoriesFailed);
@@ -655,8 +660,8 @@ function memoriesFailed(err) {
 function keepRecords(records) {
     return state.memories.save(records).then(function (k) {
         clearError('memories');
-        talkLine('Lab', k.replaced ? 'updated your memory ' + k.key + ' with your words and Maxi\'s answer.' :
-            'kept in Your memories (this browser only): ' + k.key + '. Send to Maxi adds your words and his answer; closing the card (×) removes it.', 'talk-lab');
+        labFact(k.replaced ? 'updated your memory ' + k.key + ' with your words and Maxi\'s answer.' :
+            'kept in Your memories (this browser only): ' + k.key + '. Send to Maxi adds your words and his answer; closing the card (×) removes it.');
         return renderMemories().then(function () { memoriesSay((k.replaced ? 'Updated ' : 'Kept ') + k.key + '.', false); return k; });
     }, memoriesFailed);
 }
@@ -678,7 +683,9 @@ function memoryNode(tag, cls, text) {
 async function renderMemories() {
     let list;
     try { list = await state.memories.list(); }
-    catch (err) { el.memoriesList.textContent = ''; return memoriesFailed(err); }
+    catch (err) { el.memoriesList.textContent = ''; keptList = []; renderDownload(); return memoriesFailed(err); }
+    keptList = list;
+    renderDownload();
     el.memoriesList.textContent = '';
     if (!list.length) { memoriesSay('No memories kept in this browser yet. A Record is kept here when you stop it; Send to Maxi adds your words and his answer; closing its card (×) removes it.', false); return list; }
     memoriesSay(list.length + ' kept in this browser.', false);
@@ -773,7 +780,7 @@ async function reloadMemory(key) {
         el.demoClip.play().catch(function (err) { showError(err, 'memories'); });
         clearError('memories');
         memoriesSay('Reloaded ' + key + ': the scene as the Record left it; its clip plays on the card.', false);
-        talkLine('Lab', 'reloaded your memory ' + key + ' — ' + spec.label + ' as the Record left it; its clip plays on the card.', 'talk-lab');
+        labFact('reloaded your memory ' + key + ' — ' + spec.label + ' as the Record left it; its clip plays on the card.');
         return { key: key, scene: summary(state.scene), parts: now.parts };
     } catch (err) { return memoriesFailed(err); }
 }
@@ -788,6 +795,52 @@ async function discussMemory(key, question) {
         clearError('memories');
         memoriesSay('Asked Maxi about ' + key + '; his answer is in the conversation.', false);
         return out;
+    } catch (err) { return memoriesFailed(err); }
+}
+
+/** The memories the pane listed last (renderMemories), newest first: the Download button is read off them, never off a second store read. */
+let keptList = [];
+
+/** The newest COMPLETE memory kept for the scene on the stage (its scene id and mode; a sketch Maxi wrote by its label), or null. */
+function downloadableOf(list, sc) {
+    if (!sc) { return null; }
+    const m = list.find(function (x) {
+        return !x.faults.length && x.scene && (x.scene.id || null) === (sc.id || null) && (x.scene.mode || null) === (sc.mode || null) && (sc.id || x.scene.label === sc.label);
+    });
+    return m ? m.key : null;
+}
+
+/** THE Download button's state: enabled, naming its memory, when a completed Record of the scene on the stage is kept here. */
+function renderDownload() {
+    const key = downloadableOf(keptList, state.scene);
+    el.memoriesDownload.disabled = !key;
+    el.memoriesDownload.dataset.key = key || '';
+    el.memoriesDownload.title = key ? 'Download this Record (' + key + ') as one file: its folder — record.json, parts before and after, the sketch, the clips and lab.json.'
+        : 'No completed Record of the scene on the stage is kept in this browser yet: press Record, then Stop.';
+    return key;
+}
+
+/**
+ * DOWNLOAD: the newest completed Record of the scene on the stage, read back through the store's own load (its gate) and handed
+ * to the visitor's browser as ONE file whose shape is the Record folder (maxi-local-memory.js memoryBundle). Refused by name when
+ * there is none.
+ */
+async function downloadRecord() {
+    try {
+        const key = renderDownload();
+        if (!key) { throw new Error('memories: no completed Record of the scene on the stage is kept in this browser — press Record, then Stop, to keep one. Nothing was downloaded.'); }
+        const b = memoryBundle(await state.memories.load(key));
+        const url = URL.createObjectURL(new Blob([b.text], { type: b.mime }));
+        const a = document.createElement('a');
+        a.href = url; a.download = b.name; a.hidden = true;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+        clearError('memories');
+        // the page asks; whether the file arrives is the browser's (and its frame's) to say — never claimed here
+        memoriesSay('Asked your browser to download ' + key + ' as ' + b.name + ' (one file: the Record folder).', false);
+        return { key: key, name: b.name, bytes: b.text.length };
     } catch (err) { return memoriesFailed(err); }
 }
 
@@ -855,17 +908,35 @@ async function ask(op, q) {
 
 // ── the conversation strip: plain words only ────────────────────────────────────────────────
 
-function talkLine(who, text, cls) {
+/**
+ * THE painter of a conversation row; every row of the strip is made here. `theirs` (optional) are the row's author's own words,
+ * shown first and never held to the page's gate (the visitor's; a hand caller's, cleaned by renderTurn). The page's own words
+ * — `text` of a row maxi-talk.js isPageRow calls the page's (a Lab row, however it was asked for), or of any row given `theirs`
+ * — pass pageText, which THROWS by name: a page bug, ours to fix.
+ */
+function talkLine(who, text, cls, theirs) {
+    const shown = (theirs !== undefined || isPageRow(who, cls)) ? pageText(text) : text;
     const row = document.createElement('div');
     row.className = 'talk-row ' + cls;
     const name = document.createElement('b');
     name.textContent = who;
     const body = document.createElement('p');
-    body.textContent = text;
+    body.textContent = (theirs ? theirs + '\n' : '') + shown;
     row.appendChild(name); row.appendChild(body);
     el.talkLines.appendChild(row);
     el.talkLines.scrollTop = el.talkLines.scrollHeight;
     return row;
+}
+
+/** A Lab fact the PAGE composes, in the conversation (talkLine holds it to pageText). */
+function labFact(text) {
+    return talkLine('Lab', text, 'talk-lab');
+}
+/** `text` when the page may show it in the conversation (maxi-talk.js conversationFaults); THROWS by name otherwise. */
+function pageText(text) {
+    const bad = conversationFaults(text);
+    if (bad.length) { throw new Error('[maxi-lab] page words in the conversation: ' + bad.join('; ')); }
+    return text;
 }
 
 function clipWords(media) {
@@ -877,7 +948,13 @@ function clipWords(media) {
 let pendingRow = null;
 function renderTurn(t) {
     if (t.phase === 'asking') {
-        talkLine(t.op === 'record' || t.op === MEMORY_OP ? 'You' : 'Lab', (t.question ? t.question + '\n' : '') + (t.teaching ? t.teaching + '\n' : '') + t.note + '\n[footage: ' + clipWords(t.media) + ']', 'talk-user');
+        const yours = t.op === 'record' || t.op === MEMORY_OP;   // the visitor's own footage is theirs; a hand's is a Lab fact
+        // the caller's words first: the visitor's as they are; a hand caller's (Maxi's, from a Run block) with their backticks
+        // removed and each slip counted on the row, never a stop. The footage part is the page's own (talkLine's gate).
+        const words = yours ? [t.question, t.teaching, t.note].filter(Boolean).join('\n') : plainTalk(t.note);
+        const shown = talkLine(yours ? 'You' : 'Lab', '[footage: ' + clipWords(t.media) + ']', yours ? 'talk-user' : 'talk-lab', words);
+        const slip = yours ? null : slipWords(registerSlips(t.note));
+        if (slip) { const meta = document.createElement('small'); meta.textContent = slip; shown.appendChild(meta); }
         pendingRow = talkLine('Maxi', 'looking …', 'talk-maxi talk-pending');
         return;
     }
@@ -901,11 +978,14 @@ function newThread() {
     if (state.loop && state.loop.running) { showError(new Error('Maxi is still working on the last outline — a new conversation starts when he stops.'), 'loop'); return; }
     thread().reset();
     if (state.loop) { state.loop.reset(); }
-    // the strip is cleared with the threads: its rows go, and every inline clip's URL is freed
+    // both panes are cleared with the threads: their rows go, the drawer's turns start again, and every inline clip's URL is freed
     el.talkLines.textContent = '';
-    pendingRow = null; loopPending = null;
+    el.imaginationLines.textContent = '';
+    pendingRow = null; thinking = null;
+    drawer.turn = 0; drawer.outline = null; drawer.group = null; drawer.block = null; drawer.process = null; drawer.last = null;
+    drawerTicker();
     inlineUrls.revokeAll();
-    talkLine('Lab', 'a new conversation with Maxi starts at the next outline or clip.', 'talk-user');
+    labFact('a new conversation with Maxi starts at the next outline or clip.');
 }
 
 // ── the human's scene picker ────────────────────────────────────────────────────────────────
@@ -921,27 +1001,21 @@ async function pickScene(a) {
     catch (err) { syncPicker(); throw err; }
     const sc = await loadScene(a);
     el.demo.hidden = true;
-    talkLine('Lab', 'scene switched — now loaded: ' + sc.scene + ' (' + sc.id + (sc.mode ? ' · ' + sc.mode : '') + ', ' +
-        sc.dimensions + 'D' + '). Maxi\'s next outline starts from it; this conversation is kept.', 'talk-user');
+    labFact('scene switched — now loaded: ' + sc.scene + ' (' + sc.id + (sc.mode ? ' · ' + sc.mode : '') + ', ' +
+        sc.dimensions + 'D' + '). Maxi\'s next outline starts from it; this conversation is kept.');
     return sc;
 }
 
 // ── the three-role loop: Tony's outline in, words and clips out ─────────────────────────────
+//
+// TWO PANES: the conversation (#talk-lines) carries Maxi's voice, the visitor's words and the Lab's facts; the Imagination
+// drawer (#imagination) carries his three processes, Designing, Building and Checking, as "how I thought about it", in one
+// group per turn (id turnAnchor(n); n counts the visitor's turns, an outline or a question alike: each opens with tony:said,
+// and a question's group holds the memory files its answer drew on). Which row goes where, and what the conversation's
+// Thinking line says, are maxi-talk.js's (the one owner); this paints them, textContent only: nothing a role writes is
+// rendered as markup.
 
-let loopPending = null;
-
-// The rows are maxi-talk.js's (the one owner of the loop's row shapes); this paints them, textContent only (talkLine):
-// nothing a role writes is rendered as markup.
-function paintRow(r) {
-    if (loopPending) { loopPending.remove(); loopPending = null; }
-    const row = talkLine(r.who, r.text, r.cls + (r.pending ? ' talk-pending' : ''));
-    if (r.pending) { loopPending = row; }
-    if (r.approve) { row.classList.add('talk-approve'); }
-    if (r.clip) { inlineClip(row, r.clip); }
-    return row;
-}
-
-const inlineUrls = clipUrlLedger();   // the conversation's inline clips, freed when New conversation clears the strip
+const inlineUrls = clipUrlLedger();   // both panes' inline clips, freed when New conversation clears them
 function inlineClip(row, clip) {
     const v = document.createElement('video');
     v.controls = true; v.muted = true; v.playsInline = true; v.loop = true;
@@ -950,11 +1024,132 @@ function inlineClip(row, clip) {
     return v;
 }
 
+/** The drawer's state: the turn the next row belongs to, its group and its current process block, and whether it is open. */
+const drawer = { turn: 0, outline: null, group: null, block: null, process: null, last: null };
+/** The conversation's Thinking line for the outline turn now running: {row, body, started, round, turn}, else null. */
+let thinking = null;
+
+function drawerTicker() {
+    el.imaginationTicker.textContent = drawer.last ? drawer.last : 'nothing yet';
+}
+
+/** The drawer's title, from its one owner (maxi-talk.js IMAGINATION_TITLE): the toggle's label and title, and both regions' names. */
+function titleDrawer() {
+    el.imaginationTitle.textContent = IMAGINATION_TITLE;
+    el.imagination.setAttribute('aria-label', IMAGINATION_TITLE);
+    el.imaginationLines.setAttribute('aria-label', IMAGINATION_TITLE);
+    el.imaginationToggle.title = IMAGINATION_TITLE + ': what Maxi planned, built and checked for each outline (open or close)';
+}
+
+/** Open or close the drawer (its toggle's aria-expanded says which); the collapsed drawer is its one-line ticker. */
+function setDrawer(open) {
+    el.imaginationLines.hidden = !open;
+    el.imagination.classList.toggle('open', open);
+    el.imaginationToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+/** Turn n's group in the drawer, opened and scrolled to. THROWS by name when the drawer has no such group (a link to nothing). */
+function openTurn(n) {
+    const g = document.getElementById(turnAnchor(n));
+    if (!g || !el.imaginationLines.contains(g)) { throw new Error('[maxi-lab] the conversation links to ' + turnAnchor(n) + ', and the Imagination drawer has no such turn — the link points at nothing.'); }
+    setDrawer(true);
+    g.scrollIntoView({ block: 'start' });
+    return g;
+}
+
+/** A link from the conversation to turn n's group in the drawer. THROWS by name when the group is not there to link to. */
+function turnLink(n) {
+    if (!document.getElementById(turnAnchor(n))) { throw new Error('[maxi-lab] a conversation row links to ' + turnAnchor(n) + ', and the Imagination drawer has no such turn — nothing was linked.'); }
+    const a = document.createElement('a');
+    a.href = '#' + turnAnchor(n);
+    a.className = 'talk-to-drawer';
+    a.textContent = '↗';
+    a.title = IMAGINATION_TITLE;
+    a.addEventListener('click', function (ev) { ev.preventDefault(); try { openTurn(n); } catch (err) { showError(err, 'loop'); } });
+    return a;
+}
+
+/** The current turn's group in the drawer, made at its first row. */
+function drawerGroup() {
+    if (!drawer.group) {
+        const g = document.createElement('section');
+        g.className = 'imagination-turn';
+        g.id = turnAnchor(drawer.turn);
+        const h = document.createElement('h3');
+        h.textContent = drawer.outline === null ? 'Before your first outline' : drawer.outline;
+        g.appendChild(h);
+        el.imaginationLines.appendChild(g);
+        drawer.group = g; drawer.block = null; drawer.process = null;
+    }
+    return drawer.group;
+}
+
+/**
+ * A row of the drawer: under its process's label (one label per run of rows of the same process). The loop's own refusal or
+ * stop is said where it happened, inside the process it stopped (a Lab block only when no process has begun).
+ */
+function paintImagination(r) {
+    const g = drawerGroup();
+    if (drawer.process !== r.who && !(r.role === 'loop' && drawer.block)) {
+        drawer.block = document.createElement('div');
+        drawer.block.className = 'imagination-process ' + r.cls;
+        const b = document.createElement('b');
+        b.textContent = r.who;
+        drawer.block.appendChild(b);
+        g.appendChild(drawer.block);
+        drawer.process = r.who;
+    }
+    const p = document.createElement('p');
+    p.className = r.cls + (r.approve ? ' talk-approve' : '');
+    p.textContent = r.text;
+    drawer.block.appendChild(p);
+    if (r.clip) { inlineClip(drawer.block, r.clip); }
+    drawer.last = tickerOf(r);   // the process label and the row's lead, never a file name (maxi-talk.js owns it)
+    drawerTicker();
+    if (!el.imaginationLines.hidden) { el.imaginationLines.scrollTop = el.imaginationLines.scrollHeight; }
+    return p;
+}
+
+/** A row of the conversation (maxi-talk.js says which); a stop line links to its turn in the drawer. */
+function paintConversation(r) {
+    const row = talkLine(r.who, r.text, r.cls);
+    if (r.approve) { row.classList.add('talk-approve'); }
+    if (r.toDrawer) { row.querySelector('p').appendChild(document.createTextNode(' ')); row.querySelector('p').appendChild(turnLink(drawer.turn)); }
+    if (r.clip) { inlineClip(row, r.clip); }
+    return row;
+}
+
+/** THE Thinking line: opened by the visitor's outline, told what Maxi is doing now, closed with its summary (or taken away). */
+function think(step, e) {
+    if (!step) { return; }
+    if (step.begin) {
+        if (thinking) { throw new Error('[maxi-lab] a Thinking line is still open for turn ' + thinking.turn + ' as turn ' + drawer.turn + ' begins.'); }
+        const row = talkLine('Maxi', '', 'talk-maxi talk-thinking');
+        thinking = { row: row, body: row.querySelector('p'), started: Date.now(), round: 0, turn: drawer.turn };
+    }
+    if (!thinking) { return; }
+    if (typeof e.round === 'number' && e.round > thinking.round) { thinking.round = e.round; }
+    if (step.none) { thinking.row.remove(); thinking = null; return; }
+    if (step.end) {
+        const t = thinking;
+        thinking = null;
+        t.body.textContent = thinkingSummary({ ms: Date.now() - t.started, rounds: t.round, end: step.end }) + ' ';
+        t.body.appendChild(turnLink(t.turn));
+        t.row.classList.add('talk-thought');
+        if (step.end === 'stopped') { t.row.classList.add('talk-refused'); }
+        return;
+    }
+    if (step.line) { thinking.body.textContent = thinkingLine(step.line, thinking.round); el.talkLines.scrollTop = el.talkLines.scrollHeight; }
+}
+
 // Words, never code — the loop hands over only the words before each hand-off block. An event with no row THROWS by name.
 function renderLoop(e) {
     const rows = loopRowsOf(e);
+    const step = thinkingOf(e);
     if (e.role === 'tony') { el.imagineText.value = ''; }   // the box empties only when the loop takes the outline
-    rows.forEach(paintRow);
+    if (step && step.begin) { drawer.turn += 1; drawer.outline = e.words; drawer.group = null; }
+    rows.forEach(function (r) { return r.pane === 'imagination' ? paintImagination(r) : paintConversation(r); });
+    think(step, e);
 }
 
 /**
@@ -1251,6 +1446,7 @@ function wireUi() {
     el.restart.addEventListener('click', function () { restart().catch(function (err) { console.error('[maxi-lab] restart failed (shown in #error):', err); }); });
     el.code.addEventListener('click', function () { toggleSidePane('code'); });
     el.info.addEventListener('click', function () { toggleSidePane('info'); });
+    el.memoriesDownload.addEventListener('click', function () { downloadRecord().catch(function (err) { console.error('[maxi-lab] download refused (shown in the pane):', err); }); });
     el.memories.addEventListener('click', function () {
         toggleSidePane('memories');
         if (!el.memoriesPane.hidden) { renderMemories().catch(function (err) { console.error('[maxi-lab] Your memories (shown in the pane):', err); }); }
@@ -1273,6 +1469,10 @@ function wireUi() {
     document.addEventListener('fullscreenchange', renderFullscreen);
     renderFullscreen();
     el.talkNew.addEventListener('click', newThread);
+    el.imaginationToggle.addEventListener('click', function () { setDrawer(el.imaginationLines.hidden); });
+    titleDrawer();
+    setDrawer(false);
+    drawerTicker();
     el.imagine.addEventListener('submit', function (ev) {
         ev.preventDefault();
         const text = el.imagineText.value.trim();
@@ -1343,7 +1543,7 @@ const ready = (async function main() {
     setConversationEnabled(true);   // standalone too: an outline there is refused loudly, naming the shell's door
     // a sign-in made after the page loaded (the shell's SIGN IN) shows on the status line and in the conversation, no reload
     pageAuth(window).onChange(function (now) {
-        if (now.authenticated === true) { talkLine('Lab', SIGNED_IN_NOTICE, 'talk-lab'); }
+        if (now.authenticated === true) { labFact(SIGNED_IN_NOTICE); }
         renderStatus();
     });
     return loadScene(firstScene());
@@ -1369,7 +1569,9 @@ window.MaxiLab = Object.freeze({
     /** Your memories (maxi-local-memory.js, this browser only): list them, Reload one (its scene at parts.after, its clip on the card), Discuss one (your question to Maxi with its facts), Delete one. */
     memories: Object.freeze({
         list: function () { return state.memories.list(); }, render: renderMemories,
-        reload: reloadMemory, discuss: discussMemory, remove: deleteMemory
+        reload: reloadMemory, discuss: discussMemory, remove: deleteMemory,
+        /** Download this Record: the newest completed memory of the scene on the stage, as one file (memoryBundle). A Promise of {key, name, bytes}. */
+        download: downloadRecord
     }),
     ask: ASK,
     thread: function () { return state.thread ? { id: state.thread.id, turns: state.thread.turns } : null; },

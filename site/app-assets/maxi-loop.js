@@ -15,9 +15,8 @@
  *     hand (maxi-roles.js stageOf; a refused inventory is emptyStage, its words kept). The Designer and the
  *     Builder's first turn are shown it; a plan for a scene not on it must load it (parsePlan).
  *   Designer (Maxi, the orchestrator) — Tony's message → its reading first (maxi-roles.js parseDesignerReply): an
- *     outline → words for Tony and a plan for the Builder; a question → an ANSWER in words naming the memory files it
- *     drew on (emitted as designer:answer {words, memories, unnamed, reading}; `unnamed`, the listed files its words never
- *     name, is the answer's fault, kept on the event and on {answered} for the page and the node trial to show or refuse),
+ *     outline → words for Tony and a plan for the Builder; a question → an ANSWER in words and the memory files it
+ *     drew on (emitted as designer:answer {words, memories, reading}; the words need not name the files),
  *     and the turn ENDS there: no Builder, no Owl, no
  *     hand beyond the stage's inventory, no Record (imagine resolves {answered, outline, reading, threads}); a question
  *     and an outline → the answer, then the plan as for an outline. ONE thread kept across messages (`reset()` starts
@@ -240,9 +239,9 @@ export function createLoop(spec) {
             const stage = read.stage;
             if (!st.designer) { st.designer = brain.thread('designer', 'designer'); }
             const parsed = roles.parseDesignerReply(await ask('designer', st.designer, roles.designerTurn({ outline: outline, first: st.designer.turns === 0, stage: stage }), null), stage);
-            const answered = parsed.answer ? { words: plainWords(parsed.answer.words).text, memories: parsed.answer.memories.slice(), unnamed: parsed.answer.unnamed.slice() } : null;
-            if (answered) {   // a question: the answer in words, its memory files, and those its words never name (the fault, kept: maxi-talk.js ANSWERED)
-                emit({ role: 'designer', kind: 'answer', words: answered.words, memories: answered.memories.slice(), unnamed: answered.unnamed.slice(), reading: parsed.reading });
+            const answered = parsed.answer ? { words: plainWords(parsed.answer.words).text, memories: parsed.answer.memories.slice() } : null;
+            if (answered) {   // a question: the answer in words and the memory files it drew on (maxi-talk.js ANSWERED)
+                emit({ role: 'designer', kind: 'answer', words: answered.words, memories: answered.memories.slice(), reading: parsed.reading });
             }
             if (!parsed.plan) {   // nothing to build: the turn ends with the answer — no Builder, no Owl, no Record
                 return { answered: answered, outline: outline, reading: parsed.reading, threads: { designer: st.designer.id } };

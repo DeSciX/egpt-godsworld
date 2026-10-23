@@ -48,14 +48,14 @@ function ownBrowserPids() {
     return { own: rows.filter((r) => mine.has(r.pid) && !/^(ps|pgrep)$/.test(path.basename(r.comm))).map((r) => r.pid + ':' + path.basename(r.comm)), total: rows.filter((r) => /chrome-headless-shell|ms-playwright/.test(r.comm)).length };
 }
 
-/** Layout facts of the lab page: rects of the header, its buttons, the stage, the conversation strip, the box and Send. */
+/** Layout facts of the lab page: rects of the header, its buttons, the stage, the Imagination drawer's ticker under it, the conversation strip, the box and Send. */
 const layout = () => {
     const r = (sel) => { const e = document.querySelector(sel); if (!e) { return null; } const b = e.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), shown: getComputedStyle(e).display !== 'none' && !e.hidden }; };
     const head = Array.from(document.querySelectorAll('header > *')).filter((e) => getComputedStyle(e).display !== 'none');
     const mids = head.map((e) => { const b = e.getBoundingClientRect(); return b.top + b.height / 2; });
     const lastRight = Math.max.apply(null, head.map((e) => e.getBoundingClientRect().right));
     return { vw: innerWidth, vh: innerHeight, header: r('header'), headerRight: Math.round(lastRight), headerRows: (Math.max.apply(null, mids) - Math.min.apply(null, mids)) <= 4 ? 1 : 2, headerFits: lastRight <= innerWidth,
-        stage: r('#stage'), talk: r('#talk'), box: r('#imagine-text'), send: r('#imagine-send'), fs: r('#btn-fullscreen'),
+        stage: r('#stage'), drawer: r('#imagination'), talk: r('#talk'), box: r('#imagine-text'), send: r('#imagine-send'), fs: r('#btn-fullscreen'),
         sendDisabled: document.getElementById('imagine-send').disabled, boxDisabled: document.getElementById('imagine-text').disabled,
         scene: window.MaxiLab.state.scene && { id: window.MaxiLab.state.scene.id, mode: window.MaxiLab.state.scene.mode, renderer: window.MaxiLab.state.scene.renderer } };
 };
@@ -89,7 +89,8 @@ try {
         const lb = await b.page.evaluate(layout);
         await b.page.screenshot({ path: path.join(OUT, 'B1-phone-390.png') });
         check(lb.headerRows === 1 && lb.header.h <= 44 && lb.headerFits, 'B: the header is one compact row and every control in it is inside 390 px', { rows: lb.headerRows, fits: lb.headerFits, right: lb.headerRight, header: lb.header });
-        check(lb.stage.y === lb.header.y + lb.header.h && lb.stage.y + lb.stage.h === lb.talk.y && lb.talk.y + lb.talk.h <= lb.vh && lb.stage.h >= 0.5 * lb.vh, 'B: the stage takes the viewport above the conversation strip', { vh: lb.vh, header: lb.header, stage: lb.stage, talk: lb.talk });
+        check(lb.stage.y === lb.header.y + lb.header.h && lb.stage.y + lb.stage.h === lb.drawer.y && lb.drawer.y + lb.drawer.h === lb.talk.y && lb.drawer.h <= 32 && lb.talk.y + lb.talk.h <= lb.vh && lb.stage.h >= 0.5 * lb.vh,
+            'B: the stage takes the viewport above the conversation strip, the Imagination drawer\'s one-line ticker between them', { vh: lb.vh, header: lb.header, stage: lb.stage, drawer: lb.drawer, talk: lb.talk });
         check(lb.send.shown && lb.send.y === lb.box.y && lb.send.x + lb.send.w <= lb.vw && lb.box.w >= 200 && !lb.sendDisabled && !lb.boxDisabled, 'B: Send is beside the box inside 390 px, both enabled', { box: lb.box, send: lb.send });
         await b.page.click('#imagine-text');
         await b.page.setViewportSize({ width: 390, height: 480 });   // the keyboard takes the bottom ~364 px
@@ -119,7 +120,8 @@ try {
         await d.page.screenshot({ path: path.join(OUT, 'D1-phone-landscape-844x390.png') });
         check(dm.mobile === true && ld.headerRows === 1 && ld.headerFits && ld.header.h <= 44, 'D: a landscape phone (844x390) is mobile: one header row inside the width', { mobile: dm.mobile, rows: ld.headerRows, fits: ld.headerFits, header: ld.header });
         check(dm.can.available && ld.fs.shown && ld.fs.x >= 0 && ld.fs.x + ld.fs.w <= ld.vw, 'D: the Full screen button is present on the landscape phone', ld.fs);
-        check(ld.talk.x >= ld.stage.x + ld.stage.w && ld.stage.h === ld.vh - ld.header.h && ld.stage.w >= 0.5 * ld.vw && ld.send.y + ld.send.h <= ld.vh && ld.send.x + ld.send.w <= ld.vw, 'D: landscape puts the conversation beside the stage, which takes the full height under the header; Send inside the viewport', { stage: ld.stage, talk: ld.talk, send: ld.send, vh: ld.vh });
+        check(ld.talk.x >= ld.stage.x + ld.stage.w && ld.stage.h + ld.drawer.h === ld.vh - ld.header.h && ld.drawer.y === ld.stage.y + ld.stage.h && ld.drawer.h <= 32 && ld.stage.w >= 0.5 * ld.vw && ld.send.y + ld.send.h <= ld.vh && ld.send.x + ld.send.w <= ld.vw,
+            'D: landscape puts the conversation beside the stage, which with the drawer\'s ticker under it takes the full height under the header; Send inside the viewport', { stage: ld.stage, drawer: ld.drawer, talk: ld.talk, send: ld.send, vh: ld.vh });
         await d.page.click('#btn-fullscreen');
         await d.page.waitForTimeout(800);
         const dfs = await d.page.evaluate(() => !!document.fullscreenElement);

@@ -98,7 +98,7 @@ test('the scene picker goes through pickScene: refused by name while Maxi works 
     const pick = fnBody('pickScene');
     assert.ok(/try \{ guardBusy\('the scene picker'\); \}\s*catch \(err\) \{ syncPicker\(\); throw err; \}/.test(pick), 'pickScene must refuse by name while Maxi works and put the picker back');
     assert.ok(pick.indexOf("guardBusy('the scene picker')") < pick.indexOf('await loadScene(a)'), 'the guard runs before the load');
-    assert.ok(pick.includes('el.demo.hidden = true') && /talkLine\('Lab', 'scene switched — now loaded: '/.test(pick), 'a switch hides the card and says what is loaded');
+    assert.ok(pick.includes('el.demo.hidden = true') && /labFact\('scene switched — now loaded: '/.test(pick), 'a switch hides the card and says what is loaded');
     assert.ok(!pick.includes('newThread') && !pick.includes('.reset()'), 'a switch keeps the conversation and Maxi\'s Designer thread');
     const h = heldLoop();
     const run = h.loop.imagine('a laser hitting a mirror');

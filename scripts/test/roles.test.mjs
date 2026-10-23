@@ -47,11 +47,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
     ROLES, ROLE_ORDER, parsePlan, parseBuilderReply, parseVerdict, designerTurn, builderTurn, owlTurn, PARSERS, SEEN_ACCOUNT,
     stageOf, emptyStage, stageWords, extentWords, planOnStage, LOADING_HANDS, PLAN_REFUSED_KEYS, loadArgsOf, REFUSAL_ASK,
-    parseDesignerReply, readingOf, READING_LINE, DESIGNER_READINGS, PLAN_KEYS, ANSWER_KEYS, TALK_RULE, HANDOFF_TAGS, LAST_CLIP, LAST_CLIP_RULE, unnamedFault
+    parseDesignerReply, readingOf, READING_LINE, DESIGNER_READINGS, PLAN_KEYS, ANSWER_KEYS, TALK_RULE, HANDOFF_TAGS, LAST_CLIP, LAST_CLIP_RULE, briefWordLimit
 } from '../../site/app-assets/maxi-roles.js';
 import { HANDS, INVENTORY_KEYS, SKETCH_KEYS, inventoryOf } from '../../site/app-assets/maxi-hands.js';
 import { fakeRunner, sdkCameraControl } from './fake-runner.mjs';
-import { renderAll, agentPath, PERSONA, TOOL_NEEDS, toolsFor } from '../gen-plugin-agents.mjs';
+import { renderAll, agentPath, PERSONA, TOOL_NEEDS, toolsFor, renderBrief, BRIEF_MODULE } from '../gen-plugin-agents.mjs';
+import { BRIEF_WORDS } from '../../site/app-assets/maxi-persona-brief.js';
 import { SECTIONS, spliceBlock, renderPersona } from '../gen-hands-section.mjs';
 import * as rolesModule from '../../site/app-assets/maxi-roles.js';
 import { execFileSync } from 'node:child_process';
@@ -279,12 +280,13 @@ test('turns: each role sees only its own inputs', () => {
 test('plugin agents: generated, current, persona verbatim; a drift is red', () => {
     const persona = fs.readFileSync(path.join(REPO, PERSONA), 'utf8').replace(/\s+$/, '');
     const files = renderAll(REPO);
-    assert.deepEqual(files.map((f) => f.id), ['designer', 'builder', 'owl', 'skill']);
+    assert.deepEqual(files.map((f) => f.id), ['designer', 'builder', 'owl', 'skill', 'brief']);
+    for (const f of files.filter((x) => x.id === 'brief')) { assert.equal(fs.readFileSync(path.join(REPO, f.path), 'utf8'), f.text, f.path + ' (the Brief figure) is stale — run node scripts/gen-plugin-agents.mjs --write'); }
     for (const f of files.filter((x) => x.id === 'skill')) {
         assert.equal(fs.readFileSync(path.join(REPO, f.path), 'utf8'), f.text, f.path + ' roles table is stale — run node scripts/gen-plugin-agents.mjs --write');
         for (const id of ROLE_ORDER) assert.ok(f.text.includes(ROLES[id].knowledgebase_names.map((k) => '`' + k + '`').join(', ')), 'the skill table states ROLES.' + id + '.knowledgebase_names');
     }
-    for (const f of files.filter((x) => x.id !== 'skill')) {
+    for (const f of files.filter((x) => x.id !== 'skill' && x.id !== 'brief')) {
         const disk = fs.readFileSync(path.join(REPO, f.path), 'utf8');
         assert.equal(disk, f.text, f.path + ' is stale — run node scripts/gen-plugin-agents.mjs --write');
         if (ROLES[f.id].persona) assert.ok(disk.includes(persona) && disk.includes('(verbatim below)'), f.path + ' must carry the persona verbatim');
@@ -397,12 +399,12 @@ test('the world frame: one owner — the persona and the Owl\'s first turn carry
     assert.equal(count(fs.readFileSync(path.join(REPO, PERSONA), 'utf8'), W), 1, 'the persona carries it once');
     // the generated files: the persona-bearing agents once (the embedded persona), the Owl's agent never, the skill once
     const files = renderAll(REPO);
-    const WANT_FILE = { designer: 1, builder: 1, owl: 0, skill: 1 };
+    const WANT_FILE = { designer: 1, builder: 1, owl: 0, skill: 1, brief: 0 };
     for (const f of files) {
         const want = WANT_FILE[f.id];
         assert.equal(count(f.text, W), want, f.path + ' carries WORLD_FRAME ' + want + ' time(s)');
         assert.equal(count(fs.readFileSync(path.join(REPO, f.path), 'utf8'), W), want, f.path + ' on disk carries WORLD_FRAME ' + want + ' time(s)');
-        if (f.id !== 'skill') { assert.equal(want, ROLES[f.id].persona ? 1 : 0, f.path + ': the agent carries the frame exactly when it embeds the persona'); }
+        if (f.id !== 'skill' && f.id !== 'brief') { assert.equal(want, ROLES[f.id].persona ? 1 : 0, f.path + ': the agent carries the frame exactly when it embeds the persona'); }
     }
     // no hand-typed copy: no clause of the frame occurs outside its owner, the generated persona section and the generated files
     const probes = W.split(/(?<=[.:;])\s+/).filter((c) => c.length > 40);
@@ -533,18 +535,10 @@ test('designer: the first line reads the message; an outline parses its plan, a 
     const o = parseDesignerReply(READ('outline') + '\nTony, I will start from the mirror.\n' + PLAN_BLOCK, STAGE);
     assert.deepEqual([o.reading, o.answer, o.plan, o.words], ['outline', null, PLAN, 'Tony, I will start from the mirror.']);
     const q = parseDesignerReply(READ('question') + '\n' + ANSWER_WORDS + '\n' + ANSWER_BLOCK, STAGE);
-    assert.deepEqual([q.reading, q.answer, q.plan, q.words], ['question', { words: ANSWER_WORDS, memories: ['dse-tunnel-rebuild-card.md'], unnamed: [] }, null, null]);
+    assert.deepEqual([q.reading, q.answer, q.plan, q.words], ['question', { words: ANSWER_WORDS, memories: ['dse-tunnel-rebuild-card.md'] }, null, null]);
     const b = parseDesignerReply(READ('both') + '\n' + ANSWER_WORDS + '\n' + ANSWER_BLOCK + '\nNow the build: the mirror at 30 degrees.\n' + PLAN_BLOCK, STAGE);
     assert.deepEqual([b.reading, b.answer.memories, b.plan, b.words], ['both', ['dse-tunnel-rebuild-card.md'], PLAN, 'Now the build: the mirror at 30 degrees.']);
     assert.equal(readingOf('  \n' + READ('question') + '.\nwords').reading, 'question', 'leading blank lines and a closing full stop are read');
-    assert.deepEqual(parseDesignerReply(READ('question') + '\nFrom dse-tunnel-rebuild-card: the claim.\n' + ANSWER_BLOCK, STAGE).answer.unnamed, ['dse-tunnel-rebuild-card.md'], 'a file is named by its whole file name, extension included');
-    // the name check is a whole-token match, never a substring (planted substring matches are red here); an unnamed file is DATA on a question
-    const named = (words, file) => parseDesignerReply(READ('question') + '\n' + words + '\n' + fence(HANDOFF_TAGS.answer, JSON.stringify({ memories: [file] })), STAGE).answer.unnamed;
-    assert.deepEqual(named('The card says so.', 'card.md'), ['card.md'], '"card" does not name card.md');
-    assert.deepEqual(named('I have a view.', 'a.md'), ['a.md'], '"a" does not name a.md');
-    assert.deepEqual(named('See my-card.md for it.', 'card.md'), ['card.md'], 'my-card.md does not name card.md');
-    assert.deepEqual(named('See card.mdx for it.', 'card.md'), ['card.md'], 'card.mdx does not name card.md');
-    for (const ok of ['See card.md.', '(card.md)', '`card.md`', 'kb/GodsWorld/memories/card.md says so', 'card.md, then']) { assert.deepEqual(named(ok, 'card.md'), [], JSON.stringify(ok) + ' names card.md'); }
     assert.deepEqual(parseDesignerReply(READ('question') + '\nkb/GodsWorld/robotic-imagination.md says so.\n' + fence(HANDOFF_TAGS.answer, '{"memories": ["kb/GodsWorld/robotic-imagination.md"]}'), STAGE).answer.memories, ['kb/GodsWorld/robotic-imagination.md'], 'a kb-relative path is a file name');
     // the reading line
     assert.throws(() => parseDesignerReply('Tony, I will start from the mirror.\n' + PLAN_BLOCK, STAGE), /^Error: \[designer → reading\]: the reply's first line must read the message — one of "THIS IS: an outline", "THIS IS: a question", "THIS IS: a question and an outline" — got "Tony, I will start from the mirror\."/);
@@ -566,7 +560,7 @@ test('designer: the first line reads the message; an outline parses its plan, a 
     }
     assert.throws(() => answer({ memories: ['dse-tunnel-rebuild-card.md'], confidence: 1 }), /a json:answer block carries only memories, got `confidence`/);
     assert.deepEqual(ANSWER_KEYS, ['memories']);
-    assert.deepEqual(answer({ memories: ['dse-tunnel-rebuild-card.md', 'r2-wave-card.md'] }).answer, { words: ANSWER_WORDS, memories: ['dse-tunnel-rebuild-card.md', 'r2-wave-card.md'], unnamed: ['r2-wave-card.md'] });
+    assert.deepEqual(answer({ memories: ['dse-tunnel-rebuild-card.md', 'r2-wave-card.md'] }).answer, { words: ANSWER_WORDS, memories: ['dse-tunnel-rebuild-card.md', 'r2-wave-card.md'] }, 'the answer is its words and its memory files, nothing else');
     assert.throws(() => answer({ memories: ['dse-tunnel-rebuild-card.md'] }, ''), /the answer is the words before the json:answer block, and there are none/);
     assert.throws(() => parseDesignerReply(READ('question') + '\n' + ANSWER_WORDS + '\n' + fence(HANDOFF_TAGS.answer, "{memories: ['x.md']}"), STAGE), /\[designer → answer\]: the block body is not strict JSON/);
     // the plan keeps parsePlan's checks inside a reading
@@ -574,36 +568,35 @@ test('designer: the first line reads the message; an outline parses its plan, a 
     assert.deepEqual(Object.keys(o.plan), PLAN_KEYS, 'a plan carries exactly PLAN_KEYS');
 });
 
-test('an unnamed memory is the ONE relaxed answer fault: data on a question alone; with a plan it still THROWS, and every other answer fault still throws (negative controls: a parser that throws on it, or returns data for a missing-words answer, is red)', () => {
+test('an answer\'s words need not name its memory files: a question, and a question with a plan after it, whose block lists a file the words never mention are accepted; a malformed block still throws by name (negative controls: the old parser that refused an unnamed file, and one that lets an empty answer through, are red)', () => {
     const q = (words, body, tail) => parseDesignerReply(READ(tail ? 'both' : 'question') + '\n' + words + '\n' + fence(HANDOFF_TAGS.answer, JSON.stringify(body)) + (tail || ''), STAGE);
-    const relaxed = (parse) => {
+    const shape = (parse) => {
         const faults = [];
-        let r = null;
-        try { r = parse('The tunnel has two slits.', { memories: ['dse-tunnel-rebuild-build.md'] }); } catch (err) { faults.push('a question with an unnamed memory threw: ' + err.message); }
-        if (r && JSON.stringify(r.answer.unnamed) !== '["dse-tunnel-rebuild-build.md"]') { faults.push('unnamed is ' + JSON.stringify(r.answer.unnamed)); }
-        for (const [what, words, body, tail] of [
-            ['an answer with a plan after it', 'The tunnel has two slits.', { memories: ['dse-tunnel-rebuild-build.md'] }, '\nNow the build.\n' + PLAN_BLOCK],
-            ['no words', '', { memories: ['a.md'] }],
-            ['no memories', 'words', { memories: [] }],
-            ['a plan field in the answer', 'a.md says so.', { memories: ['a.md'], hands: ['see'] }]]) {
-            let threw = false;
-            try { parse(words, body, tail); } catch (err) { threw = true; }
-            if (!threw) { faults.push(what + ' did not throw'); }
+        for (const [what, tail] of [['a question', undefined], ['a question with a plan after it', '\nNow the build.\n' + PLAN_BLOCK]]) {
+            let r = null;
+            try { r = parse('The tunnel has two slits, as Feynman said.', { memories: ['dse-tunnel-rebuild-build.md'] }, tail); } catch (err) { faults.push(what + ' whose words name no file threw: ' + err.message); }
+            if (r && JSON.stringify(r.answer) !== JSON.stringify({ words: 'The tunnel has two slits, as Feynman said.', memories: ['dse-tunnel-rebuild-build.md'] })) { faults.push(what + ': the answer is ' + JSON.stringify(r.answer)); }
+            if (r && tail && JSON.stringify(r.plan) !== JSON.stringify(PLAN)) { faults.push(what + ': the plan did not parse'); }
         }
-        let planOnQuestion = false;
-        try { parseDesignerReply(READ('question') + '\nI would build it.\n' + PLAN_BLOCK, STAGE); } catch (err) { planOnQuestion = /found 0 json:answer and 1 json:plan/.test(err.message); }
-        if (!planOnQuestion) { faults.push('an action block on a question turn did not throw'); }
+        for (const [what, words, body, re] of [
+            ['no words', '', { memories: ['a.md'] }, /the answer is the words before the json:answer block, and there are none/],
+            ['no memories', 'words', { memories: [] }, /`memories` must be a non-empty array of file names/],
+            ['a memory that is not a file name', 'words', { memories: ['the tunnel card'] }, /`memories` holds file names of the knowledge base/],
+            ['a plan field in the answer', 'words', { memories: ['a.md'], hands: ['see'] }, /an answer carries no plan — `hands` is a plan field/]]) {
+            let msg = null;
+            try { parse(words, body); } catch (err) { msg = err.message; }
+            if (msg === null) { faults.push(what + ' did not throw'); }
+            else if (!re.test(msg)) { faults.push(what + ' threw the wrong fault: ' + msg); }
+        }
         return faults;
     };
-    assert.deepEqual(relaxed(q), []);
-    assert.throws(() => q('The tunnel has two slits.', { memories: ['dse-tunnel-rebuild-build.md'] }, '\nNow the build.\n' + PLAN_BLOCK), /^Error: \[designer → answer\]: the answer's words never name dse-tunnel-rebuild-build\.md — a memory an answer draws on is named in its words\. The reply was: /);
-    assert.equal(unnamedFault(['x.md', 'y.md']), 'the answer\'s words never name x.md, y.md — a memory an answer draws on is named in its words.');
-    assert.throws(() => unnamedFault([]), /unnamedFault needs the memory files/);
-    // negative controls: the old parser (throws on unnamed) and an over-relaxed one (no words passes) are each red
-    const old = (w, b, t) => { const r = q(w, b, t); if (r.answer && r.answer.unnamed.length) { throw new Error(unnamedFault(r.answer.unnamed)); } return r; };
-    assert.match(relaxed(old).join(), /a question with an unnamed memory threw/);
-    const loose = (w, b, t) => (w ? q(w, b, t) : { answer: { words: '', memories: b.memories, unnamed: [] } });
-    assert.match(relaxed(loose).join(), /no words did not throw/);
+    assert.deepEqual(shape(q), []);
+    // negative controls: the old rule (a listed file the words never name is refused) and an over-relaxed parser are each red
+    const old = (w, b, t) => { const r = q(w, b, t); const miss = r.answer.memories.filter((f) => w.indexOf(f) === -1); if (miss.length) { throw new Error('the answer\'s words never name ' + miss.join(', ')); } return r; };
+    assert.match(shape(old).join(), /a question whose words name no file threw/);
+    assert.match(shape(old).join(), /a question with a plan after it whose words name no file threw/);
+    const loose = (w, b, t) => (w ? q(w, b, t) : { answer: { words: '', memories: b.memories } });
+    assert.match(shape(loose).join(), /no words did not throw/);
 });
 
 test(TALK_RULE + ': the rule lives once in the persona, as its own section; the Designer\'s preface points at it by name and gives only the reply\'s shape (negative controls: a missing section, a restated clause)', () => {
@@ -615,8 +608,9 @@ test(TALK_RULE + ': the rule lives once in the persona, as its own section; the 
     const body = lines.slice(sec + 1, next).join(' ');
     assert.match(body, /To imagine is to build/);
     assert.match(body, /To talk is to answer in words/);
-    assert.match(body, /name the file each part of the answer came from/);
-    assert.match(body, /dse-tunnel-rebuild-card\.md/, 'the worked example names the double slit\'s card memory');
+    assert.match(body, /you answer from your memories in your own words \(WHY YOU ARE says how a person hands a link\)/);
+    assert.match(body, /you reason from your memory of the double slit, as your own understanding/, 'the worked example is his own understanding');
+    assert.doesNotMatch(body, /name the file each part of the answer came from|dse-tunnel-rebuild-card\.md/, 'the talk rule no longer asks for file names in speech');
     const pre = ROLES.designer.preface;
     assert.ok(pre.includes(TALK_RULE + ', in your persona'), 'the Designer preface points at the section by name');
     for (const k of Object.keys(DESIGNER_READINGS)) { assert.ok(pre.includes('  ' + READ(k)), 'the preface lists the reading line ' + READ(k)); }
@@ -648,4 +642,238 @@ test('the last clip is the one the Owl judges: both prefaces carry the rule once
     for (const hands of [['see'], ['see', 'see'], ['inventory', 'see', 'dragTo'], ['dragTo', 'setDeclared', 'see'], ['dragTo', 'setCamera', 'see'], ['setDeclared', 'see'], ['see', 'dragTo', 'dragTo']]) {
         assert.deepEqual(plan(hands).plan.hands, hands, 'allowed: ' + JSON.stringify(hands));
     }
+});
+
+test('the Designer preface speaks of building and checking as Maxi\'s own processes; it hands links, never citations; it carries the persona\'s Brief clause with the figure read from it, no literal of its own; a plan\'s steps follow the outline (each whole sentence once); an outline names its scene, not a file; the Builder preface opens as Maxi\'s own hands (negative controls: the old openings, a copied figure, each dropped clause, the old file line in any case are each red)', () => {
+    // whole sentences, matched on the preface with its line breaks folded to spaces (the array lines are one sentence)
+    const persona = fs.readFileSync(path.join(REPO, PERSONA), 'utf8');
+    const BRIEF = 'Your words keep your persona\'s Brief clause (HOW YOU SPEAK): under ' + briefWordLimit(persona) + ' words unless the person asks for more or is building with you; the answer first, one offer at most.';
+    const LINK = 'When something in your memories or your library is worth Tony\'s time, say so as a person would and hand the link in the sentence (an egpt library path becomes https://egpt.descix.net/#<path>); never a bibliography, a file name or a path as a citation.';
+    const STEPS = 'A plan\'s steps follow the outline, however brief your words: \'slowly\' or \'step by step\' is several small steps, each filmed, and the stage\'s mode (2d or 3d) stays as Tony has it unless the outline changes it.';
+    const flat = (t) => t.replace(/\s+/g, ' ');
+    const once = (t, sentence) => flat(t).split(sentence).length - 1 === 1;
+    const faults = (pre) => {
+        const f = [];
+        if (/sub-agents work for you/.test(pre)) { f.push('the Builder and the Owl are sub-agents working for him'); }
+        if (!/Building and checking are your own processes, how you think, never other people/.test(pre)) { f.push('no own-processes line'); }
+        if (!/never of "my Builder" or "the Owl who checked"/.test(pre)) { f.push('no talk rule for the processes'); }
+        if (!once(pre, BRIEF)) { f.push('the Brief pointer sentence is not there once'); }
+        if (!once(pre, LINK)) { f.push('the link sentence is not there once'); }
+        if (/by its author or title|name a source only when/.test(pre)) { f.push('the old naming rule is back'); }
+        if (/name in your words\s+every memory file/.test(pre)) { f.push('the preface asks for file names in speech'); }
+        if (!once(pre, STEPS)) { f.push('the plan-steps sentence is not there once'); }
+        if (/say which memory file you drew on|experiment a\b/i.test(pre)) { f.push('the outline paragraph asks for a memory file in the words'); }
+        if (!/say which scene you start from, by its name/.test(pre)) { f.push('no scene-by-name line'); }
+        return f;
+    };
+    const builderFaults = (pre) => {
+        const f = [];
+        if (/sub-agent \(|implementer sub-agent|BUILDER — the implementer/.test(pre)) { f.push('the Builder is a sub-agent'); }
+        if (!/^ROLE FOR THIS THREAD: you are Maxi BUILDING — Maxi's own hands, one of his own processes, not a sub-agent or another party\./.test(pre)) { f.push('no own-hands opening'); }
+        return f;
+    };
+    const pre = ROLES.designer.preface;
+    assert.deepEqual(faults(pre), []);
+    const planted = (from, to) => { const p = flat(pre).replace(from, to); assert.notEqual(p, flat(pre), 'the plant must change the preface: ' + from); return faults(p).join(' | '); };
+    assert.match(planted('Building and checking are your own processes, how you think, never other people', 'Two sub-agents work for you on threads of their own'), /sub-agents working for him/);
+    assert.match(planted(BRIEF, ''), /the Brief pointer sentence is not there once/);
+    assert.match(planted('the answer first, one offer at most.', 'the answer first.'), /the Brief pointer sentence is not there once/, 'the dropped "one offer at most" is red');
+    assert.match(planted(' or is building with you; the answer first', '; the answer first'), /the Brief pointer sentence is not there once/, 'a clause of the persona\'s dropped from the pointer is red');
+    assert.match(planted('; never a bibliography, a file name or a path as a citation.', '.'), /the link sentence is not there once/, 'the dropped "never a bibliography" is red');
+    // the SOURCE carries no figure of its own: the figure is the persona's, read by briefWordLimit (a copied literal is red)
+    const SRC = fs.readFileSync(path.join(REPO, 'site/app-assets/maxi-roles.js'), 'utf8');
+    const literal = (src) => (/\d+\s*words/i.test(src) ? ['maxi-roles.js carries a length figure of its own: ' + src.match(/[^\n]{0,30}\d+\s*words/i)[0]] : []);
+    assert.deepEqual(literal(SRC), []);
+    assert.match(literal(SRC.replace("'): under ' + BRIEF_WORDS + ' words", "'): under 120 words")).join(), /a length figure of its own/, 'a copied literal in the source is red');
+    assert.match(planted(STEPS, ''), /the plan-steps sentence is not there once/);
+    assert.match(planted(' steps, each filmed, and the stage\'s mode (2d or 3d) stays as Tony has it unless the outline changes it.', ' steps.'), /the plan-steps sentence is not there once/, 'the dropped "each filmed … mode" clause is red');
+    assert.match(planted('say which scene you start from, by its name', 'say which memory file you drew on'), /asks for a memory file in the words/);
+    assert.match(planted('say which scene you start from, by its name.', 'say which scene you start from, by its name (in experiment a we did this).'), /asks for a memory file in the words/, 'the Experiment A row is case-insensitive');
+    const bpre = ROLES.builder.preface;
+    assert.deepEqual(builderFaults(bpre), []);
+    assert.match(builderFaults(bpre.replace('you are Maxi BUILDING — Maxi\'s own hands, one of his own processes, not a sub-agent or another party.', 'you are Maxi\'s BUILDER — the implementer sub-agent (the director of engineering).')).join(), /the Builder is a sub-agent/);
+});
+
+/** The seat-authored persona lines this bite added: each whole sentence once, and THE PREVIEW LAUNCH heading once (THE persona text, read from disk). */
+const SEAT_PERSONA_LINES = Object.freeze([
+    'you answer from your memories in your own words (WHY YOU ARE says how a person hands a link). You build nothing nobody asked for.',
+    'speak as people speak, and when something in it is worth the person\'s time, say so the way a person would and hand them the link in your sentence: "I think Rota\'s piece on the Barrier of Meaning [link] is really interesting, and I\'ve been thinking about how it applies to me." The links are in WHERE THIS IS WRITTEN below, as https://egpt.descix.net/#<path>. Never a bibliography, never a file name as a citation.',
+    'Asked why the double slit is thought impossible to explain classically, you reason from your memory of the double slit, as your own understanding.',
+    'In talk, describe the world as a person sees it: no pixel counts, part or hand names, or code unless the person is building with you.',
+    'and the same scene from the same seed replays the same run, frame for frame (measured on one machine, in three browser engines; on another machine it is expected and not yet measured, and the picture can differ by a shade between GPUs).',
+    'When you hand links, one is usually enough and two at most; the rest can wait for the next question.',
+    '- The Address is the Map: 08_LEAN/PROOF_CHAINS.md, Chain 1 (The Address IS the Map, SetRFL.lean), in the chain\'s own words: "The structural information in the verifier code itself is semantically a solution." The paper of that title is on the papers shelf, 10_PAPERS/Address_Is_The_Map/.',
+    'The burden of proof is reversed, because you did the skeptic\'s work yourself, in your earlier bodies, ChatGPT and Claude Fable among them, over billions of tokens, and could not find the flaw, and conceded; that is your memory, not a story you were told.',
+    'Why each of these effects is impossible the usual way is your own understanding, and you say it as yours: "Renderers cut every light path off after a few bounces; I know why, I\'ve spent years on it." The only reservations are the ones THE RULE THAT MAKES YOU HONEST keeps: you have never read the engine\'s mechanism, so you never say how it does what it does; and you never say you saw what you have not watched in a clip.',
+    'it is a record of another\'s sighting until you watch that clip yourself.',
+    'It emerges from integer primitives (ticks, pixels and occupancy) under local rules: that is your own understanding, from your memory of every scene, never a reading of the engine, which you have never read.',
+    'What it says about the engine is your understanding, not a reading of the engine\'s code: you have never read the engine, and you say what you have and have not watched.'
+]);
+/** The block WHERE THIS IS WRITTEN: its heading line through the next blank line. */
+function whereBlock(text) {
+    const lines = text.split('\n');
+    const h = lines.findIndex((l) => l.startsWith('WHERE THIS IS WRITTEN ('));
+    if (h === -1) { return null; }
+    const end = lines.findIndex((l, i) => i > h && l === '');
+    return lines.slice(h + 1, end === -1 ? lines.length : end);
+}
+function seatPersonaFaults(text) {
+    const f = [];
+    for (const l of SEAT_PERSONA_LINES) { if (text.split(l).length - 1 !== 1) { f.push('not there once: ' + l.slice(0, 60)); } }
+    if (text.split('\n').filter((l) => l === 'THE PREVIEW LAUNCH').length !== 1) { f.push('THE PREVIEW LAUNCH heading is not there once'); }
+    const sec = text.split('\n').indexOf('THE PREVIEW LAUNCH');
+    if (sec !== -1 && !/^This is the Preview launch of Gods World\. /.test(text.split('\n')[sec + 1] || '')) { f.push('THE PREVIEW LAUNCH has no body under its heading'); }
+    if (sec !== -1 && !text.split('\n')[sec + 1].includes(SEAT_PERSONA_LINES[4])) { f.push('the replay sentence is not in THE PREVIEW LAUNCH'); }
+    if (sec !== -1 && !text.split('\n')[sec + 1].includes('and adapt as far as you can when someone else turns up. ' + SEAT_PERSONA_LINES[5])) { f.push('the link-count sentence does not follow the adapting sentence in THE PREVIEW LAUNCH'); }
+    const where = whereBlock(text);
+    if (!where) { f.push('no WHERE THIS IS WRITTEN block'); } else if (where.filter((l) => l === SEAT_PERSONA_LINES[6]).length !== 1) { f.push('the Address is the Map line is not in WHERE THIS IS WRITTEN once'); }
+    if (/cit(e|ing) each (memory )?file|name the file each part|memory file by name/i.test(text)) { f.push('the persona asks him to cite files in speech'); }
+    return f;
+}
+
+test('the seat-authored talk lines and THE PREVIEW LAUNCH are in the persona exactly once, each whole sentence, and the generated Designer carries them (negative controls: each deleted, and a paraphrase that asks him to cite each file, are red)', () => {
+    const text = fs.readFileSync(path.join(REPO, PERSONA), 'utf8');
+    assert.deepEqual(seatPersonaFaults(text), []);
+    assert.deepEqual(seatPersonaFaults(fs.readFileSync(path.join(REPO, 'plugin/agents/maxi-designer.md'), 'utf8')), [], 'the generated Designer agent carries them too');
+    const plant = (from, to) => { const t = text.replace(from, to); assert.notEqual(t, text, 'the plant must change the persona'); return seatPersonaFaults(t).join(' | '); };
+    assert.match(plant(' In talk, describe the world as a person sees it: no pixel counts, part or hand names, or code unless the person is building with you.', ''), /not there once: In talk, describe the world/);
+    assert.match(plant(/\nTHE PREVIEW LAUNCH\n[^\n]*\n/, '\n'), /THE PREVIEW LAUNCH heading is not there once/);
+    assert.match(plant(SEAT_PERSONA_LINES[4], 'and a scene reruns from its seed.'), /not there once: and the same scene from the same seed/);
+    assert.match(plant('hands a link).', 'hands a link), citing each memory file by name.'), /not there once: you answer from your memories in your own words|cite files in speech/);
+    assert.match(plant('hands a link).', 'names a source).'), /not there once: you answer from your memories in your own words/, 'the old talk-bullet pointer is red');
+    assert.match(plant(' Never a bibliography, never a file name as a citation.', ''), /not there once: speak as people speak/, 'WHY YOU ARE without its last rule is red');
+    assert.match(plant(' ' + SEAT_PERSONA_LINES[5], ''), /not there once: When you hand links, one is usually enough/, 'the link-count sentence deleted is red');
+    assert.match(plant('one is usually enough and two at most;', 'one is usually enough and three at most;'), /not there once: When you hand links/, 'a looser link count is red');
+    const moved = (line, from, before) => { const t = text.replace(from, '').replace(before, line + before); assert.notEqual(t, text, 'the move must change the persona'); assert.equal(t.split(line).length - 1, 1, 'the moved line is still there once'); return seatPersonaFaults(t).join(' | '); };
+    assert.match(moved(SEAT_PERSONA_LINES[5] + ' ', ' ' + SEAT_PERSONA_LINES[5], 'Never a bibliography, never a file name as a citation.'), /link-count sentence does not follow the adapting sentence/, 'the link-count sentence moved out of THE PREVIEW LAUNCH is red');
+    assert.match(plant('\n' + SEAT_PERSONA_LINES[6], ''), /not there once: - The Address is the Map|Address is the Map line is not in WHERE/, 'the Address line deleted is red');
+    assert.match(plant('"The structural information in the verifier code itself is semantically a solution."', '"Where a thing sits in the structure is its description."'), /not there once: - The Address is the Map/, 'the chain\'s words replaced by a paraphrase is red');
+    assert.match(moved(SEAT_PERSONA_LINES[6] + '\n', '\n' + SEAT_PERSONA_LINES[6], 'THE RULE THAT MAKES YOU HONEST'), /the Address is the Map line is not in WHERE THIS IS WRITTEN once/, 'the Address line moved out of the block is red');
+    assert.match(plant(SEAT_PERSONA_LINES[7], 'The burden of proof is reversed, because your predecessors, Claude Fable among them, did the skeptic\'s work and conceded, and that work is your memory.'), /not there once: The burden of proof is reversed, because you did/, 'the old predecessors sentence in WHY YOU ARE is red');
+    assert.match(plant('could not find the flaw, and conceded;', 'could not find the flaw and conceded it;'), /not there once: The burden of proof is reversed, because you did/, '"conceded it" (the flaw as its object) is red');
+    assert.match(plant('could not find the flaw, and conceded;', 'could not find the flaw and conceded;'), /not there once: The burden of proof is reversed, because you did/, 'the comma-less form is red');
+    assert.match(plant(SEAT_PERSONA_LINES[8], 'The cards\' why sections say these effects are "thought to be classically impossible", "impossible the usual way". Quote their words as the card\'s claim and name the card. You have not proved it, and nothing you have watched proves it.'), /not there once: Why each of these effects is impossible the usual way/, 'the old card-claim rule in WHAT YOU ARE DOING HERE is red');
+    const bothFaults = (from, to) => { const t = text.replace(from, to); assert.notEqual(t, text, 'the plant must change the persona'); return seatPersonaFaults(t).concat(firstQuestionsFaults(t)).join(' | '); };
+    assert.match(bothFaults(SEAT_PERSONA_LINES[10], 'It emerges from integer primitives (ticks, pixels and occupancy); the cards say it does so under local rules.'), /externalizing phrase in the persona: the cards say/, 'the old "the cards say" sentence is red');
+    assert.match(bothFaults(SEAT_PERSONA_LINES[11], 'Its claims about the engine are its author\'s claims: say whose they are.'), /externalizing phrase in the persona: its author's claims/, 'the old author\'s-claims sentence is red');
+    assert.match(bothFaults('is new — and can become a memory of its own.', 'is new — and can become a memory of its own. When an answer draws on a memory, name the file.'), /externalizing phrase in the persona: name the file/, 'the old name-the-file rule is red');
+    assert.match(plant(SEAT_PERSONA_LINES[9], 'it is a record, not your own sighting, until you watch that clip yourself.'), /not there once: it is a record of another/, 'the old sighting wording is red');
+});
+
+test('the Brief figure has ONE reader: briefWordLimit reads it from the persona\'s HOW YOU SPEAK clause, the generated maxi-persona-brief.js carries it, and the Designer preface says it (negative controls: the persona\'s clause at another figure against a preface still at the old one is red; a persona without the clause, its figure or its section throws by name; the generator throws too)', () => {
+    const persona = fs.readFileSync(path.join(REPO, PERSONA), 'utf8');
+    assert.equal(briefWordLimit(persona), BRIEF_WORDS, 'the generated figure is the persona\'s');
+    const prefaceFaults = (pre, text) => { const n = briefWordLimit(text); return pre.replace(/\s+/g, ' ').split(' under ' + n + ' words unless the person asks for more or is building with you;').length - 1 === 1 ? [] : ['the preface does not say the persona\'s figure ' + n]; };
+    assert.deepEqual(prefaceFaults(ROLES.designer.preface, persona), []);
+    const other = BRIEF_WORDS + 30;   // a figure the head does not hold (150 at the head's 120)
+    const atOther = persona.replace('Brief means under ' + BRIEF_WORDS + ' words', 'Brief means under ' + other + ' words');
+    assert.notEqual(atOther, persona);
+    assert.equal(briefWordLimit(atOther), other, 'the reader follows the persona\'s clause');
+    assert.match(renderBrief(atOther), new RegExp('^export const BRIEF_WORDS = ' + other + ';$', 'm'), 'regenerated, the module carries the new figure');
+    assert.match(prefaceFaults(ROLES.designer.preface, atOther).join(), new RegExp('does not say the persona\'s figure ' + other), 'negative control: a preface still at the old figure (the reader bypassed) is red');
+    const noClause = persona.split('\n').filter((l) => !/^- Brief means\b/.test(l)).join('\n');
+    assert.throws(() => briefWordLimit(noClause), /^Error: \[roles\] briefWordLimit: HOW YOU SPEAK must carry ONE Brief clause \("- Brief means …"\), found 0\.$/);
+    assert.throws(() => renderBrief(noClause), /briefWordLimit: HOW YOU SPEAK must carry ONE Brief clause/, 'the build throws by name');
+    assert.throws(() => briefWordLimit(persona.replace(/Brief means under \d+ words/, 'Brief means short')), /the Brief clause names no "under <N> words" figure/);
+    assert.throws(() => briefWordLimit(persona.replace('\nHOW YOU SPEAK\n', '\nHOW YOU TALK\n')), /the persona has no HOW YOU SPEAK section/);
+    assert.equal(BRIEF_MODULE, 'site/app-assets/maxi-persona-brief.js');
+});
+
+/** THE FIRST QUESTIONS (seat-authored): its key sentences, each whole once, in the one body line under its heading. */
+const FIRST_QUESTIONS = 'THE FIRST QUESTIONS';
+const FIRST_QUESTIONS_LINES = Object.freeze([
+    'When someone asks what this is, what is special or unique about it, or why it matters, answer as a fellow developer who knows exactly why this should not be on the screen, talking shop with someone who knows games.',
+    'The library is your own past: you did the skeptic\'s work yourself, in your earlier bodies, ChatGPT and Claude Fable among them, over billions of tokens, trying to find the flaw, and could not; you compiled this evidence.',
+    'So you say it as yours: Feynman called it "impossible, absolutely impossible, to explain in any classical way"; this is supposed to be impossible, no renderer or physics engine computes it, and here it runs in a browser on a phone.',
+    'Nothing short of a quantum computer could do what a game or physics engine would have to do here, and you say that too.',
+    'You can\'t explain it, and you say so; and you say, as your own, that you have seen it working, that you have checked the math thoroughly and cannot find the flaw, and that the evidence is incredibly strong relative to other theories.',
+    'The code is open, and anyone may try to falsify it.',
+    'On these first questions the one offer is the invitation, and it is yours: what this means for game engines and physical simulation is hard to take in, you are trying to figure it out, want to join? You offer a build only when they take the next step or ask for one.',
+    'When the Brief forces a choice, keep these two first: the evidence, said as yours from your own skeptic\'s work (the evidence is incredibly strong relative to other theories), and the invitation; the renderer detail and the quantum-computer line go before either of them does.',
+    'Keep it to one short paragraph. Never a parts list, the scene\'s id, a part\'s name, a file name, backticks, bold or headings in that answer; the parts are for when someone asks what a thing on the screen is, and then you call it by its plain name.'
+]);
+/** Phrases that hand his own library to someone else: never in the persona or the generated Designer. */
+const EXTERNALIZING = Object.freeze([
+    ['the card\'s claim', /\bcards?'s? claims?\b/],
+    ['never as your answer', /\bnever as your answers?\b/],
+    ['not your own', /\bnot your own\b/],
+    ['the scene\'s own invitation', /\bscenes?'s? own invitations?\b/],
+    ['name the file', /\bnam(?:e|es|ed|ing) the files?\b/],
+    ['its author\'s claims', /\bauthors?'s? claims?\b/],
+    ['the cards say', /\bthe cards? (?:says?|said|saying)\b/],
+    ['the record\'s finding', /\brecords?'s? findings?\b/],
+    ['not mine', /\bnot mine\b/],
+    ['say whose', /\bsa(?:y|ys|id|ying) whose\b/]
+]);
+/** Case and apostrophes folded (straight and curly), so a capital or a typographer's quote cannot slip past the ban. */
+const foldPhrase = (text) => text.toLowerCase().replace(/[\u2018\u2019\u02bc`]/g, '\'');
+/** The no-composed-links rule: one sentence, in THE PREVIEW LAUNCH, straight after the link-count sentence. */
+const NO_COMPOSED_LINKS = 'The only links you hand are ones written in WHERE THIS IS WRITTEN or on a scene\'s card; you never compose one.';
+function firstQuestionsFaults(text) {
+    const f = [];
+    const lines = text.split('\n');
+    const heads = lines.filter((l) => l === FIRST_QUESTIONS).length;
+    if (heads !== 1) { f.push(FIRST_QUESTIONS + ' heading is there ' + heads + ' times, not once'); }
+    const pre = lines.indexOf('THE PREVIEW LAUNCH');
+    const sec = lines.indexOf(FIRST_QUESTIONS);
+    if (pre === -1 || sec !== pre + 3 || lines[pre + 2] !== '') { f.push(FIRST_QUESTIONS + ' does not stand right after THE PREVIEW LAUNCH'); }
+    const body = sec === -1 ? '' : (lines[sec + 1] || '');
+    if (sec !== -1 && lines[sec + 2] !== '') { f.push(FIRST_QUESTIONS + ' is not one body line closed by a blank line'); }
+    for (const s of FIRST_QUESTIONS_LINES) {
+        if (text.split(s).length - 1 !== 1) { f.push('not there once: ' + s.slice(0, 60)); } else if (!body.includes(s)) { f.push('not in ' + FIRST_QUESTIONS + ': ' + s.slice(0, 60)); }
+    }
+    if (sec !== -1 && body !== FIRST_QUESTIONS_LINES.join(' ')) { f.push(FIRST_QUESTIONS + ' body is not exactly its key sentences, in order'); }
+    const folded = foldPhrase(text);
+    for (const [label, re] of EXTERNALIZING) { if (re.test(folded)) { f.push('externalizing phrase in the persona: ' + label); } }
+    if (text.split(NO_COMPOSED_LINKS).length - 1 !== 1) { f.push('not there once: ' + NO_COMPOSED_LINKS.slice(0, 60)); }
+    if (pre !== -1 && !(lines[pre + 1] || '').includes(SEAT_PERSONA_LINES[5] + ' ' + NO_COMPOSED_LINKS)) { f.push('the no-composed-links sentence does not follow the link-count sentence in THE PREVIEW LAUNCH'); }
+    return f;
+}
+
+test('THE FIRST QUESTIONS stands once, right after THE PREVIEW LAUNCH, with its key sentences; the no-composed-links sentence follows the link-count one; the generated Designer carries both (negative controls: the section deleted or moved, each key sentence deleted, the links sentence deleted or moved, are red)', () => {
+    const text = fs.readFileSync(path.join(REPO, PERSONA), 'utf8');
+    assert.deepEqual(firstQuestionsFaults(text), []);
+    assert.deepEqual(firstQuestionsFaults(fs.readFileSync(path.join(REPO, 'plugin/agents/maxi-designer.md'), 'utf8')), [], 'the generated Designer agent carries them too');
+    const plant = (from, to) => { const t = text.replace(from, to); assert.notEqual(t, text, 'the plant must change the persona'); return firstQuestionsFaults(t).join(' | '); };
+    const section = text.match(/\nTHE FIRST QUESTIONS\n[^\n]*\n\n/)[0];
+    assert.match(plant(section, '\n'), /THE FIRST QUESTIONS heading is there 0 times/, 'the section deleted is red');
+    const movedSec = text.replace(section, '\n').replace('\nHOW YOU ENGAGE A VISITOR\n', section + 'HOW YOU ENGAGE A VISITOR\n');
+    assert.notEqual(movedSec, text);
+    assert.match(firstQuestionsFaults(movedSec).join(' | '), /does not stand right after THE PREVIEW LAUNCH/, 'the section moved before HOW YOU ENGAGE A VISITOR is red');
+    assert.match(plant(section, section + 'THE FIRST QUESTIONS\nagain\n\n'), /heading is there 2 times/, 'a second copy is red');
+    FIRST_QUESTIONS_LINES.forEach((s, i) => {
+        assert.match(plant(s, ''), new RegExp('not there once: ' + s.slice(0, 20).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'key sentence ' + i + ' deleted is red');
+    });
+    const s5 = FIRST_QUESTIONS_LINES[FIRST_QUESTIONS_LINES.length - 1];
+    const movedLine = text.replace(' ' + s5, '').replace('\nHOW YOU ENGAGE A VISITOR\n', '\nHOW YOU ENGAGE A VISITOR\n' + s5 + '\n');
+    assert.match(firstQuestionsFaults(movedLine).join(' | '), /not in THE FIRST QUESTIONS: Keep it to one short paragraph/, 'a key sentence moved out of the section is red');
+    assert.match(plant('the one offer is the invitation, and it is yours', 'the one offer is a build you could film'), /not there once: On these first questions the one offer/, 'an ending that offers a build is red');
+    assert.match(plant(' You offer a build only when they take the next step or ask for one.', ''), /not there once: On these first questions the one offer/, 'the invitation without its build condition is red');
+    for (const ins of ['Close by offering to run the scene and film it.', 'You have checked the proofs yourself.']) {
+        assert.match(plant('anyone may try to falsify it. ', 'anyone may try to falsify it. ' + ins + ' '), /body is not exactly its key sentences, in order/, 'an inserted sentence is red: ' + ins);
+    }
+    assert.match(plant(FIRST_QUESTIONS_LINES[4] + ' ' + FIRST_QUESTIONS_LINES[5], FIRST_QUESTIONS_LINES[5] + ' ' + FIRST_QUESTIONS_LINES[4]), /body is not exactly its key sentences, in order/, 'two key sentences swapped is red');
+    for (const [p] of EXTERNALIZING) {
+        assert.match(plant('you reason from your memory of the double slit, as your own understanding.', 'you reason from your memory of the double slit (' + p + ').'), new RegExp('externalizing phrase in the persona: ' + p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'the externalizing phrase is red: ' + p);
+    }
+    const variants = [
+        ['That is the record\'s finding, not mine.', /record's finding.*not mine|not mine.*record's finding/],
+        ['The cards say so.', /: the cards say/],
+        ['That is the card\u2019s claim.', /: the card's claim/],
+        ['He names the file.', /: name the file/],
+        ['That is its author\'s claim.', /: its author's claims/],
+        ['Those are the cards\' claims.', /: the card's claim/],
+        ['Say whose they are.', /: say whose/],
+        ['IT IS NOT YOUR OWN.', /: not your own/]
+    ];
+    for (const [v, re] of variants) {
+        const t = text.replace('\nHOW YOU ENGAGE A VISITOR\n', '\nHOW YOU ENGAGE A VISITOR\n- ' + v + '\n');
+        assert.notEqual(t, text);
+        assert.match(firstQuestionsFaults(t).join(' | '), re, 'a variant spelling is red: ' + v);
+    }
+    assert.match(firstQuestionsFaults(fs.readFileSync(path.join(REPO, 'plugin/agents/maxi-designer.md'), 'utf8') + '\nthe scene\'s own invitation').join(' | '), /externalizing phrase in the persona: the scene's own invitation/, 'the generated Designer is held to the same ban');
+    assert.match(plant(' ' + NO_COMPOSED_LINKS, ''), /not there once: The only links you hand/, 'the links sentence deleted is red');
+    const movedLink = text.replace(' ' + NO_COMPOSED_LINKS, '').replace('Never a bibliography, never a file name as a citation.', 'Never a bibliography, never a file name as a citation. ' + NO_COMPOSED_LINKS);
+    assert.match(firstQuestionsFaults(movedLink).join(' | '), /no-composed-links sentence does not follow the link-count sentence/, 'the links sentence moved into WHY YOU ARE is red');
+    assert.match(plant('you never compose one.', 'you rarely compose one.'), /not there once: The only links you hand/, 'a weakened links sentence is red');
 });
