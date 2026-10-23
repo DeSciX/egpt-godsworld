@@ -25,7 +25,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -40,6 +39,7 @@ import { recordFolderFaults as packageFolderFaults, manifestFor, serializeManife
 import { writeRecordFolder, readRecordFolder } from '../../minimaxi/record-folder.mjs';
 import { recordsOf } from '../../site/app-assets/maxi-record.js';
 import { distUrl } from '../frqtl-web-pin.mjs';
+import { testTmpDir } from './tmpdir.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 /** The package's one writer of a Record folder (internal to ./project; the Record calls it at stop): the fixtures are its output. */
@@ -199,7 +199,7 @@ test('assembleRecord adds lab.json beside the package\'s files and refuses what 
 
 test('a folder round-trips through the package\'s node writer byte for byte and is never overwritten', () => {
     const ok = complete();
-    const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rec-folder-')), 'record');
+    const dir = path.join(testTmpDir('rec-folder'), 'record');
     writeRecordFolder({ files: ok.files }, dir);
     const back = readRecordFolder(dir);
     assert.deepEqual(Object.keys(back).sort(), Object.keys(ok.files).sort());
@@ -402,7 +402,7 @@ test('a carried first Record: the hand-back\'s start IS its parts.before.json wi
  *  import in this process can have registered a kind: → {screen} or {threw}. Row: the mmt41a fixture's first, a 6-number
  *  rect on a GraphingDetectorWall that spells z and depth (the spelling asks the kind's descriptor). */
 function applyInFreshNode(doorText) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'door-plant-'));
+    const dir = testTmpDir('door-plant');
     try {
         const assets = pathToFileURL(path.join(REPO, 'site/app-assets') + '/').href;
         const door = path.join(dir, 'door.mjs');
@@ -431,7 +431,7 @@ test('the ./project door registers the part kinds applyRows reads: a 6-number Wa
 // ── the human's teaching words: lab.json TEACHING_KEY, owned here ─────────────────────────────────
 /** Load a planted maxi-record-folder.js (its imports pinned to this checkout): the planted module, and dispose(). */
 async function plantedFolder(src) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'folder-plant-'));
+    const dir = testTmpDir('folder-plant');
     const pin = (s) => s.replace(/from '\.\/(frqtl-web-project|maxi-hands)\.js'/g, (m, f) => "from '" + pathToFileURL(path.join(REPO, 'site/app-assets', f + '.js')).href + "'");
     fs.writeFileSync(path.join(dir, 'maxi-record-folder.js'), pin(src));
     const m = await import(pathToFileURL(path.join(dir, 'maxi-record-folder.js')).href);

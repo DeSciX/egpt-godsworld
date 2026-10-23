@@ -23,7 +23,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import net from 'node:net';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -36,9 +35,10 @@ import { createAskDoor, askThread, sampleIndices, writeStills, parseCliOutput, r
 import { bridgeHandler, assertHand, assertPortFree, withFootage, FORBIDDEN_PORTS } from '../../minimaxi/body.mjs';
 import { parseArgs, requestOf } from '../../minimaxi/hand.mjs';
 import { PINNED } from '../frqtl-web-pin.mjs';
+import { testTmpDir } from './tmpdir.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'minimaxi-test-'));
+const tmp = () => testTmpDir('minimaxi-test');
 
 /** A tiny real MP4 (ffmpeg testsrc), `n` frames. */
 function makeMp4(dir, n) {

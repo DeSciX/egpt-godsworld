@@ -21,7 +21,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
@@ -33,6 +32,7 @@ import { SKETCH_FORM } from '../../site/app-assets/maxi-record-folder.js';   // 
 import { PINNED, SITE_DIST, distUrl, exportFile } from '../frqtl-web-pin.mjs';
 import './site-import-map.mjs';
 import { fakeRunner, sdkCameraControl, withSketch } from './fake-runner.mjs';
+import { testTmpDir } from './tmpdir.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel) => fs.readFileSync(path.join(REPO, rel), 'utf8');
@@ -137,7 +137,7 @@ export async function sketchImportFaults(source) {
     }
     if (!SKETCH_FORM.test(source)) { faults.push('no `export default function buildExperiment(`'); }
     const { spawnSync } = await import('node:child_process');
-    const dir = fs.mkdtempSync(path.join((await import('node:os')).tmpdir(), 'hands-sketch-'));
+    const dir = testTmpDir('hands-sketch');
     try {
         fs.writeFileSync(path.join(dir, 'sketch.mjs'), source);
         const r = spawnSync(process.execPath, ['--check', path.join(dir, 'sketch.mjs')], { encoding: 'utf8' });
@@ -446,7 +446,7 @@ test('partsNowOf (a round\'s start) reads the sketch\'s block through the one sk
     const src = read('site/app-assets/maxi-hands.js');
     const CHECK = '    if (rec.changes.length !== n) {';
     assert.equal(src.split(CHECK).length, 2, 'the plant target moved');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hands-start-'));
+    const dir = testTmpDir('hands-start');
     try {
         const planted = src.replace(CHECK, '    if (false) {').replace(/from '\.\/([a-z-]+)\.js'/g, (m, f) => "from '" + pathToFileURL(path.join(REPO, 'site/app-assets', f + '.js')).href + "'");
         fs.writeFileSync(path.join(dir, 'maxi-hands.mjs'), planted);
@@ -472,7 +472,7 @@ test('every hand on a scene ends with exp.toSketch(), and a refusal is the hand\
     const src = read('site/app-assets/maxi-hands.js');
     const WRITE = 'if (sc) { await writeSketch(sc, op, MAXI); }';
     assert.equal(src.split(WRITE).length, 2, 'the plant target moved');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hands-plant-'));
+    const dir = testTmpDir('hands-plant');
     try {
         fs.writeFileSync(path.join(dir, 'maxi-hands.js'), src.replace(WRITE, '/* planted: no end-of-hand write */')
             .replace("from './frqtl-web-project.js'", "from '" + pathToFileURL(path.join(REPO, 'site/app-assets/frqtl-web-project.js')).href + "'"));   // the door, where it is
@@ -676,7 +676,7 @@ test('dragTo writes the drag into the sketch ON ARRIVAL, while its clip still fi
     const src = read('site/app-assets/maxi-hands.js');
     const ARRIVE = "                else if (n >= ticks && !arrived) { arrived = writeSketch(sc, 'dragTo', MAXI); arrived.catch(function () {}); }\n";
     assert.equal(src.split(ARRIVE).length, 2, 'the plant target moved');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hands-drag-plant-'));
+    const dir = testTmpDir('hands-drag-plant');
     try {
         fs.writeFileSync(path.join(dir, 'maxi-hands.js'), src.replace(ARRIVE, '').replace("if (!arrived) { throw new Error('dragTo: the clip ended before", "if (false) { throw new Error('dragTo: the clip ended before").replace('await arrived;   //', '//')
             .replace("from './frqtl-web-project.js'", "from '" + pathToFileURL(path.join(REPO, 'site/app-assets/frqtl-web-project.js')).href + "'"));
@@ -697,7 +697,7 @@ export function reexportFaults(mods, project) {
 }
 /** Load a planted copy of a site module from a temp dir, its relative imports pinned to this checkout. */
 async function plantedSite(rel, src) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'site-plant-'));
+    const dir = testTmpDir('site-plant');
     fs.writeFileSync(path.join(dir, path.basename(rel)), src.replace(/from '\.\/([\w-]+\.js)'/g, (m, f) => "from '" + pathToFileURL(path.join(REPO, 'site/app-assets', f)).href + "'"));
     try { return await import(pathToFileURL(path.join(dir, path.basename(rel))).href); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }

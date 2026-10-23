@@ -24,13 +24,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import { createSiteServer } from '../serve-site.mjs';
 
 import { execFileSync } from 'node:child_process';
 import { REPO, PINNED, VENDOR_REL, DIST_REL, packageJson, cachedTarball } from '../frqtl-web-pin.mjs';
+import { testTmpDir } from './tmpdir.mjs';
 const MANIFEST_PATH = path.join(REPO, DIST_REL, PINNED.distManifest);
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
@@ -104,7 +104,7 @@ test('every file the site serves under the boot base hashes to its manifest entr
 });
 
 test('negative controls: one flipped byte in a served copy, and a wrong base, both fail the check', async () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-copy-'));
+    const tmp = testTmpDir('sdk-copy');
     try {
         const copy = path.join(tmp, DIST_REL);
         fs.mkdirSync(path.dirname(copy), { recursive: true });
@@ -139,7 +139,7 @@ function leaves(o, at) {
 
 /** Unpack a tarball into a fresh temp dir; returns its package/ root (caller removes `dir`). */
 function unpack(bytes) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-copy-tgz-'));
+    const dir = testTmpDir('sdk-copy-tgz');
     fs.writeFileSync(path.join(dir, 'p.tgz'), bytes);
     execFileSync('tar', ['-xzf', path.join(dir, 'p.tgz'), '-C', dir]);
     return { dir, root: path.join(dir, 'package') };

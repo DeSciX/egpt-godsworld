@@ -4,8 +4,7 @@
 // site/ (how the negative controls are run: plant one defect in a copy, watch the gate fail).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, existsSync, mkdtempSync, writeFileSync, rmSync, mkdirSync, cpSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, readdirSync, existsSync, writeFileSync, rmSync, mkdirSync, cpSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { resolve, dirname, join } from 'node:path';
@@ -15,6 +14,7 @@ import { VENDOR_REL, PINNED, distFile } from '../frqtl-web-pin.mjs';
 import { card, indexText, firstSentence, WHY_HEADING, WHY_INDEX_HEADING, GROWS_INDEX_HEADING, LEARNED_HEADING } from '../gen-memories-build.mjs';
 import { SKETCH_FORM, FILES, START_KEY, NO_CHANGE } from '../../site/app-assets/maxi-record-folder.js';   // the Record owner's one definition of the sketch module form, its file names, start key and no-change words
 import { readRecordFolder } from '../../minimaxi/record-folder.mjs';
+import { testTmpDir } from './tmpdir.mjs';
 
 const ROOT = process.env.MEMORIES_ROOT || resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MEM = join(ROOT, 'kb', 'GodsWorld', 'memories');
@@ -62,7 +62,7 @@ test('no -seen file claims a picture without its clip', () => {
 
 /** Each code text that does not parse as an ES module, as `<label>: <node's message>` (node --check: parses import/export, resolves nothing). */
 export function moduleParseFaults(codes) {
-  const dir = mkdtempSync(join(tmpdir(), 'memories-parse-'));
+  const dir = testTmpDir('memories-parse');
   try {
     return codes.flatMap(([label, code], i) => {
       const f = join(dir, i + '.mjs');
@@ -287,7 +287,7 @@ test('every seen memory published from a Record matches its served, complete Rec
 });
 
 test('the published-Record rule triggers on the text: a served record.json deleted, or a hand-written change: line, is red', () => {
-  const scratch = mkdtempSync(join(tmpdir(), 'memories-record-'));
+  const scratch = testTmpDir('memories-record');
   try {
     mkdirSync(join(scratch, 'kb', 'GodsWorld', 'memories'), { recursive: true });
     mkdirSync(join(scratch, 'site', 'memories'), { recursive: true });
@@ -312,7 +312,7 @@ test('the published-Record rule triggers on the text: a served record.json delet
 // a Record with no start, or one that ends where it started, cannot be published, even with a text regenerated to match it.
 test('the published-Record rule runs the plan check: a served Record with no start, or one that ends where it started (no change), is red', () => {
   const ID = 'mm-dse-tunnel-rebuild-olc2';
-  const scratch = mkdtempSync(join(tmpdir(), 'memories-plan-'));
+  const scratch = testTmpDir('memories-plan');
   const PLAN = 'does not state its plan (the plan check, recordPlanFaults) — ';
   try {
     const site = join(scratch, 'site'), dir = join(site, 'memories', ID);

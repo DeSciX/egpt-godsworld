@@ -32,7 +32,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -42,6 +41,7 @@ import { CLIP_SECONDS, RECORD_DEFAULTS } from '../../site/app-assets/maxi-hands.
 import { manifestFor, serializeManifest } from '../../site/app-assets/frqtl-web-project.js';
 import { withSketch } from './fake-runner.mjs';
 import { distUrl } from '../frqtl-web-pin.mjs';
+import { testTmpDir } from './tmpdir.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel) => fs.readFileSync(path.join(REPO, rel), 'utf8');
@@ -222,7 +222,7 @@ test('a demonstration COMPLETES once, at Stop: onComplete gets the very Records 
     const src = fs.readFileSync(path.join(REPO, 'site/app-assets/maxi-record.js'), 'utf8');
     const line = '            onComplete(st.last);';
     assert.ok(src.includes(line), 'the plant applies');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-plant-'));
+    const dir = testTmpDir('record-plant');
     try {
         const pinned = src.replace(line, '').replace(/from '\.\/([a-z-]+)\.js'/g, (m, f) => "from '" + pathToFileURL(path.join(REPO, 'site/app-assets', f + '.js')).href + "'");
         fs.writeFileSync(path.join(dir, 'maxi-record.js'), pinned);
@@ -245,7 +245,7 @@ test('the live REC status counts the Record\'s rows (one per act, the lab\'s cha
 
 /** Load a planted maxi-record.js as a real module (its imports pinned to this checkout): {attachRecorder, dispose()}. */
 async function plantedRecord(src) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-plant-'));
+    const dir = testTmpDir('record-plant');
     fs.writeFileSync(path.join(dir, 'maxi-record.js'), src.replace(/from '\.\/(maxi-hands|maxi-record-folder)\.js'/g, (m, f) => "from '" + pathToFileURL(path.join(REPO, 'site/app-assets', f + '.js')).href + "'"));
     const pr = await import(pathToFileURL(path.join(dir, 'maxi-record.js')).href);
     return { attachRecorder: pr.attachRecorder, demonstrationNote: pr.demonstrationNote, dispose: () => fs.rmSync(dir, { recursive: true, force: true }) };

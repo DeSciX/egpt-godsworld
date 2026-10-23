@@ -22,7 +22,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -35,6 +34,7 @@ import { manifestFor, serializeManifest } from '../../site/app-assets/frqtl-web-
 import { publishedFiles } from '../publish-paths.mjs';
 import { renderBlock } from '../gen-import-maps.mjs';
 import { distUrl } from '../frqtl-web-pin.mjs';
+import { testTmpDir } from './tmpdir.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const OWNER = 'site/app-assets/maxi-local-memory.js';
@@ -121,7 +121,7 @@ const rows = (idb) => idb._rows(memory.DB_NAME, memory.STORE);
 
 /** Load a planted copy of the owner (its imports pinned to this checkout): the module, and dispose(). */
 async function plantedOwner(src) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'local-memory-plant-'));
+    const dir = testTmpDir('local-memory-plant');
     const pinned = src.replace(/from '\.\/([a-z-]+)\.js'/g, (m, f) => "from '" + pathToFileURL(path.join(REPO, 'site/app-assets', f + '.js')).href + "'");
     fs.writeFileSync(path.join(dir, 'maxi-local-memory.js'), pinned);
     const m = await import(pathToFileURL(path.join(dir, 'maxi-local-memory.js')).href);

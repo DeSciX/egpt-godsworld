@@ -16,12 +16,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as seen from '../gen-memories-seen.mjs';
 import { FILES, RECORD_KEYS, LOOP_LAB_KEYS, OPS, STILLS, UNAVAILABLE, TEACHING_KEY, CARRIED_KEY, START_KEY, changeText, recordFolderFaults, recordPlanFaults } from '../../site/app-assets/maxi-record-folder.js';
 import { readRecordFolder } from '../../minimaxi/record-folder.mjs';
+import { testTmpDir } from './tmpdir.mjs';
 
 const { readRun, writeSeenMemory, recordLines, recordLinesOf, publishedRecordFaults, lookedFaults, CHANGE_PREFIX } = seen;
 const FIXTURE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'record-mmp41d', 'record');
@@ -32,7 +32,7 @@ const LOOK = { by: 'human', who: 'godsworld-seat-author', stills: 3, account: 'c
 
 /** A scratch checkout holding a copy of the fixture run at <root>/minimaxi/out/<run>/record, edited by `edit(handBackDir)`. */
 function scratch(edit, run) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'seen-memory-'));
+    const root = testTmpDir('seen-memory');
     fs.mkdirSync(path.join(root, 'kb', 'GodsWorld', 'memories'), { recursive: true });
     fs.mkdirSync(path.join(root, 'site', 'memories'), { recursive: true });
     const dir = path.join(root, 'minimaxi', 'out', run || 'mmp41d', 'record');
@@ -155,7 +155,7 @@ test('the completeness gate: a Record missing any §6 field, or holding one {una
 
 test('a draft never lands in kb/ or site/, even when the run folder sits there', () => {
     for (const where of [['site', 'memories', 'x'], ['kb', 'GodsWorld', 'x']]) {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'seen-memory-'));
+        const root = testTmpDir('seen-memory');
         const dir = path.join(root, ...where, 'record');
         fs.cpSync(FIXTURE, dir, { recursive: true });
         assert.throws(() => writeSeenMemory(dir, LOOK, { root, draft: true }), /a draft is written only under the run's own folder, never into kb\/ or site\//);
@@ -309,7 +309,7 @@ test('the published text is held whole: re-rendered from the served Record and i
 
 /** Load a planted gen-memories-seen.mjs (its relative imports pinned to this checkout) from a temp dir: the module, and dispose(). */
 async function plantedGenerator(src) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'seen-plant-'));
+    const dir = testTmpDir('seen-plant');
     const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
     const pinned = src.replace(/from '\.\.\/(site|minimaxi)\//g, (m, d) => "from '" + pathToFileURL(path.join(repo, d)).href + '/');
     fs.writeFileSync(path.join(dir, 'gen-memories-seen.mjs'), pinned);
@@ -355,7 +355,7 @@ test('the human\'s teaching note (lab.json TEACHING_KEY) is rendered in the seen
 
 test('what the Record carried from before the round (lab.json carried) is rendered under its own heading, never as a change line; the published text holds it whole; a carried row is not the plan\'s (negative control: the carried line dropped is red)', () => {
     // a one-world run: the fixture's hand-back Record as the chain's only Record, carrying its first clip (filmed before the round took the outline)
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'seen-carried-'));
+    const root = testTmpDir('seen-carried');
     fs.mkdirSync(path.join(root, 'kb', 'GodsWorld', 'memories'), { recursive: true });
     fs.mkdirSync(path.join(root, 'site', 'memories'), { recursive: true });
     const dir = path.join(root, 'minimaxi', 'out', 'mmp41d', 'record');
@@ -390,7 +390,7 @@ test('what the Record carried from before the round (lab.json carried) is render
  *  (made before the round took the outline; the plan keeps only the round's own move); THROWS unless the carried row's change:
  *  line carries the mark and the round's own row does not. Returns {root, md, rows}. */
 function assertCarriedRowMarked(g) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'seen-carried-row-'));
+    const root = testTmpDir('seen-carried-row');
     fs.mkdirSync(path.join(root, 'kb', 'GodsWorld', 'memories'), { recursive: true });
     fs.mkdirSync(path.join(root, 'site', 'memories'), { recursive: true });
     const dir = path.join(root, 'minimaxi', 'out', 'mmp41d', 'record');

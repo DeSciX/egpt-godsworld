@@ -25,13 +25,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { attachHandTool, handKeyAction, HAND_KEYS, HAND_STATUS } from '../../site/app-assets/maxi-hand-tool.js';
 import { writePosition } from '../../site/app-assets/maxi-hands.js';
 import { fakeRunner } from './fake-runner.mjs';
+import { testTmpDir } from './tmpdir.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel) => fs.readFileSync(path.join(REPO, rel), 'utf8');
@@ -115,7 +115,7 @@ const INLINED = (src) => src.replace(DRAG_LINE, "runner.placeDeclaredAt(st.held.
 
 /** Load a (planted) hand source as a real module beside its own copy of maxi-hands.js. */
 async function loadPlanted(src) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hand-plant-'));
+    const dir = testTmpDir('hand-plant');
     fs.copyFileSync(path.join(REPO, ASSETS, 'maxi-ask.js'), path.join(dir, 'maxi-ask.js'));   // maxi-hands.js imports maxi-ask.js
     fs.writeFileSync(path.join(dir, 'maxi-hands.js'), read(ASSETS + '/maxi-hands.js')
         .replace("from './frqtl-web-project.js'", "from '" + pathToFileURL(path.join(REPO, ASSETS, 'frqtl-web-project.js')).href + "'"));   // and the ./project door, where it is

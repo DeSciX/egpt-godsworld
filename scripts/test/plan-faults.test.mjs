@@ -32,12 +32,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import fs from 'node:fs';
-import os from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { recordPlanFaults, planOf, startOf, PLAN_KEY, START_KEY, NO_CHANGE, LOOP_LAB_KEYS, FILES, MOVE, CHANGE_KEYS, RECT_CENTER_SLACK, recordFolderFaults } from '../../site/app-assets/maxi-record-folder.js';
 import { recordLines } from '../gen-memories-seen.mjs';
 import { parsePlan, emptyStage, HANDOFF_TAGS } from '../../site/app-assets/maxi-roles.js';
 import { readRecordFolder } from '../../minimaxi/record-folder.mjs';
+import { testTmpDir } from './tmpdir.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MMP41D = path.join(REPO, 'scripts', 'test', 'fixtures', 'record-mmp41d', 'record', 'record-02');
@@ -152,7 +152,7 @@ test('a round that ends where it started is refused as NO_CHANGE, whatever its r
     const CHECK = '    if (start !== null && partsEqual(start, end)) {';
     const ALREADY = '        if (was.none === undefined && sameValue(c.param, c.value, was)) {';
     assert.equal(src.split(CHECK).length, 2, 'the plant target moved'); assert.equal(src.split(ALREADY).length, 2, 'the plant target moved');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-plant-'));
+    const dir = testTmpDir('plan-plant');
     try {
         const pin = (x) => x.replace(/from '\.\/(frqtl-web-project|maxi-hands)\.js'/g, (m, n) => "from '" + pathToFileURL(path.join(REPO, 'site/app-assets', n + '.js')).href + "'");
         fs.writeFileSync(path.join(dir, 'maxi-record-folder.js'), pin(src.replace(CHECK, '    if (false) {').replace(ALREADY, '        if (false) {')));

@@ -16,13 +16,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { ICON_FILES, iconShape, loadIcons } from '../../site/app-assets/maxi-icons.js';
+import { testTmpDir } from './tmpdir.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const VENDOR = path.join(REPO, 'site', 'vendor', 'mui-icons');
@@ -65,7 +65,7 @@ function cachedTarball(pin) {
 }
 
 test('the pinned tarball hashes to the pin, and every vendored file is its package/<file> byte for byte', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mui-icons-'));
+    const dir = testTmpDir('mui-icons');
     try {
         fs.writeFileSync(path.join(dir, 'p.tgz'), cachedTarball(PIN));
         execFileSync('tar', ['-xzf', path.join(dir, 'p.tgz'), '-C', dir, ...Object.keys(PIN.files).map((f) => 'package/' + f)]);
@@ -96,7 +96,7 @@ export function copyFaults(root, pin) {
 test('the version directory holds exactly the pinned files, each at its pinned sha256 (a flipped byte and a stray file are red)', () => {
     const root = path.join(VENDOR, PIN.version);
     assert.deepEqual(copyFaults(root, PIN), []);
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mui-icons-copy-'));
+    const tmp = testTmpDir('mui-icons-copy');
     try {
         fs.cpSync(root, tmp, { recursive: true });
         const victim = path.join(tmp, 'esm', 'Info.js');
