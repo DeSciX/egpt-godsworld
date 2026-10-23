@@ -406,7 +406,7 @@ test('a QUESTION on MiniMaxi: the Designer\'s answer is the run — the report k
     fs.writeFileSync(path.join(root, 'kb', 'GodsWorld', 'memories', 'dse-tunnel-rebuild-card.md'), '# Memory: Double slit — card\n');   // the file the answer names exists
     const rep = await runLoop(parseArgs(['--bridge', 'http://fake/bridge', '--brain', 'platform', '--outline', 'why is the double slit thought to be classically impossible?', '--run', 'mmq']), env);
     assert.deepEqual(calls(root).map((c) => c.op === 'ask' ? 'ask:' + c.args.thread : c.op === 'record' ? 'record ' + c.args : c.op), ['record begin', 'inventory', 'ask:mmq-designer', 'record abandon'], 'the stage is read, the Designer asked, and nothing else (the round\'s Record chain begun and let go)');
-    assert.deepEqual(rep.answer, { reading: 'question', words: 'From dse-tunnel-rebuild-card.md: the card calls it impossible to explain classically; that is its claim.', memories: ['dse-tunnel-rebuild-card.md'], unnamed: [] });
+    assert.deepEqual(rep.answer, { reading: 'question', words: 'From dse-tunnel-rebuild-card.md: the card calls it impossible to explain classically; that is its claim.', memories: ['dse-tunnel-rebuild-card.md'] });
     assert.equal(rep.outcome, 'answered in words (question), drawing on dse-tunnel-rebuild-card.md: no build, no Record');
     assert.equal(rep.record, undefined); assert.equal(rep.memory, undefined); assert.deepEqual(rep.rounds, []);
     assert.ok(!fs.existsSync(path.join(env.out, 'mmq')), 'no Record folder and no memory draft');
@@ -437,20 +437,19 @@ test('MiniMaxi refuses an answer naming a memory file that is not in kb/GodsWorl
     assert.deepEqual(kbFiles(ok.root).sort(), ['memories/r9-ghost-card.md']);
 });
 
-test('a MiniMaxi trial still refuses an answer whose words never name a listed memory, as the parser refused it before (negative control: the trial\'s refusal planted out lets it through as answered)', async () => {
-    const reply = 'THIS IS: a question\nThe card calls it impossible to explain classically.\n' + fence('json:answer', '{"memories": ["dse-tunnel-rebuild-card.md"]}');
+test('a MiniMaxi trial takes an answer whose words name none of its listed memories as answered: the files are how Maxi thought about it, not his speech (negative control: the old refusal planted back into a copy of minimaxi/loop.mjs stops the same answer)', async () => {
+    const reply = 'THIS IS: a question\nFeynman called it impossible to explain in any classical way; that is the card\'s claim.\n' + fence('json:answer', '{"memories": ["dse-tunnel-rebuild-card.md"]}');
     const { root, env } = fakeRoot({ designer: [reply], builder: [], owl: [] });
     fs.writeFileSync(path.join(root, 'kb', 'GodsWorld', 'memories', 'dse-tunnel-rebuild-card.md'), '# Memory: Double slit — card\n');
-    await assert.rejects(runLoop(parseArgs(['--bridge', 'http://fake/bridge', '--brain', 'platform', '--outline', 'why?', '--run', 'mmu']), env),
-        /^Error: Maxi stopped: \[designer → answer\]: the answer's words never name dse-tunnel-rebuild-card\.md — a memory an answer draws on is named in its words\.$/);
-    const saved = JSON.parse(fs.readFileSync(path.join(env.out, 'runs', 'mmu.json'), 'utf8'));
-    assert.deepEqual(saved.answer.unnamed, ['dse-tunnel-rebuild-card.md'], 'the report keeps the fault');
-    assert.match(saved.outcome, /^STOPPED: Maxi stopped: \[designer → answer\]: the answer's words never name/, 'reported stopped, never answered');
-    // the plant: minimaxi/loop.mjs without its refusal, imported from a copy beside the original
+    const rep = await runLoop(parseArgs(['--bridge', 'http://fake/bridge', '--brain', 'platform', '--outline', 'why?', '--run', 'mmu']), env);
+    assert.equal(rep.outcome, 'answered in words (question), drawing on dse-tunnel-rebuild-card.md: no build, no Record');
+    assert.deepEqual(rep.answer, { reading: 'question', words: 'Feynman called it impossible to explain in any classical way; that is the card\'s claim.', memories: ['dse-tunnel-rebuild-card.md'] }, 'the report keeps the answer and its memory files, nothing else');
+    // the plant: the old refusal put back, imported from a copy beside the original
     const src = fs.readFileSync(new URL('../../minimaxi/loop.mjs', import.meta.url), 'utf8');
-    const planted = src.replace(/\n {12}if \(e\.unnamed\.length\) \{ throw [^\n]*/, '')
+    const anchor = "report.answer = { reading: e.reading, words: e.words, memories: e.memories }; save();";
+    assert.ok(src.includes(anchor), 'the plant needs the report line');
+    const planted = src.replace(anchor, anchor + " if (e.memories.some((f) => e.words.indexOf(f) === -1)) { throw new Error('[designer → answer]: the answer\\'s words never name ' + e.memories.join(', ')); }")
         .replace(/from '\.\.\//g, "from '" + new URL('../../', import.meta.url).href).replace(/from '\.\//g, "from '" + new URL('../../minimaxi/', import.meta.url).href);
-    assert.notEqual(planted, src, 'the plant must remove the refusal');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loop-planted-'));   // the copy never sits in the tree
     const copy = path.join(dir, 'loop.mjs');
     fs.writeFileSync(copy, planted);
@@ -458,7 +457,6 @@ test('a MiniMaxi trial still refuses an answer whose words never name a listed m
         const p = await import(pathToFileURL(copy).href);
         const f = fakeRoot({ designer: [reply], builder: [], owl: [] });
         fs.writeFileSync(path.join(f.root, 'kb', 'GodsWorld', 'memories', 'dse-tunnel-rebuild-card.md'), '# Memory: Double slit — card\n');
-        const rep = await p.runLoop(p.parseArgs(['--bridge', 'http://fake/bridge', '--brain', 'platform', '--outline', 'why?', '--run', 'mmup']), f.env);
-        assert.match(rep.outcome, /^answered in words/, 'negative control: without the refusal the trial passes it as answered');
+        await assert.rejects(p.runLoop(p.parseArgs(['--bridge', 'http://fake/bridge', '--brain', 'platform', '--outline', 'why?', '--run', 'mmup']), f.env), /the answer's words never name dse-tunnel-rebuild-card\.md/, 'negative control: the old refusal stops it');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

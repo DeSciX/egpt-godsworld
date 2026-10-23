@@ -17,6 +17,8 @@
  *   - reading an entry back (entryHere): the Blobs made bytes, then THE gate on it — the Record owner's recordFolderFaults on
  *     every Record and recordChainFaults on the chain, the producer the human's, the key the key rule's. A corrupt entry is
  *     listed with its faults and refused by name when it is opened; it is never repaired;
+ *   - a memory handed to the visitor as ONE file (memoryBundle; recordsOfBundle reads it back through the same gate): read
+ *     from load(), so the store gains no door — nothing writes through it;
  *   - the store (openMemories: save, list, load, remove): the ONLY module of the site that touches IndexedDB
  *     (scripts/test/local-memory.test.mjs fails a second writer). A refusal by the browser (its storage full: QuotaExceededError)
  *     is thrown by name, never dropped;
@@ -27,7 +29,7 @@
 
 import {
     FILES, STILLS, CLIP_NAME, TEACHING_KEY, UNHELD_KEY, CARRIED_KEY,
-    recordFolderFaults, recordChainFaults, parseRecordFolder, partsDiffText
+    recordFolderFaults, recordChainFaults, parseRecordFolder, partsDiffText, filesAcross, filesHere
 } from './maxi-record-folder.js';
 import { demonstrationNote, demonstrationMedia } from './maxi-record.js';
 
@@ -135,13 +137,19 @@ export async function entryHere(raw) {
         }
         records.push({ name: name, files: files });
     }
-    chainFaults(records).forEach(function (f) { bad.push(f); });
+    entryFaults(key, records).forEach(function (f) { bad.push(f); });
+    return { key: key, savedAt: savedAt, records: records, faults: bad };
+}
+
+/** THE gate on a memory's Records read back (from the store, or from a download): chainFaults, and the key the key rule gives. */
+function entryFaults(key, records) {
+    const bad = chainFaults(records);
     if (key) {
         let want = null;
         try { want = memoryKey(records); } catch (e) { want = null; }
         if (want !== null && want !== key) { bad.push('the entry is kept as ' + JSON.stringify(key) + ', and its Records key as ' + JSON.stringify(want) + ' (the scene and tick range of the hand-back Record)'); }
     }
-    return { key: key, savedAt: savedAt, records: records, faults: bad };
+    return bad;
 }
 
 /** What the pane lists for an entry read back (entryHere): the folder's own facts, read off its hand-back lab.json. */
@@ -289,6 +297,65 @@ export function openMemories(spec) {
             return { removed: key, existed: raw !== undefined };
         }
     };
+}
+
+// ── a local memory, handed to the visitor as a file ────────────────────────────────────────────
+
+/**
+ * THE download of a local memory: ONE JSON file whose shape is the Record folder — `records` maps each Record's folder name
+ * (record-01, …, in chain order) to its files by path (record.json, parts.before.json, project/sketch.js, clip-01.mp4, lab.json,
+ * …), each file as {text} or {base64} (maxi-record-folder.js filesAcross, the crossing folderHere reads). The vendored package's
+ * zip writer is not one of its exports, so the site cannot reach it; a folder of N files as N downloads would ask the visitor's
+ * browser for leave to download many files. The bundle is read back by recordsOfBundle, through THE gate.
+ */
+export const BUNDLE_FORMAT = 'egpt-godsworld/record-folder@1';
+/** A bundle's keys, exactly. */
+export const BUNDLE_KEYS = Object.freeze(['format', 'key', 'savedAt', 'records']);
+/** A bundle's file type. */
+export const BUNDLE_MIME = 'application/json';
+
+/** The file name a memory downloads as: its key, every character outside [A-Za-z0-9._-] made "_", then ".record.json". */
+export function bundleName(key) {
+    if (typeof key !== 'string' || !key) { throw new Error('[local-memory] a download is named by its memory\'s key (a string), got ' + JSON.stringify(key)); }
+    return key.replace(/[^A-Za-z0-9._-]/g, '_') + '.record.json';
+}
+
+/**
+ * A memory (load()'s {key, savedAt, records}) as its download: {name, mime, text}. THROWS unless it is a load()'s value —
+ * a memory that is not a complete Record is refused at load, so nothing incomplete is ever handed out.
+ */
+export function memoryBundle(memory) {
+    if (!memory || typeof memory.key !== 'string' || typeof memory.savedAt !== 'string' || !Array.isArray(memory.records) || !memory.records.length) {
+        throw new Error('[local-memory] a download is a memory as load() reads it back ({key, savedAt, records}), got ' + JSON.stringify(memory && Object.keys(memory)) + '.');
+    }
+    const records = {};
+    memory.records.forEach(function (r) {
+        if (Object.prototype.hasOwnProperty.call(records, r.name)) { throw new Error('[local-memory] the memory ' + JSON.stringify(memory.key) + ' holds two Records named ' + r.name + '.'); }
+        records[r.name] = filesAcross(r.files);
+    });
+    return { name: bundleName(memory.key), mime: BUNDLE_MIME, text: JSON.stringify({ format: BUNDLE_FORMAT, key: memory.key, savedAt: memory.savedAt, records: records }) + '\n' };
+}
+
+/**
+ * A downloaded bundle's text → {key, savedAt, records: [{name, files}], faults}: the files made this realm's text and bytes
+ * (folderHere's crossing), then THE gate a stored entry is read back through (entryFaults: recordFolderFaults on every Record,
+ * recordChainFaults, the producer, the key). THROWS by name on text that is not a bundle of this format; a bundle that is not
+ * complete Records comes back with its faults, never repaired.
+ */
+export function recordsOfBundle(text) {
+    let b;
+    try { b = JSON.parse(text); } catch (e) { throw new Error('[local-memory] a Record download is JSON (' + BUNDLE_FORMAT + '); this is not: ' + e.message); }
+    const keys = b && typeof b === 'object' && !Array.isArray(b) ? Object.keys(b) : [];
+    if (keys.length !== BUNDLE_KEYS.length || !BUNDLE_KEYS.every(function (k) { return keys.indexOf(k) !== -1; }) || b.format !== BUNDLE_FORMAT) {
+        throw new Error('[local-memory] a Record download is {' + BUNDLE_KEYS.join(', ') + '} with format ' + BUNDLE_FORMAT + ', got {' + keys.join(', ') + '} format ' + JSON.stringify(b && b.format) + '.');
+    }
+    if (!b.records || typeof b.records !== 'object' || Array.isArray(b.records) || !Object.keys(b.records).length) { throw new Error('[local-memory] a Record download\'s records map each Record folder to its files, got ' + JSON.stringify(b.records) + '.'); }
+    const records = Object.keys(b.records).map(function (name) { return { name: name, files: filesHere(b.records[name], 'the download\'s ' + name) }; });
+    const bad = [];
+    if (typeof b.key !== 'string' || !b.key) { bad.push('the download\'s key is ' + JSON.stringify(b.key) + ', not a string'); }
+    if (typeof b.savedAt !== 'string' || isNaN(Date.parse(b.savedAt))) { bad.push('the download\'s savedAt is ' + JSON.stringify(b.savedAt) + ', not an ISO date'); }
+    entryFaults(typeof b.key === 'string' ? b.key : null, records).forEach(function (f) { bad.push(f); });
+    return { key: b.key, savedAt: b.savedAt, records: records, faults: bad };
 }
 
 // ── a remembered Record, as Maxi is asked about it ─────────────────────────────────────────────

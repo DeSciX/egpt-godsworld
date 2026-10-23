@@ -9,6 +9,9 @@
  * the clip with the change list in its note and the words in its user_input; lab.json keeps them as `teaching`. Then the
  * same card at 390 px STANDALONE (no shell): Send is refused naming the shell's command door, the strip's row and lab.json
  * still carry the words, and the demonstration waits to be sent again.
+ * Download this Record (Your memories): disabled before any Record of the scene is kept; after the first Send it is enabled,
+ * and its click hands the browser ONE file whose bytes, read back through maxi-local-memory.js recordsOfBundle, are the kept
+ * memory's Record folder and pass recordFolderFaults.
  *
  *   node scripts/look/maxi-record-look.mjs --url http://127.0.0.1:<port>/site/app.html \
  *        --playwright <node_modules> --out .scratch/look-record [--ffprobe /opt/homebrew/bin/ffprobe]
@@ -19,7 +22,8 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { INTRO_SEEN_KEY } from '../../site/app-assets/maxi-intro.js';
-import { TEACHING_KEY, TEACHING_PROMPT, START_KEY, partsEqual } from '../../site/app-assets/maxi-record-folder.js';
+import { TEACHING_KEY, TEACHING_PROMPT, START_KEY, partsEqual, recordFolderFaults } from '../../site/app-assets/maxi-record-folder.js';
+import { recordsOfBundle, bundleName } from '../../site/app-assets/maxi-local-memory.js';
 import { TEACHING_HEAD } from '../../site/app-assets/maxi-ask.js';
 
 /** The human's words for the look (two lines, as a person types them). */
@@ -90,6 +94,10 @@ async function ui(page) {
                 disabled: document.getElementById('demo-teach-text').disabled, send: document.getElementById('demo-send').textContent } }
     }));
 }
+/** The Download this Record button: {disabled, key}. */
+function downloadState(page) {
+    return page.evaluate(() => { const b = document.getElementById('memories-download'); return { disabled: b.disabled, key: b.dataset.key || '', title: b.title }; });
+}
 async function pageXY(page, world) {
     return page.evaluate((world) => {
         const f = document.getElementById('scene-frame');
@@ -105,7 +113,7 @@ note('orphan gate before launch', { own: ownBrowserPids() });
 const browser = await chromium.launch({ headless: true });
 let failed = null;
 try {
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
     await ctx.addInitScript(STUB);
     await ctx.addInitScript((key) => { window.localStorage.setItem(key, '1'); }, INTRO_SEEN_KEY);   // this look drives the page: the run-once walk-through stays closed (maxi-intro.js)
     const page = await ctx.newPage();
@@ -116,6 +124,11 @@ try {
     const ld = await hand(page, 'loadScene', { id: 'cl1a-mirror' });
     if (!ld.ok) { throw new Error(ld.error); }
     await page.waitForTimeout(1500);
+
+    // Download this Record: nothing of this scene is kept yet, so the button is disabled
+    const dl0 = await downloadState(page);
+    note('Download before any Record', dl0);
+    if (!dl0.disabled || dl0.key) { throw new Error('Download this Record is enabled before any Record of the scene is kept: ' + JSON.stringify(dl0)); }
 
     await page.click('#btn-hand');
     await page.click('#btn-record');
@@ -163,6 +176,30 @@ try {
     if (teachLab !== WORDS) { throw new Error('lab.json does not carry the words as ' + TEACHING_KEY + ': ' + JSON.stringify(teachLab)); }
     if (!youRow || !youRow.includes(WORDS)) { throw new Error('the strip\'s You row does not show the words'); }
     if (!sentUi.card.teach.hidden || !sentUi.card.lines.startsWith('You taught: ' + WORDS)) { throw new Error('the sent card does not show what was taught: ' + JSON.stringify(sentUi.card)); }
+    // Download this Record: the kept memory of this scene, handed to the browser as ONE file, read back through the gate
+    const dl1 = await downloadState(page);
+    const noteShown = await page.evaluate(() => { const n = document.getElementById('memories-download-note'); return n ? { text: n.textContent, under: n.parentElement.id } : null; });
+    if (!noteShown || noteShown.under !== 'memories-doors' || noteShown.text !== 'Inside the DeSciX shell the file may not arrive yet; opened standalone, the lab downloads it.') { throw new Error('the Download block lacks its honest line: ' + JSON.stringify(noteShown)); }
+    if (dl1.disabled || !/^cl1a-mirror@\d+-\d+$/.test(dl1.key)) { throw new Error('Download this Record is not enabled for the kept Record of cl1a-mirror: ' + JSON.stringify(dl1)); }
+    await page.click('#btn-memories');
+    await page.waitForFunction(() => !document.getElementById('memories').hidden && !document.getElementById('memories-download').disabled, null, { timeout: 10000 });
+    await page.screenshot({ path: path.join(OUT, '02d-memories-download.png') });
+    const [download] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#memories-download')]);
+    const dlFile = path.join(OUT, download.suggestedFilename());
+    await download.saveAs(dlFile);
+    const said = await page.evaluate(() => document.getElementById('memories-status').textContent);
+    const back = recordsOfBundle(fs.readFileSync(dlFile, 'utf8'));
+    const gate = back.records.map((r) => ({ name: r.name, files: Object.keys(r.files).sort(), faults: recordFolderFaults(r.files) }));
+    const keptFiles = await page.evaluate(() => { const rs = window.MaxiLab.recorder().last(); return rs.map((r) => Object.keys(r.files).sort()); });
+    note('Download this Record → the file read back', { file: path.basename(dlFile), bytes: fs.statSync(dlFile).size, key: back.key, faults: back.faults, gate, said });
+    if (download.suggestedFilename() !== bundleName(dl1.key) || back.key !== dl1.key || back.faults.length || gate.some((g) => g.faults.length) ||
+        JSON.stringify(gate.map((g) => g.files)) !== JSON.stringify(keptFiles) || !/^Asked your browser to download /.test(said)) {
+        throw new Error('the downloaded Record does not read back as the kept Record folder: ' + JSON.stringify({ name: download.suggestedFilename(), key: back.key, faults: back.faults, gate, keptFiles, said }));
+    }
+    const clipBack = back.records[back.records.length - 1].files['clip-01.mp4'];
+    fs.writeFileSync(path.join(OUT, 'download-read-back-clip-01.mp4'), clipBack);
+    note('the clip read back out of the download', { bytes: clipBack.length, ffprobe: probe(path.join(OUT, 'download-read-back-clip-01.mp4')) });
+    await page.click('#btn-memories');
     const demo = await page.evaluate(() => { const rs = window.MaxiLab.recorder().last(); const r = rs[rs.length - 1]; return { count: rs.length, name: r.name, chain: r.lab.chain, record: r.record, lab: r.lab, faults: r.faults, complete: r.complete, files: Object.keys(r.files).sort() }; });
     note('Record folder', demo);
     // THE START: the parts the demonstration began from, read in the page when Record was pressed (the Record rotated then,

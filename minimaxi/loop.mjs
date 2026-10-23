@@ -292,10 +292,7 @@ export async function runLoop(a, env) {
     const onEvent = (e) => {
         if (e.role === 'designer' && e.kind === 'plan') { report.plan = e.plan; report.designerWords = e.words; save(); }
         else if (e.role === 'designer' && e.kind === 'answer') {
-            report.answer = { reading: e.reading, words: e.words, memories: e.memories, unnamed: e.unnamed }; save();
-            // a trial refuses an answer whose words leave a listed memory unnamed (the page shows it with a notice instead)
-            if (!Array.isArray(e.unnamed)) { throw new Error('the loop\'s designer:answer event carries no `unnamed` list — maxi-loop.js and this trial disagree.'); }
-            if (e.unnamed.length) { throw new Error('[designer → answer]: ' + roles.unnamedFault(e.unnamed)); }
+            report.answer = { reading: e.reading, words: e.words, memories: e.memories }; save();
             const ghosts = ghostMemories(e.memories, kb);   // the page checks the format only (maxi-roles.js); node can list the KB
             if (ghosts.length) { throw new Error('the Designer\'s answer names ' + ghosts.join(', ') + ', which ' + (ghosts.length > 1 ? 'are' : 'is') + ' not in ' + KB_DIR + ' — an answer draws only on memories that exist.'); }
         }

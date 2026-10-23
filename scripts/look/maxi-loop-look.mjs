@@ -29,9 +29,18 @@
  *      inventory (the hand's, parts included) is the stage stageOf takes; then, after the
  *      loop, the picker reloads the 3D mirror and the human Hand aims, SPACE-grabs, carries and drops it.
  *   F. A QUESTION, the replay double answering from scripts/test/fixtures/three-roles-question.json: Tony types the
- *      question and presses Enter; the Designer's answer row shows with "From my memories:"; no error bar, no
- *      demonstration card, no Records; only the Designer is asked; the stage's parts are where they were; the
- *      status line no longer says Maxi is working and the Imagine box is given back.
+ *      question and presses Enter; the conversation shows the question and Maxi's words alone (no file name, no backtick),
+ *      his row linking to the question's own drawer group (imagination-turn-1, headed by the question), which holds the
+ *      memory files under Designing ("From my memories: …"); no error bar, no demonstration card, no Records; only the
+ *      Designer is asked; the stage's parts are where they were; the status line no longer says Maxi is working and the
+ *      Imagine box is given back; no Thinking line; his row's link opens the drawer at that group.
+ *   G. THE TWO PANES at a phone's width (390 x 844, touch): the replay double's outline approved; the conversation holds
+ *      the visitor's words, the Thinking line and the approved clip only; the drawer's ticker sits below the stage and
+ *      never covers the lab's toolbar, collapsed or open; it opens on a tap and its turn is reached from the Thinking line.
+ * In B, F and G no conversation row but the visitor's carries code, a file name or a backtick (maxi-talk.js
+ * conversationFaults, the gate the page's rows pass). In B the conversation (#talk-lines) carries no Builder, Owl or Designing row: they are in the Imagination drawer
+ * (#imagination-lines), whose collapsed ticker shows the last process line; the drawer opens on a click, the Thinking
+ * line's link resolves to #imagination-turn-1, and the Thinking line ends "Thought for <s> s · 2 rounds · approved".
  * Exit 1 on any failed check. Browser discipline: launched and closed by Playwright's handle; the orphan
  * gate counts chrome-headless-shell processes descended from THIS process only, before and after.
  */
@@ -47,6 +56,7 @@ import { ROLES, stageOf, stageWords } from '../../site/app-assets/maxi-roles.js'
 import { INTRO_SEEN_KEY } from '../../site/app-assets/maxi-intro.js';
 import { START_KEY, partsEqual } from '../../site/app-assets/maxi-record-folder.js';
 import { SKETCH_KEYS } from '../../site/app-assets/maxi-hands.js';
+import { conversationFaults } from '../../site/app-assets/maxi-talk.js';
 
 function argOf(flag, dflt) { const i = process.argv.indexOf(flag); return i === -1 ? dflt : process.argv[i + 1]; }
 const URL_ = argOf('--url', null);
@@ -111,6 +121,51 @@ async function stageReads(page, part) {
 const talk = (page) => page.evaluate(() => Array.from(document.querySelectorAll('#talk-lines .talk-row')).map((r) => ({
     who: r.querySelector('b').textContent, text: r.querySelector('p').textContent, video: !!r.querySelector('video'), cls: r.className
 })));
+/** The Imagination drawer: its turns, each with its process blocks ({who, cls, rows: [text], videos}), the ticker, open or not. */
+const drawer = (page) => page.evaluate(() => ({
+    open: !document.getElementById('imagination-lines').hidden,
+    expanded: document.getElementById('imagination-toggle').getAttribute('aria-expanded'),
+    ticker: document.getElementById('imagination-ticker').textContent,
+    turns: Array.from(document.querySelectorAll('#imagination-lines .imagination-turn')).map((t) => ({
+        id: t.id, head: t.querySelector('h3').textContent,
+        blocks: Array.from(t.querySelectorAll('.imagination-process')).map((b) => ({ who: b.querySelector('b').textContent, cls: b.className, rows: Array.from(b.querySelectorAll('p')).map((p) => p.textContent), videos: b.querySelectorAll('video').length }))
+    }))
+}));
+/** The conversation scan: no row but the visitor's carries code, a file name or a backtick (the page's own gate, read off the painted text). */
+function conversationScan(part, rows) {
+    const bad = rows.filter((r) => !/talk-tony/.test(r.cls)).flatMap((r) => (/```|json:call|\{\s*"/.test(r.text) ? ['code: ' + JSON.stringify(r.text.slice(0, 90))] : []).concat(conversationFaults(r.text)));
+    check(bad.length === 0, part + ': no conversation row but the visitor\'s carries code, a file name or a backtick', bad.length ? bad : rows.map((r) => r.who + ': ' + r.text.slice(0, 90)));
+}
+/** A refusal before any outline: the conversation's rows, the drawer's, the error bar; then the Lab fact's link clicked (screenshot first). */
+async function notStarted(page, shot) {
+    const c = await page.evaluate(() => ({
+        rows: Array.from(document.querySelectorAll('#talk-lines .talk-row')).map((r) => ({ who: r.querySelector('b').textContent, text: r.querySelector('p').textContent, cls: r.className, color: getComputedStyle(r.querySelector('p')).color })),
+        errColor: getComputedStyle(document.getElementById('error')).color,
+        drawer: Array.from(document.querySelectorAll('#imagination-lines p')).map((p) => p.textContent), bar: document.getElementById('error').textContent,
+        sent: window.__replaySent.length, working: window.MaxiLab.loop().running }));
+    await page.screenshot({ path: path.join(OUT, shot) });
+    const a = await page.$('#talk-lines .talk-lab a.talk-to-drawer');
+    if (a) { await a.click(); }
+    c.via = await page.evaluate(() => { const l = document.getElementById('imagination-lines'); const t = l.querySelector('.imagination-turn'); return { open: !l.hidden, id: t ? t.id : null }; });
+    return c;
+}
+/** The checks every approved outline turn must pass in the two panes (part B and G). */
+async function paneChecks(page, part, rounds) {
+    const rows = await talk(page);
+    const d = await drawer(page);
+    check(!rows.some((r) => /talk-builder|talk-owl|talk-designing/.test(r.cls) || /^(Building|Checking|Designing|the Builder|the Owl)$/.test(r.who)),
+        part + ': zero Builder, Owl or Designing rows in the conversation (#talk-lines)', rows.map((r) => r.cls + ' ' + r.who));
+    const thought = rows.filter((r) => /talk-thinking/.test(r.cls));
+    const re = new RegExp('^Thought for \\d+ s · ' + rounds + ' rounds? · approved ↗$');
+    check(thought.length === 1 && re.test(thought[0].text) && !/talk-refused/.test(thought[0].cls), part + ': ONE Thinking line, ending "Thought for <s> s · ' + rounds + ' round(s) · approved"', thought);
+    const at = rows.indexOf(thought[0]);
+    check(rows.length === 3 && at === 1 && rows[2].who === 'Lab' && rows[2].text === '[built and approved — watch]' && rows[2].video && rows.filter((r) => r.video).length === 1,
+        part + ': the conversation holds the visitor\'s words, the Thinking line and the approved clip after it, nothing else', rows.map((r) => r.who + ': ' + r.text.slice(0, 80) + (r.video ? ' [video]' : '')));
+    check(d.turns.length === 1 && d.turns[0].id === 'imagination-turn-1' && d.turns[0].blocks.every((b) => ['Designing', 'Building', 'Checking'].includes(b.who)) && d.turns[0].blocks[0].who === 'Designing',
+        part + ': the drawer holds turn 1 under Designing, Building, Checking', d.turns.map((t) => ({ id: t.id, blocks: t.blocks.map((b) => b.who + ' x' + b.rows.length + (b.videos ? ' +' + b.videos + ' video' : '')) })));
+    check(!d.open && d.expanded === 'false' && /^Checking · Approved\. /.test(d.ticker), part + ': the drawer is collapsed to its ticker, which shows the last process line', { open: d.open, ticker: d.ticker });
+    return { rows, d };
+}
 
 const gate0 = ownBrowserPids();
 note('orphan gate before launch', gate0);
@@ -127,8 +182,12 @@ try {
         await page.waitForFunction(() => document.querySelector('#talk-lines .talk-refused'), null, { timeout: 15000 });
         const rows = await talk(page);
         const bar = await page.evaluate(() => document.getElementById('error').textContent);
-        check(rows.some((r) => /window\.DeSciX\.call\('ask_question_to_app'\)/.test(r.text) && /running standalone/.test(r.text)) && /Maxi stopped: .*command door/.test(bar),
-            'A: standalone, the outline is refused naming the shell\'s command door', { rows, bar });
+        const dA = await drawer(page);
+        check(/Maxi stopped: .*window\.DeSciX\.call\('ask_question_to_app'\).*running standalone/.test(bar) && dA.turns.length === 1 && dA.turns[0].blocks.some((b) => b.rows.includes(bar)) &&
+            rows.length === 2 && rows[0].who === 'You' && !rows.some((r) => /DeSciX|command door|standalone|stopped:|designer|Builder|Owl/.test(r.text)),
+            'A: standalone, the outline is refused naming the shell\'s command door, in full in the error bar and the drawer; no loop words in the conversation', { rows, bar, drawer: dA });
+        check(rows.filter((r) => /talk-thinking/.test(r.cls)).length === 1 && rows.some((r) => /talk-thinking/.test(r.cls) && /talk-refused/.test(r.cls) && /^Thought for \d+ s · stopped ↗$/.test(r.text)),
+            'A: the Thinking line closes red: "Thought for <s> s · stopped"', rows.filter((r) => /talk-thinking/.test(r.cls)));
         await page.screenshot({ path: path.join(OUT, 'A-standalone-refused.png') });
         await ctx.close();
     }
@@ -145,8 +204,10 @@ try {
         // where the LOOP began: the stage's parts block as the loop takes the outline (round 1's start is read then)
         const loopStart = await page.evaluate(async (k) => (await window.MaxiLab.inventory())[k], SKETCH_KEYS.parts);
         await say(page, FIXTURE.outline);
-        await page.waitForFunction(() => document.querySelector('#talk-lines .talk-builder') !== null, null, { timeout: 30000 });
+        await page.waitForFunction(() => document.querySelector('#imagination-lines .talk-builder') !== null, null, { timeout: 30000 });
         await page.screenshot({ path: path.join(OUT, 'B1-plan.png') });
+        const live = await page.evaluate(() => { const r = document.querySelector('#talk-lines .talk-thinking'); return { thinking: r ? r.querySelector('p').textContent : null, ticker: document.getElementById('imagination-ticker').textContent }; });
+        check(/^Thinking: /.test(live.thinking || '') && /^(Building|Designing) · /.test(live.ticker), 'B: while Maxi works the Thinking line says what he is doing, the ticker his last process line', live);
         check(await page.evaluate(() => document.getElementById('imagine-text').value === ''), 'B: the Imagine box empties once the loop takes the outline');
         // the human's tools while Maxi works: R and H are refused by name in the error bar
         await page.evaluate(() => document.activeElement && document.activeElement.blur());
@@ -162,7 +223,7 @@ try {
         const hBar = await refusedBy(/^the Hand \(H\) is refused while Maxi is working/);
         const h = await page.evaluate((bar) => ({ bar, hand: !!(window.MaxiLab.hand() && window.MaxiLab.hand().enabled), working: window.MaxiLab.loop().running }), hBar);
         check(h.working && !h.hand && /^the Hand \(H\) is refused while Maxi is working/.test(h.bar), 'B: H while Maxi works is refused by name in the error bar', h);
-        await page.waitForFunction(() => Array.from(document.querySelectorAll('#talk-lines .talk-row video')).length >= 1, null, { timeout: 240000 });
+        await page.waitForFunction(() => Array.from(document.querySelectorAll('#imagination-lines video')).length >= 1, null, { timeout: 240000 });
         await page.waitForTimeout(1500);
         await page.screenshot({ path: path.join(OUT, 'B2-built-watch.png') });
         await page.waitForFunction(() => window.MaxiLab.loop() && window.MaxiLab.loop().last, null, { timeout: 300000 });
@@ -170,10 +231,28 @@ try {
         await page.screenshot({ path: path.join(OUT, 'B3-owl-approved.png') });
         const rows = await talk(page);
         fs.writeFileSync(path.join(OUT, 'B-conversation.json'), JSON.stringify(rows, null, 2));
-        check(rows.every((r) => !/```|json:call|\{\s*"/.test(r.text)), 'B: the conversation carries no code', rows.map((r) => r.who + ': ' + r.text.slice(0, 90)));
-        check(rows.filter((r) => r.video).length === 2, 'B: both built clips play inline in the conversation');
-        const owlRows = rows.filter((r) => /talk-owl/.test(r.cls) && !/talk-pending/.test(r.cls));
-        check(owlRows.length === 2 && owlRows.every((r) => /What I saw — contact: .+; after: .+; passes: .+\./.test(r.text)), 'B: the Owl\'s account of the footage shows as words', owlRows.map((r) => r.text.slice(0, 160)));
+        conversationScan('B', rows);
+        const panes = await paneChecks(page, 'B', 2);
+        fs.writeFileSync(path.join(OUT, 'B-drawer.json'), JSON.stringify(panes.d, null, 2));
+        check(panes.d.turns[0].blocks.reduce((n, b) => n + b.videos, 0) === 2, 'B: both built clips play inline in the drawer (Building)');
+        const owlRows = panes.d.turns[0].blocks.filter((b) => b.who === 'Checking').flatMap((b) => b.rows);
+        check(owlRows.length === 2 && owlRows.every((r) => /What I saw — contact: .+; after: .+; passes: .+\./.test(r)), 'B: the Owl\'s account of the footage shows as words, in the drawer', owlRows.map((r) => r.slice(0, 160)));
+        await page.screenshot({ path: path.join(OUT, 'B3b-conversation-pane.png') });
+        // the drawer opens on a click, closes on another; the Thinking line's link opens it at its turn
+        await page.click('#imagination-toggle');
+        const opened = await drawer(page);
+        const box = await page.evaluate(() => { const b = (id) => document.getElementById(id).getBoundingClientRect(); return { lines: b('imagination-lines'), stage: b('stage'), header: document.querySelector('header').getBoundingClientRect(), bar: b('imagination') }; });
+        check(opened.open && opened.expanded === 'true' && box.lines.height > 120 && box.lines.top >= box.header.bottom && box.lines.bottom <= box.bar.top + 1,
+            'B: the drawer expands on a click, over the bottom of the stage, below the toolbar', { open: opened.open, lines: box.lines, header: box.header.bottom, bar: box.bar.top });
+        await page.screenshot({ path: path.join(OUT, 'B3c-drawer-open.png') });
+        await page.click('#imagination-toggle');
+        check(!(await drawer(page)).open, 'B: and collapses again');
+        await page.click('#talk-lines .talk-thinking a.talk-to-drawer');
+        const via = await page.evaluate(() => { const a = document.querySelector('#talk-lines .talk-thinking a.talk-to-drawer'); const id = a.getAttribute('href').slice(1); const g = document.getElementById(id); const lines = document.getElementById('imagination-lines');
+            const gb = g && g.getBoundingClientRect(); const lb = lines.getBoundingClientRect(); return { href: a.getAttribute('href'), found: !!g, inDrawer: !!g && lines.contains(g), open: !lines.hidden, visible: !!gb && gb.top >= lb.top - 1 && gb.top < lb.bottom }; });
+        check(via.href === '#imagination-turn-1' && via.found && via.inDrawer && via.open && via.visible, 'B: the Thinking line\'s link resolves to #imagination-turn-1 and opens the drawer there', via);
+        await page.screenshot({ path: path.join(OUT, 'B3d-drawer-from-thinking-link.png') });
+        await page.click('#imagination-toggle');
         const sent = await page.evaluate(() => window.__replaySent.map((s) => ({ role: s.role, prev: s.params.previous_interaction_id || null, kb: s.params.knowledgebase_names, media: (s.params.media || []).map((m) => ({ mime: m.mime_type, label: m.label || null, b64: m.data.length })), user_input: s.params.user_input })));
         fs.writeFileSync(path.join(OUT, 'B-sent.json'), JSON.stringify(sent, null, 2));
         check(sent.map((s) => s.role).join(',') === 'designer,builder,builder,builder,builder,owl,builder,builder,owl', 'B: the turn order', sent.map((s) => s.role));
@@ -206,8 +285,10 @@ try {
         check(actionsBefore > 0 && await page.evaluate(() => typeof window.DeSciX_Actions.dragTo === 'function'), 'B: window.DeSciX_Actions stays published for the shell');
         await page.click('#talk-new');
         const cleared = await talk(page);
-        check(cleared.length === 1 && cleared[0].who === 'Lab' && !cleared[0].video && await page.evaluate(() => document.querySelectorAll('#talk-lines video').length === 0),
-            'B: New conversation clears the strip and its inline clips', cleared);
+        const clearedDrawer = await drawer(page);
+        check(cleared.length === 1 && cleared[0].who === 'Lab' && !cleared[0].video && await page.evaluate(() => document.querySelectorAll('#talk-lines video, #imagination-lines video').length === 0) &&
+            clearedDrawer.turns.length === 0 && clearedDrawer.ticker === 'nothing yet',
+            'B: New conversation clears both panes and their inline clips', { cleared, drawer: clearedDrawer });
         await page.screenshot({ path: path.join(OUT, 'B4-new-conversation.png') });
         await ctx.close();
     }
@@ -221,10 +302,11 @@ try {
         await page.keyboard.press('KeyR');
         await page.waitForFunction(() => window.MaxiLab.recorder().recording, null, { timeout: 10000 });
         await say(page, FIXTURE.outline);
-        await page.waitForFunction(() => document.querySelector('#talk-lines .talk-refused'), null, { timeout: 15000 });
-        const c = await page.evaluate(() => ({ rows: Array.from(document.querySelectorAll('#talk-lines .talk-row p')).map((p) => p.textContent), bar: document.getElementById('error').textContent, sent: window.__replaySent.length, working: window.MaxiLab.loop().running }));
-        check(c.sent === 0 && !c.working && c.rows.length === 1 && /^Maxi did not start on ".+": Record is on \(a segment is rolling\) — press Stop \(R\) first/.test(c.rows[0]) && c.bar === c.rows[0],
-            'C: with Record on, the loop refuses to start naming Record; nothing is asked', c);
+        await page.waitForFunction(() => document.querySelector('#talk-lines .talk-lab a.talk-to-drawer'), null, { timeout: 15000 });
+        const c = await notStarted(page, 'C0-record-on-not-started-conversation.png');
+        check(c.sent === 0 && !c.working && c.rows.length === 1 && c.rows[0].text === 'Maxi did not start — why ↗' && c.rows[0].who === 'Lab' && c.rows[0].cls === 'talk-row talk-lab' && c.rows[0].color !== c.errColor &&
+            /^Maxi did not start on ".+": Record is on \(a segment is rolling\) — press Stop \(R\) first/.test(c.bar) && c.drawer.length === 1 && c.bar === c.drawer[0] && c.via.open && c.via.id === 'imagination-turn-0',
+            'C: with Record on, the loop refuses to start naming Record (in full in the error bar and the drawer; the conversation\'s plain Lab fact "Maxi did not start — why ↗" opens it); nothing is asked', c);
         check(await page.evaluate(() => document.getElementById('imagine-text').value) === FIXTURE.outline, 'C: the refused outline stays in the Imagine box');
         await page.screenshot({ path: path.join(OUT, 'C-record-on-refused.png') });
         await ctx.close();
@@ -239,9 +321,11 @@ try {
         await page.keyboard.press('KeyH');
         await page.waitForFunction(() => window.MaxiLab.hand() && window.MaxiLab.hand().enabled, null, { timeout: 10000 });
         await say(page, FIXTURE.outline);
-        await page.waitForFunction(() => document.querySelector('#talk-lines .talk-refused'), null, { timeout: 15000 });
-        const d = await page.evaluate(() => ({ rows: Array.from(document.querySelectorAll('#talk-lines .talk-row p')).map((p) => p.textContent), bar: document.getElementById('error').textContent, sent: window.__replaySent.length, working: window.MaxiLab.loop().running, box: document.getElementById('imagine-text').value }));
-        check(d.sent === 0 && !d.working && d.rows.length === 1 && /^Maxi did not start on ".+": the Hand is on — put it down \(H or Esc\) first; a human drag must never land in the Builder's footage\.$/.test(d.rows[0]) && d.bar === d.rows[0] && d.box === FIXTURE.outline,
+        await page.waitForFunction(() => document.querySelector('#talk-lines .talk-lab a.talk-to-drawer'), null, { timeout: 15000 });
+        const d = await notStarted(page, 'D0-hand-on-not-started-conversation.png');
+        d.box = await page.evaluate(() => document.getElementById('imagine-text').value);
+        check(d.sent === 0 && !d.working && d.rows.length === 1 && d.rows[0].text === 'Maxi did not start — why ↗' && d.rows[0].cls === 'talk-row talk-lab' &&
+            /^Maxi did not start on ".+": the Hand is on — put it down \(H or Esc\) first; a human drag must never land in the Builder's footage\.$/.test(d.bar) && d.drawer.length === 1 && d.bar === d.drawer[0] && d.via.open && d.box === FIXTURE.outline,
             'D: with the Hand on, the loop refuses to start naming the Hand; nothing is asked; the outline stays in the box', d);
         await page.screenshot({ path: path.join(OUT, 'D-hand-on-refused.png') });
         await ctx.close();
@@ -276,7 +360,7 @@ try {
         await pick('dse-tunnel-rebuild#2d', 'dse-tunnel-rebuild');
         check((await st()).mode === '2d' && /now loaded: Double Slit .*\(dse-tunnel-rebuild · 2d, 2D\)/.test(await lastRow()), 'E: and to the 2D double slit', await lastRow());
         await say(page, FIXTURE_3D.outline);
-        await page.waitForFunction(() => document.querySelector('#talk-lines .talk-builder') !== null, null, { timeout: 30000 });
+        await page.waitForFunction(() => document.querySelector('#imagination-lines .talk-builder') !== null, null, { timeout: 30000 });
         // while Maxi works: the picker and the shell's Run are refused by name
         const during0 = await st();
         await page.selectOption('#scene-picker', 'r7-3d');
@@ -363,14 +447,67 @@ try {
             records: window.MaxiLab.records(), last: window.MaxiLab.loop().last, status: document.getElementById('status').textContent,
             box: { disabled: document.getElementById('imagine-text').disabled, value: document.getElementById('imagine-text').value }, sent: window.__replaySent.map((s) => s.role) }));
         const answer = rows.filter((r) => /talk-maxi/.test(r.cls) && !/talk-pending/.test(r.cls));
-        check(rows.length === 2 && rows[0].text === FIXTURE_Q.outline && answer.length === 1 && /^From my card memory dse-tunnel-rebuild-card\.md: /.test(answer[0].text) && /\nFrom my memories: dse-tunnel-rebuild-card\.md$/.test(answer[0].text) && !answer[0].video,
-            'F: a question shows the message and Maxi\'s answer row, its memory files named ("From my memories:")', rows.map((r) => r.who + ': ' + r.text));
+        check(rows.length === 2 && rows[0].text === FIXTURE_Q.outline && answer.length === 1 && /^Feynman called it impossible to explain in any classical way, [^\n]*not something I proved\. ↗$/.test(answer[0].text) && !answer[0].video,
+            'F: a question shows the message and Maxi\'s words alone (his row ends with its link to the drawer)', rows.map((r) => r.who + ': ' + r.text));
+        conversationScan('F', rows);
         check(f.bar === null && !f.card && f.records === null && f.last === null, 'F: no error bar, no demonstration card, no Records, loop().last untouched', f);
         check(JSON.stringify(f.sent) === '["designer"]', 'F: only the Designer was asked (no Builder, no Owl)', f.sent);
         check(!/Maxi is working/.test(f.status) && !f.box.disabled && f.box.value === '', 'F: the status no longer says Maxi is working; the Imagine box is given back, empty', { status: f.status, box: f.box });
         const after = await parts();
         check(JSON.stringify(after) === JSON.stringify(before), 'F: the stage is untouched: every part where it was', { before, after });
+        const dF = await drawer(page);
+        check(!rows.some((r) => /talk-thinking/.test(r.cls)), 'F: a question is a conversation turn: no Thinking line', rows.map((r) => r.cls));
+        check(dF.turns.length === 1 && dF.turns[0].id === 'imagination-turn-1' && dF.turns[0].head === FIXTURE_Q.outline &&
+            JSON.stringify(dF.turns[0].blocks.map((b) => [b.who, b.rows])) === JSON.stringify([['Designing', ['From my memories: dse-tunnel-rebuild-card.md']]]),
+            'F: the question\'s own drawer group (turn 1, headed by the question) holds the memory files under Designing', dF);
+        const link = await page.evaluate(() => { const a = document.querySelector('#talk-lines .talk-maxi a.talk-to-drawer'); return a ? a.getAttribute('href') : null; });
+        check(link === '#imagination-turn-1', 'F: Maxi\'s row links to the question\'s group', link);
+        check(dF.ticker === 'Designing · From my memories', 'F: the collapsed ticker reads the label and the lead, never the file name', dF.ticker);
+        await page.click('#talk-lines .talk-maxi a.talk-to-drawer');
+        await page.waitForTimeout(400);
+        const dF2 = await drawer(page);
+        check(dF2.open, 'F: his row\'s link opens the drawer at the question\'s group', { open: dF2.open });
+        await page.screenshot({ path: path.join(OUT, 'F2-question-drawer-open.png') });
         check(pageErrors.length === 0, 'F: no page errors', pageErrors);
+        await ctx.close();
+    }
+    // ── G. the two panes at a phone's width ──────────────────────────────────────────────────
+    {
+        const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+        await ctx.addInitScript((key) => { window.localStorage.setItem(key, '1'); }, INTRO_SEEN_KEY);
+        await ctx.addInitScript({ content: '(' + installReplayDoor.toString() + ')(window, ' + JSON.stringify(FIXTURE) + ', ' + JSON.stringify(PREFACES) + ', 700);' });
+        const page = await ctx.newPage();
+        const pageErrors = [];
+        page.on('pageerror', (e) => pageErrors.push(e.message));
+        await boot(page);
+        const geo = () => page.evaluate(() => {
+            const r = (el) => { const b = el.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right), h: Math.round(b.height) }; };
+            const head = Array.from(document.querySelectorAll('header button:not([hidden]), header select')).filter((e) => getComputedStyle(e).display !== 'none');
+            const hits = head.map((e) => { const b = e.getBoundingClientRect(); const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return { id: e.id, ok: !!hit && (hit === e || e.contains(hit)) }; });
+            return { header: r(document.querySelector('header')), bar: r(document.getElementById('imagination')), lines: document.getElementById('imagination-lines').hidden ? null : r(document.getElementById('imagination-lines')),
+                stage: r(document.getElementById('stage')), talk: r(document.getElementById('talk')), hits, vw: innerWidth, vh: innerHeight };
+        });
+        const g0 = await geo();
+        check(g0.bar.top >= g0.stage.bottom - 1 && g0.bar.bottom <= g0.talk.top + 1 && g0.bar.h <= 32 && g0.bar.top > g0.header.bottom && g0.hits.every((h) => h.ok),
+            'G: at 390 px the ticker sits under the stage, above the conversation, and covers none of the toolbar', g0);
+        await say(page, FIXTURE.outline);
+        await page.waitForFunction(() => window.MaxiLab.loop() && window.MaxiLab.loop().last, null, { timeout: 300000 });
+        await page.waitForTimeout(1500);
+        await paneChecks(page, 'G', 2);
+        conversationScan('G', await talk(page));
+        await page.screenshot({ path: path.join(OUT, 'G1-phone-conversation.png') });
+        await page.tap('#imagination-toggle');
+        await page.waitForTimeout(300);
+        const g1 = await geo();
+        check(!!g1.lines && g1.lines.top >= g1.header.bottom && g1.lines.bottom <= g1.bar.top + 1 && g1.hits.every((h) => h.ok) && g1.lines.h > 100,
+            'G: open at 390 px, the drawer lies over the stage and still covers none of the toolbar', g1);
+        await page.screenshot({ path: path.join(OUT, 'G2-phone-drawer-open.png') });
+        await page.tap('#imagination-toggle');
+        await page.tap('#talk-lines .talk-thinking a.talk-to-drawer');
+        await page.waitForTimeout(300);
+        const g2 = await drawer(page);
+        check(g2.open && g2.turns[0].id === 'imagination-turn-1', 'G: the Thinking line\'s link opens the drawer at its turn on a tap', { open: g2.open });
+        check(pageErrors.length === 0, 'G: no page errors', pageErrors);
         await ctx.close();
     }
 } finally {

@@ -415,7 +415,7 @@ async function reloadHarness(over) {
         walkthroughById: (id) => ({ id, title: 'Circuit SAT' }), WALKTHROUGH: [], projectOf: async () => ({ renderState: {} }), walkthroughModes: () => [], scenePath: () => 'scenes/circuit-sat.js',
         el: { demo: { hidden: true }, demoClip: { play: () => Promise.resolve() } }, mountScene: async (spec) => { mounted.push(spec); },
         HANDS: { inventory: { run: async () => ({ parts: (over && over.parts) || AFTER }) } }, lab: {}, paintCard: (c, d) => painted.push(d), demoCard: {},
-        showError: () => {}, clearError: () => {}, memoriesSay: () => {}, talkLine: () => {}, summary: () => ({}), memoriesFailed: (err) => { throw err; }
+        showError: () => {}, clearError: () => {}, memoriesSay: () => {}, labFact: () => {}, summary: () => ({}), memoriesFailed: (err) => { throw err; }
     }, (over && over.deps) || {});
     if (over && over.recorder) { Object.assign(deps.state.recorder, over.recorder); }
     return { deps, mounted, painted };
@@ -453,7 +453,7 @@ test('the card\'s × removes the memory its completion kept, and only after that
         const removed = [];
         const deps = {
             state: { recorder: { last: () => recs, dismiss: () => ({ discarded }) }, completed: keeping, memories: { remove: async (k) => { removed.push(k); return { removed: k }; } } },
-            el: { demo: { hidden: false } }, clearError: () => {}, renderStatus: () => {}, talkLine: () => {}, showError: () => {},
+            el: { demo: { hidden: false } }, clearError: () => {}, renderStatus: () => {}, labFact: () => {}, showError: () => {},
             memoryKey: memory.memoryKey, renderMemories: async () => [], memoriesFailed: (err) => { throw err; }
         };
         return { deps, removed };
@@ -476,4 +476,97 @@ test('the card\'s × removes the memory its completion kept, and only after that
     const wired = (src) => /attachRecorder\(\{[\s\S]*?onComplete: keepCompleted,[\s\S]*?\}\);/.test(src) && /function keepCompleted\(records\) \{\n {4}state\.completed = keepRecords\(records\);/.test(src);
     assert.ok(wired(LAB_SRC), 'the lab keeps a demonstration when it completes');
     assert.ok(!wired(LAB_SRC.replace('        onComplete: keepCompleted,\n', '')), 'planted: no keep on completion (RED)');
+});
+
+// ── 8. Download this Record: the memory handed to the visitor as ONE file, read back through THE gate ─────────────
+test('Download this Record: the kept memory, read through load(), is ONE file whose shape is the Record folder; read back, every Record passes recordFolderFaults byte for byte (negative controls: a lossy writer, a dropped file, an edited tick range, a foreign file are each red)', async () => {
+    const { m } = store();
+    const kept = await m.save(chain());
+    const loaded = await m.load(kept.key);
+    const b = memory.memoryBundle(loaded);
+    assert.equal(b.name, 'circuit-sat_10-505.record.json', 'named by its key, "@" made "_"');
+    assert.equal(b.mime, 'application/json');
+    const parsed = JSON.parse(b.text);
+    assert.deepEqual(Object.keys(parsed), memory.BUNDLE_KEYS);
+    assert.equal(parsed.format, memory.BUNDLE_FORMAT);
+    assert.deepEqual(Object.keys(parsed.records), loaded.records.map((r) => r.name), 'one entry per Record folder, in chain order');
+    assert.deepEqual(Object.keys(parsed.records['record-01']).sort(), Object.keys(loaded.records[0].files).sort(), 'exactly the folder\'s files');
+    assert.ok(Object.keys(parsed.records['record-01']).some((f) => /^project\//.test(f)), 'the sketch is in the folder');
+    assert.equal(typeof parsed.records['record-01']['clip-01.mp4'].base64, 'string', 'a clip travels as base64');
+    // read back: the gate, and every file byte for byte
+    const back = memory.recordsOfBundle(b.text);
+    assert.deepEqual(back.faults, []);
+    assert.equal(back.key, kept.key);
+    back.records.forEach((r, i) => {
+        assert.deepEqual(recordFolderFaults(r.files), [], r.name + ' passes the Record owner\'s gate');
+        const want = loaded.records[i].files;
+        for (const f of Object.keys(want)) {
+            if (typeof want[f] === 'string') { assert.equal(r.files[f], want[f], f); }
+            else { assert.ok(r.files[f] instanceof Uint8Array && Buffer.from(r.files[f]).equals(Buffer.from(want[f])), f + ' byte for byte'); }
+        }
+    });
+    // negative controls
+    const edit = (fn) => { const o = JSON.parse(b.text); fn(o); return JSON.stringify(o); };
+    const dropped = memory.recordsOfBundle(edit((o) => { delete o.records['record-01']['parts.after.json']; }));
+    assert.match(dropped.faults.join('\n'), /record-01: .*parts\.after\.json/, 'a dropped file is named by the gate');
+    const shifted = memory.recordsOfBundle(edit((o) => { const r = JSON.parse(o.records['record-01']['record.json'].text); r.tickRange = [11, 505]; o.records['record-01']['record.json'].text = JSON.stringify(r); }));
+    assert.ok(shifted.faults.length, 'an edited tick range is red: ' + JSON.stringify(shifted.faults));
+    assert.throws(() => memory.recordsOfBundle('{"not": "a bundle"}'), /a Record download is \{format, key, savedAt, records\} with format egpt-godsworld\/record-folder@1/);
+    assert.throws(() => memory.recordsOfBundle('PK\u0003\u0004'), /a Record download is JSON/);
+    assert.throws(() => memory.recordsOfBundle(edit((o) => { o.records['record-01']['clip-01.mp4'] = { bytes: [1, 2] }; })), /the download's record-01's clip-01\.mp4 is neither text nor bytes/);
+    // a planted owner whose writer loses the clips' bytes (a typed array through JSON): the read-back refuses it by name
+    const p = await plantedOwner(plant(read(OWNER), 'records[r.name] = filesAcross(r.files);', 'records[r.name] = JSON.parse(JSON.stringify(r.files));'));
+    try {
+        assert.throws(() => p.m.recordsOfBundle(p.m.memoryBundle(loaded).text), /clip-01\.mp4 is neither text nor bytes/, 'negative control: the lossy writer is red');
+    } finally { p.dispose(); }
+    assert.throws(() => memory.memoryBundle({ key: 'x', records: [] }), /a download is a memory as load\(\) reads it back/);
+});
+
+test('the Download button names the newest COMPLETE memory of the scene on the stage (the page\'s own downloadableOf; negative control: the scene match removed is red)', () => {
+    const list = [
+        { key: 'cl1a-mirror@1-300', faults: [], scene: { id: 'cl1a-mirror', mode: null, label: '1A · Mirror' } },
+        { key: 'dse-tunnel-rebuild#3d@5-400', faults: ['record-01: broken'], scene: { id: 'dse-tunnel-rebuild', mode: '3d', label: 'Double Slit' } },
+        { key: 'dse-tunnel-rebuild#3d@1-300', faults: [], scene: { id: 'dse-tunnel-rebuild', mode: '3d', label: 'Double Slit' } },
+        { key: 'dse-tunnel-rebuild#2d@1-300', faults: [], scene: { id: 'dse-tunnel-rebuild', mode: '2d', label: 'Double Slit' } },
+        { key: 'sketch@1-200', faults: [], scene: { id: null, mode: null, label: 'my sketch' } }
+    ];
+    const pick = (src) => pageFn(src, 'downloadableOf', {});
+    const of = pick(LAB_SRC);
+    assert.equal(of(list, { id: 'dse-tunnel-rebuild', mode: '3d' }), 'dse-tunnel-rebuild#3d@1-300', 'the newest complete one of that scene and mode (a corrupt one passed over)');
+    assert.equal(of(list, { id: 'dse-tunnel-rebuild', mode: '2d' }), 'dse-tunnel-rebuild#2d@1-300');
+    assert.equal(of(list, { id: 'cl1a-mirror-3d', mode: null }), null, 'none kept for this scene: the button stays disabled');
+    assert.equal(of(list, { id: null, mode: null, label: 'my sketch' }), 'sketch@1-200');
+    assert.equal(of(list, { id: null, mode: null, label: 'another sketch' }), null, 'a sketch Maxi wrote is matched by its label');
+    assert.equal(of(list, null), null, 'no scene on the stage');
+    const planted = plant(LAB_SRC, "return !x.faults.length && x.scene && (x.scene.id || null) === (sc.id || null) && (x.scene.mode || null) === (sc.mode || null) && (sc.id || x.scene.label === sc.label);", 'return !x.faults.length;');
+    assert.equal(pick(planted)(list, { id: 'cl1a-mirror-3d', mode: null }), 'cl1a-mirror@1-300', 'negative control: without the scene match another scene\'s Record is offered');
+    const noFaults = plant(LAB_SRC, 'return !x.faults.length && x.scene && ', 'return x.scene && ');
+    assert.equal(pick(noFaults)(list, { id: 'dse-tunnel-rebuild', mode: '3d' }), 'dse-tunnel-rebuild#3d@5-400', 'negative control: without the faults arm the newer corrupt memory is offered');
+    // the page downloads through the store's load (its gate) and the owner's memoryBundle, never a second reader
+    const fn = LAB_SRC.slice(LAB_SRC.indexOf('\nasync function downloadRecord('), LAB_SRC.indexOf('\n}\n', LAB_SRC.indexOf('\nasync function downloadRecord(')));
+    assert.match(fn, /memoryBundle\(await state\.memories\.load\(key\)\)/);
+});
+
+/** The one honest line under the Download button (DEVPLANE 2026-10-23: the shell's CodeSite sandbox lacks allow-downloads until the next app-sdk publish). */
+export const DOWNLOAD_NOTE = 'Inside the DeSciX shell the file may not arrive yet; opened standalone, the lab downloads it.';
+
+/** The faults of app.html's Download block and the page's status words: the note present beside the button, no arrival claimed. */
+function downloadNoteFaults(html, lab) {
+    const bad = [];
+    const block = (html.match(/<div id="memories-doors">([\s\S]*?)<\/div>/) || [])[1];
+    if (!block) { return ['app.html has no #memories-doors block']; }
+    if (!/<button id="memories-download"/.test(block)) { bad.push('the Download button is not in its block'); }
+    const note = (block.match(/<p id="memories-download-note">([^<]*)<\/p>/) || [])[1];
+    if (note !== DOWNLOAD_NOTE) { bad.push('the note under the button reads ' + JSON.stringify(note) + ', not ' + JSON.stringify(DOWNLOAD_NOTE)); }
+    const fn = lab.slice(lab.indexOf('\nasync function downloadRecord('), lab.indexOf('\n}\n', lab.indexOf('\nasync function downloadRecord(')));
+    if (/memoriesSay\('(Downloaded|Saved|Handed)|arrived|has been downloaded/i.test(fn)) { bad.push('downloadRecord claims the file arrived'); }
+    return bad;
+}
+
+test('the Download block says the one honest line under the button and the page never claims arrival (negative controls: the note removed, reworded, or a "Downloaded" status are each red)', () => {
+    const html = read('site/app.html');
+    assert.deepEqual(downloadNoteFaults(html, LAB_SRC), []);
+    assert.match(downloadNoteFaults(html.replace(/\n\s*<p id="memories-download-note">[^<]*<\/p>/, ''), LAB_SRC).join(), /the note under the button reads undefined/);
+    assert.match(downloadNoteFaults(html.replace(DOWNLOAD_NOTE, 'Your Record downloads here.'), LAB_SRC).join(), /the note under the button reads "Your Record downloads here\."/);
+    assert.match(downloadNoteFaults(html, plant(LAB_SRC, "memoriesSay('Asked your browser to download '", "memoriesSay('Downloaded '")).join(), /claims the file arrived/);
 });
