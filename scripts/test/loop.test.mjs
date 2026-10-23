@@ -34,7 +34,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -42,6 +41,7 @@ import { runLoop, parseArgs, sampleFrames, handBackState, USAGE, ARG_DEFAULTS, g
 import { parseLooked, ANSWER_SUFFIX } from '../gen-memories-seen.mjs';
 import { LOOP_LIMITS } from '../../site/app-assets/maxi-loop.js';
 import { distUrl } from '../frqtl-web-pin.mjs';
+import { testTmpDir } from './tmpdir.mjs';
 
 /** The package's one writer of a Record folder, for the fake body's world Record (what rec.stop() runs in the page). */
 const RECORD_FORMAT_URL = distUrl('shim/project/record-format.js');
@@ -61,7 +61,7 @@ const REVISE = fence('json:verdict', '{"seen":{"contact":"mirror, middle third",
 
 /** A fake checkout: a fake hand.mjs that answers from a script and logs every call. */
 function fakeRoot(script) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mm-loop-'));
+    const root = testTmpDir('mm-loop');
     fs.mkdirSync(path.join(root, 'kb', 'GodsWorld', 'memories'), { recursive: true });
     fs.mkdirSync(path.join(root, 'site', 'memories'), { recursive: true });
     const clipDir = path.join(root, 'out', 'clips', 'c1');
@@ -403,7 +403,7 @@ test('the usage text and the defaults come from the loop\'s LOOP_LIMITS (negativ
 
 test('publish or draft is the generator\'s call: on a chain whose first Record is incomplete and whose hand-back is complete, the loop publishes', () => {
     const fixture = new URL('./fixtures/record-mmp41d/record', import.meta.url).pathname;
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mm-loop-mode-'));
+    const root = testTmpDir('mm-loop-mode');
     const dir = path.join(root, 'out', 'mmp41d', 'record');
     fs.cpSync(fixture, dir, { recursive: true });
     assert.equal(fs.existsSync(path.join(dir, 'record-01', 'clip-01.mp4')), false, 'the fixture\'s record-01 is incomplete (its clip not kept)');
@@ -461,7 +461,7 @@ test('a MiniMaxi trial takes an answer whose words name none of its listed memor
     assert.ok(src.includes(anchor), 'the plant needs the report line');
     const planted = src.replace(anchor, anchor + " if (e.memories.some((f) => e.words.indexOf(f) === -1)) { throw new Error('[designer → answer]: the answer\\'s words never name ' + e.memories.join(', ')); }")
         .replace(/from '\.\.\//g, "from '" + new URL('../../', import.meta.url).href).replace(/from '\.\//g, "from '" + new URL('../../minimaxi/', import.meta.url).href);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loop-planted-'));   // the copy never sits in the tree
+    const dir = testTmpDir('loop-planted');   // the copy never sits in the tree
     const copy = path.join(dir, 'loop.mjs');
     fs.writeFileSync(copy, planted);
     try {

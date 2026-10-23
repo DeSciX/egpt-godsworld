@@ -36,7 +36,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
@@ -48,6 +47,7 @@ import {
 import { VERDICTS, SEEN_ACCOUNT, ROLE_ORDER, ROLES } from '../../site/app-assets/maxi-roles.js';
 import { signInRefusal, SIGN_IN_NOTICE, SIGN_IN_MARK } from '../../site/app-assets/maxi-auth.js';
 import { EVENTS, SEEN, CLIP, REFUSAL } from './loop-events.mjs';
+import { testTmpDir } from './tmpdir.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (f) => fs.readFileSync(path.join(REPO, f), 'utf8');
@@ -140,7 +140,7 @@ async function plantedTalk(edit) {
     const src = read('site/app-assets/maxi-talk.js');
     const planted = edit(src);
     assert.notEqual(planted, src, 'the plant must change maxi-talk.js');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'talk-plant-'));
+    const dir = testTmpDir('talk-plant');
     const assets = pathToFileURL(path.join(REPO, 'site', 'app-assets') + path.sep).href;
     const file = path.join(dir, 'maxi-talk.js');
     fs.writeFileSync(file, planted.replace(/from '\.\/(maxi-[\w-]+\.js)'/g, (m, f) => "from '" + assets + f + "'"));

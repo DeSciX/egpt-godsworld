@@ -20,13 +20,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { DESCIX_APP_SDK } from '../../minimaxi/ask-door.mjs';
+import { testTmpDir } from './tmpdir.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SHARE_TEXT = fs.readFileSync(path.join(ROOT, 'site', 'share.json'), 'utf8');
@@ -44,7 +44,7 @@ function cachedTarball(pin) {
 
 /** The published `./share` module of the pinned app SDK, imported from its own tarball. */
 async function publishedShare(pin) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'app-sdk-share-'));
+    const dir = testTmpDir('app-sdk-share');
     try {
         fs.writeFileSync(path.join(dir, 'p.tgz'), cachedTarball(pin));
         execFileSync('tar', ['-xzf', path.join(dir, 'p.tgz'), '-C', dir, 'package/package.json', 'package/src/util']);

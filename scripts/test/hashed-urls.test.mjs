@@ -29,7 +29,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
@@ -38,6 +37,7 @@ import { createRequire } from 'node:module';
 import { REPO } from '../frqtl-web-pin.mjs';
 import { siteHandler } from '../serve-site.mjs';
 import { SITE_DIR, MODULE_DIR, PROJECT_DOOR, PAGES, renderProjectDoor, renderPage, strayModuleFaults, writePages, contentVersion, moduleRows } from '../gen-import-maps.mjs';
+import { testTmpDir } from './tmpdir.mjs';
 
 function playwright() {
     try { return createRequire(path.join(REPO, 'minimaxi', 'package.json'))('playwright'); }
@@ -46,7 +46,7 @@ function playwright() {
 
 /** A copy of site/ under a temp root: the pages and the modules copied (the gate rewrites them), everything else linked. */
 function siteCopy() {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hashed-urls-'));
+    const root = testTmpDir('hashed-urls');
     const site = path.join(root, 'site');
     fs.mkdirSync(site);
     for (const name of fs.readdirSync(SITE_DIR)) {
