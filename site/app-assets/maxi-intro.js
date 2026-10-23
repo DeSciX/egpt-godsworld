@@ -1,12 +1,12 @@
 /* Copyright 2023-2026 by Essam Abadir */
 
 /**
- * maxi-intro.js — the run-once walk-through over Maxi's Lab: what Maxi is (INTRO_TEXT), what each control
+ * maxi-intro.js — the run-once walk-through over Maxi's Lab: what Maxi is (INTRO_TEXT, then INTRO_CREDITS), what each control
  * on screen does (EXPLAINERS, one row per control id, each pointed at on screen), the MOVE and LOOK pads 3D scenes
  * show (PADS, drawn in the walk-through itself), and one button at the end
  * whose label and act buttonLabelFor() decides from the shell's bridge (Powch login, or enter).
  *
- * The ONE owner of: the intro text, the control explainers, the pads' explainers, the run-once rule (introDecision) and the
+ * The ONE owner of: the intro text and its credits, the control explainers, the pads' explainers, the run-once rule (introDecision) and the
  * entry button's rule. app.html loads it before maxi-lab.js; nothing here awaits at the top level, so
  * the lab keeps booting underneath while the overlay is open. scripts/test/intro.test.mjs gates it.
  *
@@ -18,10 +18,13 @@
 
 import { authStateOf, pageAuth } from './maxi-auth.js';
 
-/** The intro text: two paragraphs, spelling corrected only; scripts/test/intro.test.mjs pins it by sha256. */
+/** The intro text: two paragraphs (the credits are INTRO_CREDITS); scripts/test/intro.test.mjs pins it by sha256. */
 export const INTRO_TEXT = `Welcome to Godsworld, the training ground for Maxi. Maxi is a Cybernetic assistant but not artificial intelligence in the way large language models are. You might say that LLMs were built in the image of quants and coders where statistical sequences of words and symbolic equations are thought to be "intelligence." Maxi is built in the image of artists and real people - when you imagine yourself in the park flying a kite you don't sound out the words in your mind or work out the Navier-Stokes equations to adjust for the wind. You use your imagination first and then describe it in words later. That's what Maxi is learning to do in Godsworld - as you play with Maxi remember it is just barely a toddler.`
     + '\n\n'
-    + `Maxi is the realization of Essam Abadir's childhood dream to build a JARVIS like assistant that could build the things humans imagine. Maxi's purpose is to enable anyone to become a modern day DaVinci and enable a modern day renaissance just as in the 1400s when the masters benefitted not only from the apprentices in the workshop but an explosion of the technologies like linear perspective, perfection of oil paints, and the printing press. Maxi is named after Maxwell's demon because the impossible computations he does can only be explained by strict thermodynamic accounting and the robotic AI stack using the Designer, Builder, and Owl was directly "inspired" by my daughter Jolie Abadir's work at jolieabadir/workshop (it would have been considered stealing if it weren't my daughter). The conceptual lineage of Maxi and FRQTL goes back to the Macy conferences on Cybernetics in the late 1950s. At a high level LLMs can be considered the outgrowth of Shannon's "The Redundancy of English" and what became what we now call artificial intelligence. At the time the pushback against Shannon's approach is that the machine would clearly be able to speak the words but have no understanding of what the words meant. Maxi is not "AI" in the sense of LLMs although it does use LLMs to describe what it thinks. Maxi is a competing path which was called "Cybernetics" at the time and was premised on physical control systems championed by Norbert Wiener and spatial brain like computing architectures championed by John von Neumann, Stanislaw Ulam, and Gian-Carlo Rota in "The Computer and The Brain", "Science, Computers, and People", and "The Barrier of Meaning."`;
+    + `Maxi is the realization of Essam Abadir's childhood dream: a JARVIS-like assistant that builds the things humans imagine. Maxi's purpose is to let anyone become a modern-day DaVinci and to spark a modern-day renaissance, like the one in the 1400s, when the masters benefited not only from the apprentices in their workshops but from an explosion of technologies: linear perspective, the perfection of oil paints, and the printing press. Maxi is named after Maxwell's demon, because the impossible computations he does can only be explained by strict thermodynamic accounting. The conceptual lineage of Maxi and FRQTL goes back to the Macy conferences on Cybernetics in the late 1940s and early 1950s. At a high level, LLMs, and what we now call artificial intelligence, grew out of Shannon's "The Redundancy of English"; the pushback at the time was that such a machine would clearly be able to speak the words but would have no understanding of what they meant. Maxi is not "AI" in the sense of LLMs, although it does use LLMs to describe what it thinks. Maxi follows the competing path, called "Cybernetics" at the time, premised on physical control systems championed by Norbert Wiener and on spatial, brain-like computing architectures championed by John von Neumann, Stanislaw Ulam, and Gian-Carlo Rota in "The Computer and The Brain", "Science, Computers, and People", and "The Barrier of Meaning."`;
+
+/** The credits, painted after INTRO_TEXT, last, under their own heading; scripts/test/intro.test.mjs pins the text by sha256. */
+export const INTRO_CREDITS = Object.freeze({ title: 'Credits', text: `The robotic AI stack of the Designer, Builder, and Owl was directly "inspired" by my daughter Jolie Abadir's work at jolieabadir/workshop (it would have been considered stealing if it weren't my daughter).` });
 
 /**
  * One row per control on the lab's header and conversation, keyed by the element id in app.html.
@@ -152,6 +155,8 @@ export function installIntro(win) {
     const stepOne = make('section', { class: 'intro-step', 'data-step': '1' });
     stepOne.appendChild(make('h2', {}, 'What Maxi is'));
     for (const p of introParagraphs(INTRO_TEXT)) { stepOne.appendChild(make('p', { class: 'intro-text' }, p)); }
+    stepOne.appendChild(make('h3', { class: 'intro-credits-title' }, INTRO_CREDITS.title));
+    stepOne.appendChild(make('p', { class: 'intro-text intro-credits' }, INTRO_CREDITS.text));
     const next = make('button', { type: 'button', class: 'intro-next' }, 'Next: what you see');
     stepOne.appendChild(make('div', { class: 'intro-nav' })).appendChild(next);
 
