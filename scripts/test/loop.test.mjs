@@ -22,7 +22,13 @@
  *      Owl's looked line;
  *   6. the plan check (the generator's readRun, recordPlanFaults after the chain check): an act beyond the plan drafts the
  *      memory, its INCOMPLETE line and the run report naming the fault; nothing reaches kb/ or site/;
- *   7. a refused json:done is EMITTED (builder:done-refused, the refusal verbatim) and kept in the run report.
+ *   7. a refused json:done is EMITTED (builder:done-refused, the refusal verbatim) and kept in the run report;
+ *   8. THE CLOSING TURN (maxi-loop.js, driven here with an in-memory brain and body, no page module): after owl:approve the
+ *      Designer's own thread is asked (designer:asking) with the approved clip, then exactly {role:'maxi', kind:'told', round,
+ *      words, clip} is the last event and the result carries told {words}; an empty, planning or handed reply, or a throwing
+ *      ask, emits loop:stopped naming the closing turn and returns the approved result with told null (exactly one of told or
+ *      stopped follows the approve); a stop on revises has no closing turn; the run report
+ *      keeps report.told; a plan of looks only is a plan on a loaded stage and the Builder films it.
  */
 
 import { test } from 'node:test';
@@ -49,6 +55,8 @@ const B_DONE = 'The clip shows the beam leaving up and to the right.\n' + fence(
 const setTo = (patch) => 'PREDICTION: the mirror turns to 30 degrees\n' + fence('json:call:setDeclared', JSON.stringify({ name: 'mirror', patch: patch }));
 const B_SET = setTo({ orientationDeg: 30 });
 const APPROVE = 'A beam meets a tilted bar.\n' + fence('json:verdict', '{"seen":{"contact":"mirror, middle third","after":"up and to the left","passes":"no"},"verdict":"approve","reasons":["the mirror is tilted at 30 degrees"],"change":null}');
+/** Maxi's closing turn after an approve: words only, on the Designer's own thread (maxi-roles.js toldTurn / parseTold). */
+const TOLD = 'The beam now leaves the mirror up and to the right, as you asked; before, it went the other way. What I still do not understand is why the spread stays so tight.';
 const REVISE = fence('json:verdict', '{"seen":{"contact":"mirror, middle third","after":"up and to the left","passes":"no"},"verdict":"revise","reasons":["the mirror is at 45 degrees"],"change":"set the mirror to 30 degrees"}');
 
 /** A fake checkout: a fake hand.mjs that answers from a script and logs every call. */
@@ -133,7 +141,7 @@ const GEN_SEEN = new URL('../gen-memories-seen.mjs', import.meta.url).pathname;
 const genCli = (argv) => spawnSync(process.execPath, [GEN_SEEN].concat(argv), { encoding: 'utf8' });
 
 test('approve on the platform brain: three threads, the clip rides on the Builder\'s next turn and to a fresh Owl; no memory without a look', async () => {
-    const { root, env } = fakeRoot({ designer: [DESIGNER], builder: ['PREDICTION: the sketch text\n' + fence('json:call:sceneSource', '{"id":"cl1a-mirror"}'),
+    const { root, env } = fakeRoot({ designer: [DESIGNER, TOLD], builder: ['PREDICTION: the sketch text\n' + fence('json:call:sceneSource', '{"id":"cl1a-mirror"}'),
         'PREDICTION: the mirror moves\n' + fence('json:call:moveObject', '{"name":"mirror","rect":[300,80,20,240]}'),
         'PREDICTION: refused\n' + fence('json:call:dragTo', '{"name":"mirror","to":[9999,200]}'), 'The dragTo of "mirror" was refused: [9999, 200] is outside the world.\n' + B_SEE, B_DONE], owl: [APPROVE] });
     const rep = await runLoop(args(), env);
@@ -164,8 +172,11 @@ test('approve on the platform brain: three threads, the clip rides on the Builde
     assert.match(builderTexts, /REFUSED, verbatim:\ndragTo: \[FrqtlApp\.placeDeclaredAt\] the point is outside the world/);
     assert.deepEqual(Object.keys(rep.threads), ['mmtest-designer', 'mmtest-builder', 'mmtest-owl-r1']);
     const asks = calls(root).filter((c) => c.op === 'ask');
-    assert.deepEqual(asks.map((c) => c.args.knowledgebase_names), [['GodsWorld'], ['GodsWorld'], ['GodsWorld'], ['GodsWorld'], ['GodsWorld'], ['GodsWorld'], ['General']]);
-    assert.deepEqual(asks.map((c) => !!c.args.media), [false, false, false, false, false, true, true], 'the clip rides on the turn after see, and to the Owl');
+    assert.deepEqual(asks.map((c) => c.args.knowledgebase_names), [['GodsWorld'], ['GodsWorld'], ['GodsWorld'], ['GodsWorld'], ['GodsWorld'], ['GodsWorld'], ['General'], ['GodsWorld']]);
+    assert.deepEqual(asks.map((c) => !!c.args.media), [false, false, false, false, false, true, true, true], 'the clip rides on the turn after see, to the Owl, and to Maxi\'s closing turn');
+    assert.deepEqual(asks.map((c) => c.args.thread), ['mmtest-designer', 'mmtest-builder', 'mmtest-builder', 'mmtest-builder', 'mmtest-builder', 'mmtest-builder', 'mmtest-owl-r1', 'mmtest-designer'], 'the closing turn is asked on the Designer\'s own thread, after the Owl');
+    assert.match(asks[7].args.user_input, /^THE CLIP IS BACK: /, 'a closing turn, words only: no preface on a continuing thread');
+    assert.deepEqual(rep.told, { round: 1, words: TOLD, clip: 'out/clips/c1/clip.mp4' }, 'the run report keeps what Maxi told Tony, with the clip it is about');
     assert.ok(!/clip\.mp4|f\d\.png/.test(asks[5].args.user_input), 'the body\'s clip and still paths (FOOTAGE_KEYS) ride as media, never in the Builder\'s turn text');
     const owl = asks[6].args;
     assert.ok(!/orientationDeg|sceneSource|cl1a-mirror/.test(owl.user_input), 'the Owl sees nothing of the plan or the build');
@@ -207,13 +218,13 @@ test('approve on the platform brain: three threads, the clip rides on the Builde
     assert.ok(!fs.existsSync(path.join(root, 'kb', 'GodsWorld', 'memories', 'mm-cl1a-mirror-test-seen.md')) && !fs.existsSync(path.join(root, 'site', 'memories', 'mm-cl1a-mirror-test')), 'a draft never reaches kb/ or site/');
     assert.match(md, /Seen, the Builder's words on the hand-back clip \[clip memories\/mm-cl1a-mirror-test\/clip-01\.mp4\]: The clip shows the beam leaving up and to the right\./);
     assert.match(md, /The Owl's account \(from the pixels, before its verdict\): contact — mirror, middle third; after — up and to the left; passes — no\./);
-    assert.match(md, /Threads: designer iid-mmtest-designer-1 · builder iid-mmtest-builder-5 · owl iid-mmtest-owl-r1-1\./);
+    assert.match(md, /Threads: designer iid-mmtest-designer-2 · builder iid-mmtest-builder-5 · owl iid-mmtest-owl-r1-1\./);
     const usage = genCli([]).stderr;
     assert.ok(usage.includes('--looked-by <kind>:<role>') && usage.includes('looked: <human|local-owl|seat> <role> on <N> stills'), 'the usage quotes LOOKED_SHAPE, built from LOOKERS: ' + usage);
 });
 
 test('a malformed Builder answer stops the loop loudly', async () => {
-    const { env } = fakeRoot({ designer: [DESIGNER], builder: ['I would now look at it: {"see": {}}'], owl: [] });
+    const { env } = fakeRoot({ designer: [DESIGNER, TOLD], builder: ['I would now look at it: {"see": {}}'], owl: [] });
     await assert.rejects(runLoop(args(), env), /\[builder → hand-off\]: expected exactly ONE json:call:<hand> or json:done block, found 0/);
     const rep = JSON.parse(fs.readFileSync(path.join(env.out, 'runs', 'mmtest.json'), 'utf8'));
     assert.match(rep.outcome, /^STOPPED: /);
@@ -221,14 +232,14 @@ test('a malformed Builder answer stops the loop loudly', async () => {
 });
 
 test('json:done before any clip stops loudly; a refused hand goes back to the Builder verbatim', async () => {
-    const { root, env } = fakeRoot({ designer: [DESIGNER], builder: ['PREDICTION: boots\n' + fence('json:call:openSketch', '{"source":"bad"}'), B_DONE], owl: [] });
+    const { root, env } = fakeRoot({ designer: [DESIGNER, TOLD], builder: ['PREDICTION: boots\n' + fence('json:call:openSketch', '{"source":"bad"}'), B_DONE], owl: [] });
     await assert.rejects(runLoop(args(), env), /json:done before filming any clip/);
     const builderAsks = calls(root).filter((c) => c.op === 'ask' && /builder/.test(c.args.thread));
     assert.match(builderAsks[1].args.user_input, /REFUSED, verbatim:\nopenSketch: SyntaxError: Unexpected token/);
 });
 
 test('revise goes back to the Builder with the Owl\'s reasons; revise every round stops at max rounds', async () => {
-    const { root, env } = fakeRoot({ designer: [DESIGNER], builder: [B_SEE, B_DONE, B_SEE, B_DONE], owl: [REVISE, REVISE] });
+    const { root, env } = fakeRoot({ designer: [DESIGNER, TOLD], builder: [B_SEE, B_DONE, B_SEE, B_DONE], owl: [REVISE, REVISE] });
     await assert.rejects(runLoop(args(['--max-rounds', '2']), env), /sent it back 2 times \(max rounds\)/);
     const builderAsks = calls(root).filter((c) => c.op === 'ask' && /builder/.test(c.args.thread));
     assert.match(builderAsks[2].args.user_input, /THE OWL SENT IT BACK \(revise\)[\s\S]*the mirror is at 45 degrees[\s\S]*set the mirror to 30 degrees/);
@@ -238,7 +249,7 @@ test('revise goes back to the Builder with the Owl\'s reasons; revise every roun
 
 test('the Record is the approving ROUND: a revised round\'s changes are not in it, and its start state is re-read', async () => {
     const MOVE = 'PREDICTION: the mirror moves\n' + fence('json:call:moveObject', '{"name":"mirror","rect":[300,80,20,240]}');
-    const { root, env } = fakeRoot({ designer: [DESIGNER], builder: [MOVE, B_SEE, B_DONE, B_SEE, B_DONE], owl: [REVISE, APPROVE] });
+    const { root, env } = fakeRoot({ designer: [DESIGNER, TOLD], builder: [MOVE, B_SEE, B_DONE, B_SEE, B_DONE], owl: [REVISE, APPROVE] });
     const rep = await runLoop(args(), env);
     const record = JSON.parse(fs.readFileSync(path.join(root, rep.record.folder, 'record-01', 'record.json'), 'utf8'));
     assert.deepEqual(record, { tickRange: [301, 551], clips: ['clip-01.mp4'], changes: [] }, 'round 1\'s move and clip belong to the revised round, not to the Record (round 2 filmed ticks 301–551)');
@@ -249,7 +260,7 @@ test('json:done after a write the last clip does not show is refused BACK TO THE
     const MOVE = 'PREDICTION: the mirror moves\n' + fence('json:call:moveObject', '{"name":"mirror","rect":[300,80,20,240]}');
     const SAID = 'The clip shows the beam leaving up and to the right.\n';
     // the Builder can repair it: its next prompt is the refusal itself, and a clip after the move then hands back (negative control below: never filmed → the round's limit)
-    const { root, env } = fakeRoot({ designer: [DESIGNER], builder: [B_SEE, SAID + MOVE, fence('json:done', '{}'), 'PREDICTION: the moved mirror\n' + fence('json:call:see', '{}'), B_DONE], owl: [APPROVE] });
+    const { root, env } = fakeRoot({ designer: [DESIGNER, TOLD], builder: [B_SEE, SAID + MOVE, fence('json:done', '{}'), 'PREDICTION: the moved mirror\n' + fence('json:call:see', '{}'), B_DONE], owl: [APPROVE] });
     const rep = await runLoop(args(), env);
     assert.equal(rep.outcome, 'approved in round 1 by the platform Owl: no memory written until a human or the seat looks at the stills (' + rep.awaitingLook.command + ') (the Record does not state its plan: ' + rep.record.planFaults.join(' · ') + ')', 'a move the plan never names: a draft command');
     assert.match(rep.awaitingLook.command, / --draft$/);
@@ -264,7 +275,7 @@ test('json:done after a write the last clip does not show is refused BACK TO THE
     const record = JSON.parse(fs.readFileSync(path.join(root, rep.record.folder, 'record-01', 'record.json'), 'utf8'));
     assert.deepEqual([record.changes.map((c) => c.op), record.clips], [['move'], ['clip-01.mp4', 'clip-02.mp4']], 'the move lies inside the Record\'s footage');
     // a Builder that never films the change: every json:done is refused back, until the round's reply limit stops the loop; the Owl is never asked
-    const r2 = fakeRoot({ designer: [DESIGNER], builder: [B_SEE, SAID + MOVE, fence('json:done', '{}'), 'Done.\n' + fence('json:done', '{}')], owl: [APPROVE] });
+    const r2 = fakeRoot({ designer: [DESIGNER, TOLD], builder: [B_SEE, SAID + MOVE, fence('json:done', '{}'), 'Done.\n' + fence('json:done', '{}')], owl: [APPROVE] });
     await assert.rejects(runLoop(args(['--max-steps', '4']), r2.env), /did not hand back \(json:done\) within 4 replies in round 1/);
     assert.equal(calls(r2.root).filter((c) => c.op === 'ask' && /owl/.test(c.args.thread)).length, 0, 'the Owl is never asked');
     fs.mkdirSync(path.join(env.out, 'mmtest', 'record'), { recursive: true });
@@ -273,7 +284,7 @@ test('json:done after a write the last clip does not show is refused BACK TO THE
 
 test('the Record lists EVERY clip the approving round filmed, in order, the hand-back last; lab.json names it', async () => {
     const SAID = 'The clip shows the beam leaving up and to the right.\n';
-    const { root, env } = fakeRoot({ designer: [DESIGNER], builder: [B_SET, B_SEE, SAID + 'PREDICTION: again\n' + fence('json:call:see', '{}'), B_DONE], owl: [APPROVE] });
+    const { root, env } = fakeRoot({ designer: [DESIGNER, TOLD], builder: [B_SET, B_SEE, SAID + 'PREDICTION: again\n' + fence('json:call:see', '{}'), B_DONE], owl: [APPROVE] });
     const rep = await runLoop(args(), env);
     const folder = path.join(root, rep.record.folder, 'record-01');
     const record = JSON.parse(fs.readFileSync(path.join(folder, 'record.json'), 'utf8'));
@@ -287,7 +298,7 @@ test('the Record lists EVERY clip the approving round filmed, in order, the hand
 test('a Record spans ONE world: see; openSketch; see is TWO Records, chained in lab.json, the hand-back the second\'s clip', async () => {
     const SAID = 'The clip shows the beam leaving up and to the right.\n';
     const OPEN = SAID + 'PREDICTION: the turned mirror boots\n' + fence('json:call:openSketch', JSON.stringify({ source: 'export default function buildExperiment(exp) { /* 30 */ }\n' }));
-    const { root, env } = fakeRoot({ designer: [DESIGNER], builder: [B_SEE, OPEN, 'PREDICTION: the turned mirror\n' + fence('json:call:see', '{}'), B_DONE], owl: [APPROVE] });
+    const { root, env } = fakeRoot({ designer: [DESIGNER, TOLD], builder: [B_SEE, OPEN, 'PREDICTION: the turned mirror\n' + fence('json:call:see', '{}'), B_DONE], owl: [APPROVE] });
     const rep = await runLoop(args(), env);
     assert.deepEqual([rep.record.records.map((r) => r.name), rep.record.handBack], [['record-01', 'record-02'], { record: 'record-02', clip: 'clip-01.mp4' }]);
     const read = (n, f) => JSON.parse(fs.readFileSync(path.join(root, rep.record.folder, n, f), 'utf8'));
@@ -297,7 +308,7 @@ test('a Record spans ONE world: see; openSketch; see is TWO Records, chained in 
     assert.equal(read('record-02', 'lab.json').outline, 'a laser hitting a mirror at 30 degrees', 'the round\'s own fields ride in the hand-back Record');
     assert.equal(calls(root).filter((c) => c.op === 'inventory').length, 4, 'the stage, the world as openSketch finds it, the new world, the close after the approve');
     // json:done right after a re-authoring, with no clip of the new world, is refused back to the Builder before the Owl is asked
-    const r2 = fakeRoot({ designer: [DESIGNER], builder: [B_SEE, OPEN, 'The sketch booted.\n' + fence('json:done', '{}')], owl: [APPROVE] });
+    const r2 = fakeRoot({ designer: [DESIGNER, TOLD], builder: [B_SEE, OPEN, 'The sketch booted.\n' + fence('json:done', '{}')], owl: [APPROVE] });
     await assert.rejects(runLoop(args(['--max-steps', '3']), r2.env), /within 3 replies/);
     const told = calls(r2.root).filter((c) => c.op === 'ask' && /builder/.test(c.args.thread)).map((c) => c.args.user_input);
     assert.equal(told.length, 3);
@@ -307,25 +318,25 @@ test('a Record spans ONE world: see; openSketch; see is TWO Records, chained in 
 test('a Builder that answers a refusal with no words stops loudly; one that names the refused part goes on (negative control)', async () => {
     const DRAG = 'PREDICTION: the mirror slides\n' + fence('json:call:dragTo', '{"name":"mirror","to":[9999,200]}');
     // the silent retry: only a PREDICTION line before the same hand again
-    const { root, env } = fakeRoot({ designer: [DESIGNER], builder: [DRAG, DRAG], owl: [APPROVE] });
+    const { root, env } = fakeRoot({ designer: [DESIGNER, TOLD], builder: [DRAG, DRAG], owl: [APPROVE] });
     await assert.rejects(runLoop(args(), env), /the Builder answered the refusal of its dragTo with no words before its next block — it must say which part and key were refused and why, never retry silently/);
     assert.equal(calls(root).filter((c) => c.op === 'dragTo').length, 1, 'the silent retry never ran');
     const told = calls(root).filter((c) => c.op === 'ask' && /builder/.test(c.args.thread))[1].args.user_input;
     assert.ok(told.includes('REFUSED, verbatim:\ndragTo: [FrqtlApp.placeDeclaredAt] the point is outside the world\nBefore your next block, say in words which part and which key it refused'), told);
     assert.doesNotMatch(told, /Nothing moved/);
     // negative control: the same reply with words naming the refusal goes on to film and hand back
-    const ok = fakeRoot({ designer: [DESIGNER], builder: [DRAG, 'The dragTo of "mirror" was refused: the point [9999, 200] is outside the world.\n' + B_SEE, B_DONE], owl: [APPROVE] });
+    const ok = fakeRoot({ designer: [DESIGNER, TOLD], builder: [DRAG, 'The dragTo of "mirror" was refused: the point [9999, 200] is outside the world.\n' + B_SEE, B_DONE], owl: [APPROVE] });
     const rep = await runLoop(args(), ok.env);
     assert.match(rep.outcome, /^approved in round 1/);
 });
 
 test('a Builder that hands back without describing its clip stops loudly', async () => {
-    const { env } = fakeRoot({ designer: [DESIGNER], builder: [B_SEE, fence('json:done', '{}')], owl: [APPROVE] });
+    const { env } = fakeRoot({ designer: [DESIGNER, TOLD], builder: [B_SEE, fence('json:done', '{}')], owl: [APPROVE] });
     await assert.rejects(runLoop(args(), env), /did not say what its clip shows/);
 });
 
 test('a revise needs a new clip: done right after a revise stops', async () => {
-    const { env } = fakeRoot({ designer: [DESIGNER], builder: [B_SEE, B_DONE, B_DONE], owl: [REVISE] });
+    const { env } = fakeRoot({ designer: [DESIGNER, TOLD], builder: [B_SEE, B_DONE, B_DONE], owl: [REVISE] });
     await assert.rejects(runLoop(args(), env), /json:done before filming any clip/);
 });
 
@@ -343,7 +354,7 @@ const t=setInterval(()=>{for(const k of Object.keys(ans)){const f=path.join(dir,
 const published = (root) => fs.readdirSync(path.join(root, 'kb', 'GodsWorld', 'memories')).concat(fs.readdirSync(path.join(root, 'site', 'memories')));
 
 test('local brain: turn files carry the sampled frames; answers are read from the answer files', async () => {
-    const { env, dir, rep } = await localRun('mmlocal', { '01-designer': DESIGNER, '02-builder': B_SET, '03-builder': B_SEE, '04-builder': B_DONE, '05-owl': APPROVE });
+    const { env, dir, rep } = await localRun('mmlocal', { '01-designer': DESIGNER, '02-builder': B_SET, '03-builder': B_SEE, '04-builder': B_DONE, '05-owl': APPROVE, '06-designer': TOLD });
     const owlTurn = fs.readFileSync(path.join(dir, '05-owl.md'), 'utf8');
     const listed = owlTurn.match(/^- .*f\d\.png$/gm);
     assert.equal(listed.length, 4, 'four sampled frames');
@@ -355,14 +366,14 @@ test('local brain: turn files carry the sampled frames; answers are read from th
     const md = fs.readFileSync(path.join(env.root, rep.memory.memory), 'utf8');
     assert.match(md, /^looked: local-owl maxi-owl on 4 stills of memories\/mm-cl1a-mirror-local\/clip-01\.mp4 — answer memories\/mm-cl1a-mirror-local\/turns\/05-owl\.answer\.md; contact: mirror, middle third; after: up and to the left; passes: no$/m);
     assert.ok(fs.existsSync(path.join(env.root, 'site', 'memories', 'mm-cl1a-mirror-local', 'turns', '05-owl' + ANSWER_SUFFIX)), 'the Owl\'s answer is served where the look cites it');
-    assert.match(md, /^Threads: designer local memories\/mm-cl1a-mirror-local\/turns\/01-designer\.answer\.md · /m, 'the loop\'s local thread id is the generator\'s LOCAL_THREAD format: the generator reads it back');
+    assert.match(md, /^Threads: designer local memories\/mm-cl1a-mirror-local\/turns\/01-designer\.answer\.md, memories\/mm-cl1a-mirror-local\/turns\/06-designer\.answer\.md · /m, 'the loop\'s local thread id is the generator\'s LOCAL_THREAD format: the generator reads it back');
     assert.deepEqual(parseLooked(md).map((k) => k.malformed || k.by), ['local-owl'], 'the local Owl\'s look, in the gate\'s shape');
     assert.ok(fs.statSync(path.join(env.root, 'site', 'memories', 'mm-cl1a-mirror-local')).isDirectory(), 'its media folder is published beside it');
     assert.deepEqual(sampleFrames(['a', 'b'], 8), ['a', 'b']);
 });
 
 test('a Builder act beyond the plan DRAFTS the memory: the INCOMPLETE line and the run report name the plan fault; nothing reaches kb/ or site/ (negative control: the clean run above publishes)', async () => {
-    const { env, rep } = await localRun('mmbeyond', { '01-designer': DESIGNER, '02-builder': setTo({ orientationDeg: 30, collisionBehavior: 'absorb' }), '03-builder': B_SEE, '04-builder': B_DONE, '05-owl': APPROVE });
+    const { env, rep } = await localRun('mmbeyond', { '01-designer': DESIGNER, '02-builder': setTo({ orientationDeg: 30, collisionBehavior: 'absorb' }), '03-builder': B_SEE, '04-builder': B_DONE, '05-owl': APPROVE, '06-designer': TOLD });
     const FAULT = 'record-01/record.json changes[0] (setDeclared of "mirror") acts beyond the plan: collisionBehavior (the plan names orientationDeg for "mirror")';
     assert.deepEqual(rep.record.records.map((r) => [r.name, r.complete]), [['record-01', true]], 'the Record itself is complete (§6): only the plan check stops the publish');
     assert.deepEqual([rep.record.handBackComplete, rep.record.planFaults], [false, [FAULT]], 'the run report names the plan fault');
@@ -459,4 +470,79 @@ test('a MiniMaxi trial takes an answer whose words name none of its listed memor
         fs.writeFileSync(path.join(f.root, 'kb', 'GodsWorld', 'memories', 'dse-tunnel-rebuild-card.md'), '# Memory: Double slit — card\n');
         await assert.rejects(p.runLoop(p.parseArgs(['--bridge', 'http://fake/bridge', '--brain', 'platform', '--outline', 'why?', '--run', 'mmup']), f.env), /the answer's words never name dse-tunnel-rebuild-card\.md/, 'negative control: the old refusal stops it');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ── THE CLOSING TURN (maxi-loop.js): after an approve, Maxi tells Tony on his own thread; the event order is the page's contract ──
+import { createLoop } from '../../site/app-assets/maxi-loop.js';
+import * as rolesMod from '../../site/app-assets/maxi-roles.js';
+
+const LOOK_PLAN = { scene: 'cl1a-mirror', registryMode: null, changes: [], hands: ['see'], prediction: 'the mirror as it stands, the beam meeting it' };
+const LOOK_DESIGNER = 'THIS IS: an outline\nI will look at the stage as it is now.\n' + fence('json:plan', JSON.stringify(LOOK_PLAN));
+const INV = { tick: 5, scene: '1A · Mirror', id: 'cl1a-mirror', mode: null, modes: [], renderer: 'p5', dimensions: 2, canvas: [600, 400], camera: null, viewer: null,
+    objects: [{ name: 'mirror', kind: 'Wall', center: [370, 200, 0], rect: [360, 80, 20, 240] }], parts: { mirror: ['Wall', { rect: [360, 80, 20, 240] }] } };
+/** The loop with an in-memory brain (a queue per thread key) and body (a see films a 5.1 s clip): no page module is reached. */
+function closingLoop(queues, rolesModule) {
+    const events = [], asked = [];
+    const brain = { thread: (role, key) => { let n = 0; return { get id() { return key + '-' + n; }, get turns() { return n; },
+        ask: async (text, clip) => { asked.push({ role, key, text, clip }); const q = queues[key.replace(/-r\d+$/, '')]; if (!q || !q.length) { throw new Error('the ' + key + ' queue ran out'); } n += 1; return q.shift(); } }; } };
+    const body = { omit: [], reauthors: () => false, run: async (hand) => hand === 'inventory' ? { ok: true, result: INV, changes: [] }
+        : hand === 'see' ? { ok: true, result: { seconds: 5.1 }, changes: [], clip: { seconds: 5.1, label: 'SEE — ticks 6-256', firstTick: 6, lastTick: 256 } } : { ok: true, result: {}, changes: [] } };
+    const loop = createLoop({ roles: rolesModule || rolesMod, brain, body, onEvent: (e) => events.push(e) });
+    return { loop, events, asked };
+}
+const kinds = (events) => events.map((e) => e.role + ':' + e.kind);
+
+test('the closing turn: after owl:approve the Designer\'s own thread is asked (designer:asking) with the clip, then exactly {role:maxi, kind:told, round, words, clip}, and the result carries told {words}; a stop before an approve has no told (negative controls: an empty, a planning and a handed reply, and a throwing ask, each emit loop:stopped naming the closing turn after the approve and RETURN the approved result with told null, its clip, worlds and verdicts intact)', async () => {
+    const c = closingLoop({ designer: [LOOK_DESIGNER, TOLD], builder: [B_SEE, B_DONE], owl: [APPROVE] });
+    const out = await c.loop.imagine('Explain what we are seeing');
+    const k = kinds(c.events);
+    const at = k.indexOf('owl:approve');
+    assert.deepEqual(k.slice(at), ['owl:approve', 'designer:asking', 'maxi:told'], 'after the approve: the Designer is asked, then told — the last event, before the result');
+    const told = c.events[c.events.length - 1];
+    assert.deepEqual(Object.keys(told).sort(), ['clip', 'kind', 'role', 'round', 'words'], 'the event is exactly the page\'s contract');
+    assert.deepEqual([told.role, told.kind, told.round, told.words], ['maxi', 'told', 1, TOLD]);
+    assert.equal(told.clip, c.events[at].clip, 'the clip told about is the approved clip');
+    assert.deepEqual(out.told, { words: TOLD }, 'the result carries what he told Tony');
+    const last = c.asked[c.asked.length - 1];
+    assert.deepEqual([last.role, last.key], ['designer', 'designer'], 'asked on the Designer\'s own thread');
+    assert.equal(last.clip, told.clip, 'with the approved clip attached');
+    assert.match(last.text, /^THE CLIP IS BACK: /, 'a continuing thread: no preface');
+    assert.ok(last.text.includes('TONY\'S MESSAGE: Explain what we are seeing') && last.text.includes('WHAT YOU PREDICTED IT WOULD SHOW: the beam turns up-right') && last.text.includes('contact: mirror, middle third'), 'the outline, the prediction and the check\'s account ride on it');
+    assert.ok(last.text.includes('(ticks 6 to 256 of the world\'s clock)'), 'the clip\'s ticks ride on it');
+    assert.equal(k.filter((x) => x === 'maxi:told' || x === 'loop:stopped').length, 1, 'exactly one of told or stopped follows the approve');
+
+    assert.equal(k.includes('loop:stopped'), false, 'a told success: no stop');
+    for (const [reply, why] of [['   \n', /the closing turn has no words for Tony/], [TOLD + '\n' + fence('json:plan', JSON.stringify(LOOK_PLAN)), /carries a json:plan block/],
+        [TOLD + '\n' + fence('json:call:see', '{}'), /carries a hand \(json:call:see\)/], [null, /the designer queue ran out/]]) {
+        const bad = closingLoop({ designer: reply === null ? [LOOK_DESIGNER] : [LOOK_DESIGNER, reply], builder: [B_SEE, B_DONE], owl: [APPROVE] });
+        const got = await bad.loop.imagine('Explain what we are seeing');   // a failed closing turn never loses the build
+        const bk = kinds(bad.events);
+        assert.deepEqual(bk.slice(bk.indexOf('owl:approve')), ['owl:approve', 'designer:asking', 'loop:stopped'], 'a failed closing turn is a stop event after the approve: ' + why);
+        const stop = bad.events[bad.events.length - 1];
+        assert.match(stop.words, /^Maxi stopped before telling you what the approved clip shows: the closing turn failed — /, 'the stop names the closing turn');
+        assert.match(stop.words, why);
+        assert.equal(bk.filter((x) => x === 'maxi:told').length, 0);
+        assert.equal(bk.filter((x) => x === 'maxi:told' || x === 'loop:stopped').length, 1, 'exactly one of told or stopped follows the approve');
+        assert.deepEqual([got.verdict, got.told, got.rounds], ['approve', null, 1], 'the approved result is returned, told null');
+        assert.ok(got.clip && got.clip.seconds === 5.1 && Array.isArray(got.worlds) && got.worlds.length === 1 && got.verdicts.length === 1, 'the clip, the Records\' worlds and the verdicts are intact');
+        assert.equal(bad.loop.last(), got, 'the result is kept as the last build');
+    }
+    const rev = closingLoop({ designer: [LOOK_DESIGNER, TOLD], builder: [B_SEE, B_DONE, B_SEE, B_DONE, B_SEE, B_DONE], owl: [REVISE, REVISE, REVISE] });
+    await assert.rejects(rev.loop.imagine('Explain what we are seeing'), /max rounds/);
+    assert.equal(kinds(rev.events).filter((x) => x === 'designer:asking').length, 1, 'no closing turn without an approve');
+    assert.equal(kinds(rev.events).filter((x) => x === 'maxi:told').length, 0);
+
+    const lacking = Object.assign({}, rolesMod, { toldTurn: undefined });
+    assert.throws(() => closingLoop({}, lacking), /exports no toldTurn\(\)/, 'a roles module without the closing turn is refused by name');
+});
+
+test('a plan of looks only on a loaded stage is a plan: parsePlan takes see, and see then see (run on and see again), with no changes; the Builder films it and the Owl approves it (negative control: the same looks for a scene not on the stage, with no load, is refused)', async () => {
+    const stage = rolesMod.stageOf(INV);
+    assert.deepEqual(rolesMod.parsePlan(fence('json:plan', JSON.stringify(LOOK_PLAN)), stage).plan.hands, ['see']);
+    assert.deepEqual(rolesMod.parsePlan(fence('json:plan', JSON.stringify(Object.assign({}, LOOK_PLAN, { hands: ['see', 'see'] }))), stage).plan.hands, ['see', 'see']);
+    assert.throws(() => rolesMod.parsePlan(fence('json:plan', JSON.stringify(Object.assign({}, LOOK_PLAN, { scene: 'dse-tunnel-rebuild' }))), stage), /not on the stage/);
+    const c = closingLoop({ designer: [LOOK_DESIGNER, TOLD], builder: [B_SEE, 'Later now.\nPREDICTION: the same, later\n' + fence('json:call:see', '{}'), B_DONE], owl: [APPROVE] });
+    const out = await c.loop.imagine('Explain what we are seeing');
+    assert.deepEqual(out.steps.map((s) => s.hand), ['see', 'see'], 'the Builder films the looks');
+    assert.deepEqual(out.worlds[0].changes, [], 'a plan of looks changes nothing');
 });

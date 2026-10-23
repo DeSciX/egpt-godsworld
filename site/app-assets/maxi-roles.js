@@ -29,6 +29,8 @@
  *   Builder  → ```json:call:<hand> {…args}  + a line `PREDICTION: …` (what the hand will show, stated first)
  *              ```json:done     {}            (the last clip it filmed is its hand-back)
  *   Owl      → ```json:verdict  {seen:{contact, after, passes}, verdict:"approve"|"revise", reasons:[…], change}
+ *   Designer, the closing turn (after an approve, on his own thread, the clip attached: toldTurn) → words only, to Tony
+ *              (parseTold: a stray fence is stripped and counted, a plan block or a hand block is refused)
  * Every parser THROWS on a malformed hand-off, naming what is wrong and quoting what came back: the
  * loop stops loudly, it never guesses.
  *
@@ -42,6 +44,7 @@
 
 import { HANDS, CLIP_FACTS, INVENTORY_KEYS, SKETCH_KEYS, spansOf } from './maxi-hands.js';
 import { BRIEF_WORDS } from './maxi-persona-brief.js';   // generated from the persona's Brief clause by briefWordLimit (below)
+import { plainWords } from './maxi-ask.js';   // the one plain-words cleaning of Maxi's model words (fences stripped and counted)
 
 /** The fence tags of the hand-offs (the hands' own tag is the persona's `json:call:<hand>`). */
 export const HANDOFF_TAGS = Object.freeze({ plan: 'json:plan', answer: 'json:answer', call: 'json:call:', done: 'json:done', verdict: 'json:verdict' });
@@ -127,6 +130,14 @@ export const LOOK_RULE = 'LOOK, NOT ASK';
 export const TALK_RULE = 'IMAGINING VERSUS TALKING';
 
 /**
+ * The name of the persona's section that says a message about what is happening, what the person is seeing or what
+ * changed is answered by looking first: a plan of looks only, then the closing turn (toldTurn) says what he saw at that
+ * tick, what has not formed yet and what he expects from his past looks. The rule's words live in the persona only; the
+ * Designer's preface and the closing turn point at it by this name (roles.test.mjs checks all three).
+ */
+export const LOOK_FIRST = 'LOOK FIRST';
+
+/**
  * The Designer's FIRST line: READING_LINE and one of DESIGNER_READINGS, exactly — the message read in words before
  * anything is planned. The reading decides the blocks the reply carries (parseDesignerReply): an outline a json:plan,
  * a question a json:answer and no plan, both the answer first and then the plan.
@@ -164,7 +175,10 @@ const DESIGNER_PREFACE = [
     'build what you plan, with the hands, and film a clip; as the Owl you watch that clip against Tony\'s outline and',
     'the prediction, and approve it or send it back. Each runs on a thread of its own. In talk you speak of what you',
     'built and what you checked, never of "my Builder" or "the Owl who checked". On this thread you never use a hand',
-    'and you never judge a clip: you plan, or you answer.',
+    'and you never pass a verdict on a clip: you plan, or you answer; and once a build is approved, this thread is asked',
+    'one more turn with its clip, where you tell Tony in words what the clip shows (that turn says how).',
+    'A message asking what is happening, what Tony is seeing or what changed is read by ' + LOOK_FIRST + ' (in your',
+    'persona): ' + READING_LINE + ' ' + DESIGNER_READINGS.outline + ', and its plan is looks only (`changes` empty, `hands` only ' + LAST_CLIP.looks + ').',
     '',
     'FIRST, READ THE MESSAGE (' + TALK_RULE + ', in your persona). The FIRST line of your reply says what it is,',
     'exactly one of:'].concat(Object.keys(DESIGNER_READINGS).map(function (k) { return '  ' + READING_LINE + ' ' + DESIGNER_READINGS[k]; }), [
@@ -276,28 +290,46 @@ const BUILDER_PREFACE = [
     'words.'
 ].join('\n');
 
+/**
+ * THE OWL'S TWO QUESTIONS, in order: the voice of its judgement (CEO walk 2, 2026-10-23). The part-by-part check against
+ * the account (SEEN_ACCOUNT) is the means of answering the second, never the voice. One owner: OWL_PREFACE asks them
+ * from here, and roles.test.mjs fails on a preface without them.
+ */
+export const OWL_QUESTIONS = Object.freeze({
+    expected: 'What was the person expecting, or hoping, would visually happen? Say it from their outline, in your own words.',
+    answers: 'Does this footage visually answer the question they asked? Say what in the pixels answers it, or what is missing.'
+});
+
 const OWL_PREFACE = [
     'ROLE FOR THIS THREAD: you are the OWL — the verifier, distinct from the Designer who planned and the',
     'Builder who built. You are given three things only: the person\'s outline, the Builder\'s prediction, and',
-    'the footage. You did not plan it and you did not build it. Judge the FOOTAGE against the OUTLINE, part by',
-    'part — is each part there, where it was asked, at the angle and size asked, doing what was asked — and say',
-    'whether what you see matches the prediction. Say only what the pixels show; what you remember about a',
-    'scene is not what is in this clip, and a claim the footage does not show is a reason to revise.',
+    'the footage. You did not plan it and you did not build it. You watch the clip as the person who asked would,',
+    'and your judgement answers two questions, in this order:'].concat(
+    Object.keys(OWL_QUESTIONS).map(function (k, i) { return (i + 1) + '. ' + OWL_QUESTIONS[k]; }), [
+    'Say only what the pixels show; what you remember about a scene is not what is in this clip, and a claim the',
+    'footage does not show is a reason to revise.',
     '',
     WORLD_FRAME,
     '',
-    'First write your ACCOUNT of the footage, from the pixels only, answering each question:'].concat(
+    'To answer the second question, first write your ACCOUNT of the footage, from the pixels only, answering each:'].concat(
     Object.keys(SEEN_ACCOUNT).map(function (k) { return '- ' + k + ': ' + SEEN_ACCOUNT[k]; }), [
-    'Then judge the outline AND the prediction against your account, item by item: an item of your account that',
-    'disagrees with the outline (the wrong third, the wrong direction, a beam passing a part the outline has it',
-    'meet) is a revise. On screen, y grows DOWNWARD: "lower" is toward the bottom edge of the frame.',
+    'The account is how you check, not what you say: hold each part the outline names against it (is it there,',
+    'where it was asked, at the angle and size asked, doing what was asked), and the prediction too. An item of',
+    'your account that disagrees with the outline (the wrong third, the wrong direction, a beam passing a part the',
+    'outline has it meet) means the footage does not answer the question. On screen, y grows DOWNWARD: "lower" is',
+    'toward the bottom edge of the frame.',
+    'An outline that asks to LOOK (what is happening, what is to be seen) and asks for no change is answered when',
+    'the footage shows the thing asked about at the state it is in: a pattern that has not formed yet is that state,',
+    'not a fault, and a world that did not change is what was asked.',
     '',
+    'Before the block, answer the two questions in two or three plain sentences, as someone who just watched the clip',
+    'beside the person: what they hoped to see, and whether this shows it to them.',
     'END with exactly one block, the account first:',
     '```json:verdict',
-    '{"seen": {"contact": "<…>", "after": "<…>", "passes": "<…>"}, "verdict": "approve" | "revise", "reasons": ["<the account items that decide it>", "…"], "change": "<the ONE change the Builder should make, or null when approved>"}',
+    '{"seen": {"contact": "<…>", "after": "<…>", "passes": "<…>"}, "verdict": "approve" | "revise", "reasons": ["<whether it answers the question asked, and the account items behind that>", "…"], "change": "<the ONE change the Builder should make, or null when approved>"}',
     '```',
-    'Approve only when every part of the outline is in the footage as asked.'
-]).join('\n');
+    'Approve only when the footage visually answers the question asked: every part the outline asks for is in it as asked.'
+])).join('\n');
 
 /**
  * THE THREE ROLES. `knowledgebase_names` is what the role's thread asks with (measured on PROD 2026-10-14):
@@ -538,6 +570,35 @@ export function owlTurn(spec) {
         '\n\nTHE FOOTAGE: attached as video' + (spec.framesNote ? ' (' + spec.framesNote + ')' : '') + '.';
 }
 
+/**
+ * THE CLOSING TURN, asked on the Designer's OWN thread after an approve, words only, the round's clip riding as media:
+ * {outline, prediction, owl: {seen, reasons}, ticks?: {first, last}} — Tony's message, the hand-back's prediction, what
+ * the check saw (SEEN_ACCOUNT, in its order) and why it approved, and the clip's ticks when the body knows them. He tells
+ * Tony, in his own voice under the Brief, what the clip shows against what was asked, what changed (or that nothing
+ * did) and what he still does not understand; a look is answered as LOOK_FIRST says. The reply is parseTold's.
+ */
+export function toldTurn(spec) {
+    const outline = text(spec && spec.outline, 'toldTurn.outline');
+    const prediction = text(spec.prediction, 'toldTurn.prediction');
+    const owl = spec.owl;
+    if (!owl || !owl.seen || typeof owl.seen !== 'object' || !Array.isArray(owl.reasons) || !owl.reasons.length) {
+        throw new Error('[roles] toldTurn needs owl {seen, reasons} — the approving verdict as parseVerdict returns it, got ' + JSON.stringify(owl));
+    }
+    const missing = Object.keys(SEEN_ACCOUNT).filter(function (k) { return typeof owl.seen[k] !== 'string' || !owl.seen[k].trim(); });
+    if (missing.length) { throw new Error('[roles] toldTurn: the check\'s account lacks ' + missing.join(', ') + ' (SEEN_ACCOUNT).'); }
+    const t = spec.ticks;
+    const ticks = (t && Number.isInteger(t.first) && Number.isInteger(t.last)) ? ' (ticks ' + t.first + ' to ' + t.last + ' of the world\'s clock)' : '';
+    return 'THE CLIP IS BACK: what you built for Tony\'s message was approved. Its clip is attached as video' + ticks + ': watch it yourself.' +
+        '\n\nTONY\'S MESSAGE: ' + outline +
+        '\n\nWHAT YOU PREDICTED IT WOULD SHOW: ' + prediction +
+        '\n\nWHAT YOU SAW WHEN YOU CHECKED IT: ' + Object.keys(SEEN_ACCOUNT).map(function (k) { return k + ': ' + owl.seen[k]; }).join('; ') +
+        '\nWHY IT PASSED: ' + owl.reasons.join(' · ') +
+        '\n\nNow tell Tony, in your own voice, as a person speaks (' + BRIEF_SECTION + ': under ' + BRIEF_WORDS + ' words): what the clip shows against ' +
+        'what he asked; what changed in the world, or that nothing did; and what you still do not understand about it. A message ' +
+        'about what is happening or what he is seeing is answered as ' + LOOK_FIRST + ' says, in your persona. Words only: no ' +
+        READING_LINE + ' line, no block, no plan, no hand; no pixel counts, part or hand names, file names or code; never "the Builder" or "the Owl".';
+}
+
 // ── parsers: a malformed hand-off THROWS ─────────────────────────────────────────────────────
 
 function quote(s) { s = String(s); return s.length > 400 ? s.slice(0, 400) + ' …[' + s.length + ' chars]' : s; }
@@ -773,6 +834,29 @@ export function parseVerdict(reply) {
     const account = {};
     Object.keys(SEEN_ACCOUNT).forEach(function (k) { account[k] = seen[k]; });
     return { seen: account, verdict: v.verdict, reasons: v.reasons, change: v.verdict === 'revise' ? v.change : null, words: wordsOf(reply, b) };
+}
+
+/**
+ * The closing turn's reply → {words, slips: {fenced, reading}}. Words only, cleaned as the Designer's answer is (maxi-ask.js
+ * plainWords: every fenced block stripped and counted) and a stray READING_LINE first line stripped and counted: a slip is
+ * measured, never thrown on. THROWS, naming the fault, on a reply carrying a json:plan block or a hand (json:call:<hand>):
+ * nothing is built on this turn. THROWS on a reply with no words left.
+ */
+export function parseTold(reply) {
+    const where = '[designer → told]';
+    const all = fencedBlocks(reply);
+    const acts = all.filter(function (b) { return b.tag === HANDOFF_TAGS.plan || b.tag.indexOf(HANDOFF_TAGS.call) === 0; });
+    if (acts.length) {
+        throw new Error(where + ': the closing turn is words to Tony, and this reply carries ' + acts.map(function (b) { return b.tag === HANDOFF_TAGS.plan ? 'a ' + HANDOFF_TAGS.plan + ' block' : 'a hand (' + b.tag + ')'; }).join(' and ') +
+            ' — nothing is planned or built on it. The reply was: ' + quote(reply));
+    }
+    let s = String(reply);
+    let reading = 0;
+    const lead = s.match(/^\s*/)[0].length;
+    if (s.slice(lead).indexOf(READING_LINE) === 0) { const nl = s.indexOf('\n', lead); s = nl === -1 ? '' : s.slice(nl + 1); reading = 1; }
+    const clean = plainWords(s);
+    if (!clean.text) { throw new Error(where + ': the closing turn has no words for Tony. The reply was: ' + quote(reply)); }
+    return { words: clean.text, slips: { fenced: clean.fenced, reading: reading } };
 }
 
 /** The parser of a role's hand-off, by role id. */

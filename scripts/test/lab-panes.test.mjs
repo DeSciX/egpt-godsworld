@@ -9,9 +9,11 @@
  *
  * Gates, each with its negative control:
  *   1. the conversation carries the visitor's words, ONE Thinking line (live process words, then "Thought for … · approved"
- *      linking to #imagination-turn-1) and the approved clip; ZERO Builder, Owl or Designing rows; the drawer carries turn 1's
- *      group under Designing / Building / Checking, the ticker its last process line; the routing planted out (every row to the
- *      conversation) is red;
+ *      linking to #imagination-turn-1) and Maxi's closing words with the approved clip on his row; ZERO Builder, Owl, Designing
+ *      or Lab rows; the drawer carries turn 1's group under Designing / Building / Checking / Telling, the ticker "Telling · <his
+ *      first words>"; the routing planted out (every row to the conversation) is red;
+ *   1b. an approve the loop stopped after (the closing turn threw), or returned from without a closing turn (closeTurn): the
+ *      Thinking line red and the clip ONCE, on the Lab's "did not get to tell you — why ↗" fact; the stop's clip planted out is red;
  *   2. a Thinking anchor whose target is missing is red: the drawer's group creation planted out, the link refuses by name;
  *   3. a stop: the Thinking line red, linking to the drawer, and Maxi's one short line; a question's answer: no Thinking line,
  *      Maxi's words alone in the conversation (no file name) linking to the question's own group in the drawer, which holds
@@ -95,7 +97,7 @@ function pagePanes(src, over) {
     const deps = {
         el, document: doc, state: { loop: null }, thread: () => ({ reset() {} }), showError: (err) => errors.push(String(err.message || err)),
         clipUrlLedger: () => ({ make: (mime) => { urls.push(mime); return 'blob:' + urls.length; }, revokeAll: () => { urls.length = 0; } }),
-        loopRowsOf: talk.loopRowsOf, thinkingOf: talk.thinkingOf, thinkingLine: talk.thinkingLine, thinkingSummary: talk.thinkingSummary,
+        loopStep: talk.loopStep, talkTurn: talk.talkTurn, turnEnd: talk.turnEnd, thinkingLine: talk.thinkingLine, thinkingSummary: talk.thinkingSummary,
         turnAnchor: talk.turnAnchor, tickerOf: talk.tickerOf, conversationFaults: talk.conversationFaults, IMAGINATION_TITLE: talk.IMAGINATION_TITLE,
         isPageRow: talk.isPageRow, plainTalk: talk.plainTalk, registerSlips: talk.registerSlips, slipWords: talk.slipWords, plainWords, MEMORY_OP: 'memory'
     };
@@ -104,7 +106,7 @@ function pagePanes(src, over) {
         cut('\nfunction talkLine(', '\nfunction newThread(') +
         cut('\nfunction newThread(', '\n// ── the human\'s scene picker') +
         cut('\nconst inlineUrls = clipUrlLedger();', '\n/**\n * The loop\'s Records follow its rounds') +
-        '\nreturn { renderLoop, newThread, setDrawer, openTurn, drawer, thinking: () => thinking, talkLine, labFact, paintConversation, renderTurn };';
+        '\nreturn { renderLoop, closeTurn, newThread, setDrawer, openTurn, drawer, thinking: () => thinking, talk: () => talk, talkLine, labFact, paintConversation, renderTurn };';
     const page = new Function(...Object.keys(deps), body)(...Object.values(deps));
     return Object.assign(page, { doc, el, errors, urls });
 }
@@ -114,21 +116,23 @@ function approvedTurnFaults(p) {
     const f = [];
     const conv = rowsOf(p.el.talkLines);
     const kinds = conv.map((r) => r.cls);
-    if (JSON.stringify(kinds) !== JSON.stringify(['talk-row talk-tony', 'talk-row talk-maxi talk-thinking talk-thought', 'talk-row talk-lab'])) { f.push('the conversation holds ' + JSON.stringify(conv.map((r) => r.cls + ' ' + r.who + ': ' + r.text.slice(0, 40)))); return f; }
+    if (JSON.stringify(kinds) !== JSON.stringify(['talk-row talk-tony', 'talk-row talk-maxi talk-thinking talk-thought', 'talk-row talk-maxi'])) { f.push('the conversation holds ' + JSON.stringify(conv.map((r) => r.cls + ' ' + r.who + ': ' + r.text.slice(0, 40)))); return f; }
     if (conv.some((r) => /talk-builder|talk-owl|talk-designing/.test(r.cls) || /^(Building|Checking|Designing)$/.test(r.who))) { f.push('a process row is in the conversation'); }
     if (!/^Thought for \d+ s · 2 rounds · approved ↗$/.test(conv[1].text) || conv[1].link !== '#imagination-turn-1') { f.push('the Thinking line reads ' + JSON.stringify(conv[1]) + ''); }
-    if (conv[2].text !== talk.APPROVED_FACT || conv[2].video !== 1) { f.push('the approved clip is not after the Thinking line: ' + JSON.stringify(conv[2])); }
+    const told = EVENTS.find((e) => e.kind === talk.TOLD);
+    if (conv[2].who !== 'Maxi' || conv[2].text !== told.words || conv[2].video !== 1) { f.push('Maxi\'s closing words with the clip are not after the Thinking line: ' + JSON.stringify(conv[2])); }
+    if (conv.filter((r) => r.video).length !== 1) { f.push('the conversation shows ' + conv.filter((r) => r.video).length + ' clips'); }
     const group = p.doc.getElementById('imagination-turn-1');
     if (!group || !p.el.imaginationLines.contains(group)) { f.push('the drawer has no #imagination-turn-1'); return f; }
     const blocks = group.querySelectorAll('.imagination-process').map((b) => b.querySelector('b').textContent);
-    if (JSON.stringify(blocks) !== JSON.stringify(['Designing', 'Building', 'Checking', 'Building', 'Checking'])) { f.push('the drawer\'s processes are ' + JSON.stringify(blocks)); }
+    if (JSON.stringify(blocks) !== JSON.stringify(['Designing', 'Building', 'Checking', 'Building', 'Checking', 'Telling'])) { f.push('the drawer\'s processes are ' + JSON.stringify(blocks)); }
     if (group.querySelector('h3').textContent !== EVENTS[0].words) { f.push('the group is not headed by the visitor\'s words'); }
-    if (!/^Checking · Approved\. Good\.$/.test(p.el.imaginationTicker.textContent)) { f.push('the ticker reads ' + JSON.stringify(p.el.imaginationTicker.textContent)); }
-    if (p.urls.length !== 3) { f.push('inline clips made: ' + p.urls.length + ' (each round\'s built clip in the drawer, the approved one in the conversation)'); }
+    if (p.el.imaginationTicker.textContent !== 'Telling · ' + told.words) { f.push('the ticker reads ' + JSON.stringify(p.el.imaginationTicker.textContent)); }
+    if (p.urls.length !== 3) { f.push('inline clips made: ' + p.urls.length + ' (each round\'s built clip in the drawer, the approved one on Maxi\'s row)'); }
     return f;
 }
 
-test('an approved outline turn: the conversation holds the visitor\'s words, ONE Thinking line and the approved clip, no process row; the drawer holds turn 1 under Designing, Building, Checking (negative control: the routing planted out is red)', () => {
+test('an approved outline turn: the conversation holds the visitor\'s words, ONE Thinking line and Maxi\'s closing words with the approved clip, no process or Lab row; the drawer holds turn 1 under Designing, Building, Checking, Telling (negative control: the routing planted out is red)', () => {
     const p = pagePanes(LAB_SRC);
     p.renderLoop(EVENTS[0]);
     assert.equal(p.el.imagineText.value, '', 'the box empties when the loop takes the outline');
@@ -140,7 +144,14 @@ test('an approved outline turn: the conversation holds the visitor\'s words, ONE
     assert.equal(live[8], 'Thinking: round 2 · building: see was refused', 'the round is named once it is past the first');
     assert.equal(rowsOf(p.el.talkLines).length, 2, 'while the loop runs the conversation holds the visitor\'s words and the Thinking line only');
     p.renderLoop(EVENTS[11]);
+    assert.equal(rowsOf(p.el.talkLines)[1].text, 'Thinking: round 2 · ' + talk.TELLING_LINE, 'between the approve and Maxi\'s words: telling');
+    assert.equal(rowsOf(p.el.talkLines).filter((r) => r.video).length, 0, 'the approve shows no clip in the conversation');
+    p.renderLoop(EVENTS[12]);
+    assert.equal(rowsOf(p.el.talkLines)[1].text, 'Thinking: round 2 · ' + talk.TELLING_LINE, 'the Designer thread asked for the closing turn: still telling');
+    p.renderLoop(EVENTS[13]);
     assert.deepEqual(approvedTurnFaults(p), []);
+    p.closeTurn();
+    assert.deepEqual(approvedTurnFaults(p), [], 'the turn end after a told turn shows nothing more');
     assert.deepEqual(p.errors, []);
     // the drawer opens from its toggle state and from the Thinking line's link
     assert.equal(p.el.imaginationLines.hidden, false, 'setDrawer has not run yet: the stand-in starts open');
@@ -165,8 +176,8 @@ test('a Thinking anchor whose target is missing is red: with the drawer\'s group
     const planted = LAB_SRC.replace('        el.imaginationLines.appendChild(g);\n', '');
     assert.notEqual(planted, LAB_SRC);
     const p = pagePanes(planted);
-    EVENTS.slice(0, 11).forEach((e) => p.renderLoop(e));
-    assert.throws(() => p.renderLoop(EVENTS[11]), /^Error: \[maxi-lab\] a conversation row links to imagination-turn-1, and the Imagination drawer has no such turn — nothing was linked\.$/);
+    EVENTS.slice(0, 13).forEach((e) => p.renderLoop(e));
+    assert.throws(() => p.renderLoop(EVENTS[13]), /^Error: \[maxi-lab\] a conversation row links to imagination-turn-1, and the Imagination drawer has no such turn — nothing was linked\.$/);
     const ok = pagePanes(LAB_SRC);
     EVENTS.forEach((e) => ok.renderLoop(e));
     assert.throws(() => ok.openTurn(7), /the conversation links to imagination-turn-7, and the Imagination drawer has no such turn/);
@@ -199,7 +210,7 @@ test('a stop: the Thinking line closes red and links to the drawer, and is the c
         [['Designing', 'From my memories: dse-tunnel-rebuild-card.md']], 'the memory files under Designing, in the drawer');
     assert.equal(p.el.imaginationTicker.textContent, 'Designing · From my memories', 'the collapsed ticker: the label and the row\'s lead, never the list');
     // negative control: the drawer row planted out of the answer's rows, Maxi's link to the group refuses by name
-    const lost = pagePanes(LAB_SRC, { loopRowsOf: (e) => talk.loopRowsOf(e).filter((x) => !(e.kind === 'answer' && x.pane === 'imagination')) });
+    const lost = pagePanes(LAB_SRC, { loopStep: (e, t) => { const st = talk.loopStep(e, t); return Object.assign({}, st, { rows: st.rows.filter((x) => !(e.kind === 'answer' && x.pane === 'imagination')) }); } });
     lost.renderLoop({ role: 'tony', kind: 'said', words: 'What is this?' });
     assert.throws(() => lost.renderLoop({ role: 'designer', kind: 'answer', reading: 'question', words: 'The tunnel.', memories: ['dse-tunnel-rebuild-card.md'] }),
         /^Error: \[maxi-lab\] a conversation row links to imagination-turn-1, and the Imagination drawer has no such turn — nothing was linked\.$/);
@@ -214,11 +225,46 @@ test('a stop: the Thinking line closes red and links to the drawer, and is the c
     assert.ok(g0.textContent.includes(words), 'the drawer holds the full text');
 });
 
+/** The faults of an approved turn that ended without Maxi's closing words: the line red, the clip once on the Lab's untold fact linking to the drawer. */
+function untoldTurnFaults(p, why) {
+    const f = [];
+    const conv = rowsOf(p.el.talkLines);
+    if (JSON.stringify(conv.map((r) => r.cls)) !== JSON.stringify(['talk-row talk-tony', 'talk-row talk-maxi talk-thinking talk-thought talk-refused', 'talk-row talk-lab'])) { f.push('the conversation holds ' + JSON.stringify(conv.map((r) => r.cls + ' ' + r.who + ': ' + r.text.slice(0, 50)))); return f; }
+    if (!/^Thought for \d+ s · 2 rounds · stopped ↗$/.test(conv[1].text)) { f.push('the Thinking line reads ' + JSON.stringify(conv[1].text)); }
+    if (conv[2].text !== talk.UNTOLD_FACT + ' ↗' || conv[2].link !== '#imagination-turn-1') { f.push('the Lab fact reads ' + JSON.stringify(conv[2])); }
+    if (conv.filter((r) => r.video).length !== 1 || conv[2].video !== 1) { f.push('the conversation shows ' + conv.filter((r) => r.video).length + ' clips'); }
+    const g = p.doc.getElementById('imagination-turn-1');
+    if (!g || !g.textContent.includes(why)) { f.push('the drawer lacks the why: ' + why); }
+    return f;
+}
+
+test('an approve the loop stopped after, or returned from without a closing turn: the Thinking line red, the clip ONCE on the Lab\'s "did not get to tell you — why" fact linking to the drawer (negative control: the stop\'s clip planted out is red)', () => {
+    const stop = { role: 'loop', kind: 'stopped', words: 'Maxi stopped: designer: the question was NOT answered — Request entity too large' };
+    const p = pagePanes(LAB_SRC);
+    EVENTS.slice(0, 13).forEach((e) => p.renderLoop(e));
+    p.renderLoop(stop);
+    assert.deepEqual(untoldTurnFaults(p, stop.words), []);
+    p.closeTurn();
+    assert.deepEqual(untoldTurnFaults(p, stop.words), [], 'the turn end after the stop shows nothing more');
+    // the loop returned from the approve with no closing turn: imagine's closeTurn shows the clip
+    const q = pagePanes(LAB_SRC);
+    EVENTS.slice(0, 12).forEach((e) => q.renderLoop(e));
+    q.closeTurn();
+    assert.deepEqual(untoldTurnFaults(q, talk.NO_TOLD_WORDS), []);
+    assert.equal(q.talk().held, null);
+    // negative control: the stop's rows without the held clip's fact
+    const lost = pagePanes(LAB_SRC, { loopStep: (e, t) => { const st = talk.loopStep(e, t); return Object.assign({}, st, { rows: st.rows.filter((x) => !(e.kind === 'stopped' && x.clip)) }); } });
+    EVENTS.slice(0, 13).forEach((e) => lost.renderLoop(e));
+    lost.renderLoop(stop);
+    assert.match(untoldTurnFaults(lost, stop.words).join(), /the conversation holds/);
+});
+
 test('New conversation clears both panes, the drawer\'s turns and the ticker, and frees the inline clips', () => {
     const p = pagePanes(LAB_SRC);
     EVENTS.forEach((e) => p.renderLoop(e));
     assert.ok(p.el.imaginationLines.children.length === 1 && p.urls.length === 3);
     p.newThread();
+    assert.equal(p.talk().held, null, 'the turn starts empty');
     assert.deepEqual(rowsOf(p.el.talkLines).map((r) => r.cls + ' ' + r.who), ['talk-row talk-lab Lab']);
     assert.equal(p.el.imaginationLines.children.length, 0);
     assert.equal(p.el.imaginationTicker.textContent, 'nothing yet');

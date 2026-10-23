@@ -7,7 +7,7 @@
  */
 
 import { SEEN_ACCOUNT } from '../../site/app-assets/maxi-roles.js';
-import { ASKING, DONE_REFUSED } from '../../site/app-assets/maxi-talk.js';
+import { ASKING, DONE_REFUSED, TOLD } from '../../site/app-assets/maxi-talk.js';
 
 /** The Owl's account of the footage, every SEEN_ACCOUNT key said. */
 export const SEEN = Object.freeze(Object.fromEntries(Object.keys(SEEN_ACCOUNT).map((k) => [k, 'x'])));
@@ -16,7 +16,7 @@ export const CLIP = Object.freeze({ seconds: 6, media: Object.freeze({ mime_type
 /** The doneRefusal text maxi-loop.js writes for a change no clip shows. */
 export const REFUSAL = 'json:done after 1 change(s) your last clip does not show (the first: move of mirror) — a Record\'s changes lie inside its footage; film again after the last change.';
 
-/** An outline turn of two rounds: the visitor's words, the plan, two builds, the Owl's revise and its approve. */
+/** An outline turn of two rounds: the visitor's words, the plan, two builds, the Owl's revise and its approve, then Maxi's closing turn on the Designer's thread. */
 export const EVENTS = Object.freeze([
     { role: 'tony', kind: 'said', words: 'a laser hitting a mirror at 30 degrees' },
     { role: 'designer', kind: ASKING },
@@ -29,5 +29,7 @@ export const EVENTS = Object.freeze([
     { role: 'owl', kind: 'revise', round: 1, words: 'Not yet.', seen: SEEN, reasons: ['the beam is cut'], change: 'film longer', clip: CLIP },
     { role: 'builder', kind: 'working', round: 2, words: '', hand: 'see', ok: false, clip: null },
     { role: 'builder', kind: 'built', round: 2, words: 'Now it shows.', prediction: 'the beam leaves at 60 degrees', clip: CLIP },
-    { role: 'owl', kind: 'approve', round: 2, words: 'Good.', seen: SEEN, reasons: ['the beam leaves at 60 degrees'], clip: CLIP }
+    { role: 'owl', kind: 'approve', round: 2, words: 'Good.', seen: SEEN, reasons: ['the beam leaves at 60 degrees'], clip: CLIP },
+    { role: 'designer', kind: ASKING },
+    { role: 'maxi', kind: TOLD, round: 2, words: 'The beam now leaves the mirror at about sixty degrees, as you asked; I am not yet sure why the spot widens.', clip: CLIP }
 ]);

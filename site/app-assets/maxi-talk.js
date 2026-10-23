@@ -13,6 +13,10 @@
  *
  * An event this table has no entry for THROWS naming its role:kind — the page never shows a loop event silently wrong, and
  * never drops one. A row whose pane is not one of PANES, or not one its role may show in, THROWS by name (paneFaults).
+ *
+ * A turn remembers one thing across its events (talkTurn, stepped by loopStep): the approved clip Maxi has not told the visitor
+ * about yet. The Owl's approve holds it; Maxi's closing turn (maxi:told) shows it on his own row; a stop before he told it, or
+ * a loop that ended without telling it (turnEnd), shows it once as the Lab's, with the why in the drawer. Never twice, never lost.
  */
 
 import { ROLES, ROLE_ORDER, SEEN_ACCOUNT, VERDICTS } from './maxi-roles.js';
@@ -24,6 +28,9 @@ export const PANES = Object.freeze(['conversation', 'imagination']);
 /** Maxi's three processes, as the Imagination drawer labels them: one per role of maxi-roles.js ROLE_ORDER. */
 export const PROCESSES = Object.freeze({ designer: 'Designing', builder: 'Building', owl: 'Checking' });
 ROLE_ORDER.forEach(function (r) { if (!PROCESSES[r]) { throw new Error('[maxi-talk] the role "' + r + '" (maxi-roles.js ROLE_ORDER) has no process label for the Imagination drawer.'); } });
+
+/** The drawer's label for Maxi's closing turn (maxi:told): what he told the visitor, after the Checking that approved it. */
+export const TELLING = 'Telling';
 
 /** The drawer's heading: what the Imagination pane is. */
 export const IMAGINATION_TITLE = 'How I thought about it';
@@ -39,6 +46,8 @@ export const IMAGINATION_TITLE = 'How I thought about it';
 export const ROLE_ROW = Object.freeze({
     tony: Object.freeze({ conversation: Object.freeze(['You', 'talk-tony']) }),
     designer: Object.freeze({ conversation: Object.freeze([ROLES.designer.name, 'talk-maxi']), imagination: Object.freeze([PROCESSES.designer, 'talk-designing']) }),
+    // Maxi himself (the loop's role 'maxi', its closing turn): his own voice in the conversation, and the Telling line in the drawer
+    maxi: Object.freeze({ conversation: Object.freeze([ROLES.designer.name, 'talk-maxi']), imagination: Object.freeze([TELLING, 'talk-telling']) }),
     builder: Object.freeze({ imagination: Object.freeze([PROCESSES.builder, 'talk-builder']) }),
     owl: Object.freeze({ imagination: Object.freeze([PROCESSES.owl, 'talk-owl']) }),
     loop: Object.freeze({ imagination: Object.freeze(['Lab', 'talk-refused']) }),
@@ -62,8 +71,24 @@ export const MEMORIES_LEAD = 'From my memories: ';
 /** The event a role emits while its brain is asked (maxi-loop.js ask): {role, kind:ASKING}. */
 export const ASKING = 'asking';
 
-/** The approved hand-back's Lab fact in the conversation, with its clip (until Maxi tells the visitor in his own words). */
-export const APPROVED_FACT = '[built and approved — watch]';
+/**
+ * The event of Maxi's closing turn after an approve (maxi-loop.js): {role:'maxi', kind:TOLD, round, words, clip}. Its rows: his
+ * words under Telling in the drawer (and any register slip counted there), then Maxi's words in the conversation (backticks
+ * removed) with the approved clip on that row. The Thinking line closes "approved" at it.
+ */
+export const TOLD = 'told';
+
+/** What the Thinking line says between the approve and Maxi's closing words. */
+export const TELLING_LINE = 'telling you what the clip shows';
+
+/**
+ * The approved clip's Lab fact when Maxi did not get to tell the visitor about it (the loop stopped after the approve, or ended
+ * with no closing turn): the clip on this row, once; the why in the drawer, which this fact links to.
+ */
+export const UNTOLD_FACT = '[built and approved — watch; Maxi did not get to tell you about it — why]';
+
+/** The drawer's words when the loop ended with an approved clip and no closing turn (turnEnd): the loop's fault, in full. */
+export const NO_TOLD_WORDS = 'The loop handed back the approved clip without Maxi\'s closing words (no maxi:' + TOLD + ' event after the approve): the clip is shown as the Lab\'s.';
 
 /** A refusal before the visitor's words were taken (Record or the Hand on): the conversation's Lab fact; the why is in the drawer. */
 export const NOT_STARTED_FACT = 'Maxi did not start — why';
@@ -118,7 +143,7 @@ export function conversationFaults(text) {
  * whatever its label. How the row was asked for (a literal, a constant, a loop row, a hand-built row) does not enter into it.
  */
 export function isPageRow(who, cls) {
-    const own = who === ROLE_ROW.tony.conversation[0] || who === ROLE_ROW.designer.conversation[0];
+    const own = who === ROLE_ROW.tony.conversation[0] || who === ROLE_ROW.designer.conversation[0] || who === ROLE_ROW.maxi.conversation[0];
     return !own || String(cls).split(/\s+/).indexOf(ROLE_ROW.lab.conversation[1]) !== -1;
 }
 
@@ -190,7 +215,7 @@ export function paneFaults(rows) {
         if (r.who !== who[r.pane][0] || r.cls !== who[r.pane][1]) { bad.push(at + ' is labelled ' + JSON.stringify([r.who, r.cls]) + ' in the ' + r.pane + ' pane, not ' + JSON.stringify(who[r.pane])); }
         if (r.role === 'lab' && r.pane === 'conversation') { labFactFaults(r.text).forEach(function (f) { bad.push(at + ': ' + f); }); }
         if (r.role === 'lab' && r.pane === 'conversation') { conversationFaults(r.text).forEach(function (f) { bad.push(at + ': ' + f); }); }
-        if (r.role === 'designer' && r.pane === 'conversation' && registerSlips(r.text).backticks) { bad.push(at + ': Maxi\'s words reached the conversation with their backticks: ' + JSON.stringify(r.text)); }
+        if ((r.role === 'designer' || r.role === 'maxi') && r.pane === 'conversation' && registerSlips(r.text).backticks) { bad.push(at + ': Maxi\'s words reached the conversation with their backticks: ' + JSON.stringify(r.text)); }
     });
     return bad;
 }
@@ -219,17 +244,31 @@ function stopRow(e) {
  */
 export const THINKING_ENDS = Object.freeze({ approve: 'approved', stopped: 'stopped' });
 
+/** A clip as the loop carries it: {seconds, media: {mime_type, data}}. */
+function isClip(c) { return !!c && typeof c === 'object' && !!c.media && typeof c.media.mime_type === 'string' && typeof c.media.data === 'string' && !!c.media.data; }
+
 function owlEntry(v) {
-    return {
+    const entry = {
+        // the verdict and its account, in the drawer only: the approved clip is held for Maxi's closing turn (maxi:told), which shows it
         rows: function (e) {
-            const out = [row('owl', 'imagination', VERDICT_WORDS[e.kind] + (e.words ? e.words + '\n' : '') + seenWords(e.seen) + '\n' +
+            return [row('owl', 'imagination', VERDICT_WORDS[e.kind] + (e.words ? e.words + '\n' : '') + seenWords(e.seen) + '\n' +
                 e.reasons.map(function (r) { return '· ' + r; }).join('\n') + (e.change ? '\nChange: ' + e.change : ''), { approve: e.kind === 'approve' })];
-            // the approved hand-back is the answer to the visitor: its clip, inline in the conversation after the Thinking line
-            if (v === 'approve') { out.push(row('lab', 'conversation', APPROVED_FACT, { clip: e.clip })); }
-            return out;
         },
-        think: function (e) { return THINKING_ENDS[v] ? { end: THINKING_ENDS[v] } : { line: 'sent back: round ' + (e.round + 1) }; }
+        think: function (e) { return v === 'approve' ? { line: TELLING_LINE } : { line: 'sent back: round ' + (e.round + 1) }; }
     };
+    if (v === 'approve') {
+        entry.hold = function (e, held) {
+            if (held) { throw new Error('[maxi-talk] the Owl approved round ' + e.round + ' while round ' + held.round + '\'s approved clip is still untold.'); }
+            if (!isClip(e.clip)) { throw new Error('[maxi-lab] the loop\'s owl:approve event carries no clip (the approved hand-back the visitor is to watch), got ' + JSON.stringify(e.clip)); }
+            return { clip: e.clip, round: e.round };
+        };
+    }
+    return entry;
+}
+
+/** The approved clip held for Maxi's closing turn, shown as the Lab's with the why in the drawer (`why`: the drawer's row). */
+function untoldRows(why, held) {
+    return [why, row('lab', 'conversation', UNTOLD_FACT, { clip: held.clip, toDrawer: true })];
 }
 
 /**
@@ -237,7 +276,14 @@ function owlEntry(v) {
  * nothing before its hand-off gets a bracketed lab fact, never words put in its mouth.
  */
 export const LOOP_ROWS = Object.freeze(Object.assign({
-    'tony:said': { rows: function (e) { return [row('tony', 'conversation', e.words)]; }, think: function () { return { begin: true, line: 'reading what you said' }; } },
+    'tony:said': {
+        rows: function (e) { return [row('tony', 'conversation', e.words)]; },
+        think: function () { return { begin: true, line: 'reading what you said' }; },
+        hold: function (e, held) {
+            if (held) { throw new Error('[maxi-talk] a new outline began while the last turn\'s approved clip (round ' + held.round + ') was never shown: no closing turn, no stop, no turnEnd.'); }
+            return null;
+        }
+    },
     'designer:plan': {
         rows: function (e) { return [row('designer', 'imagination', (e.words || '[plan handed to the Builder]') + '\nPrediction: ' + e.prediction)]; },
         think: function (e) { return { line: 'planning from my memory of ' + e.plan.scene }; }
@@ -275,16 +321,38 @@ export const LOOP_ROWS = Object.freeze(Object.assign({
         },
         think: function () { return { none: true }; }
     },
+    // Maxi's closing turn: the words under Telling in the drawer (a slip counted there), then the same words in the conversation with
+    // the approved clip on his own row. Only an approve this turn holds may be told; the told clip is that approve's.
+    ['maxi:' + TOLD]: {
+        rows: function (e, held) {
+            if (!held) { throw new Error('[maxi-lab] the loop emitted maxi:' + TOLD + ' with no approved clip held for it (no owl:approve before it in this turn).'); }
+            if (typeof e.words !== 'string' || !e.words.trim()) { throw new Error('[maxi-lab] the loop\'s maxi:' + TOLD + ' event carries no `words` (what Maxi tells the visitor), got ' + JSON.stringify(e.words)); }
+            if (!isClip(e.clip)) { throw new Error('[maxi-lab] the loop\'s maxi:' + TOLD + ' event carries no `clip` (the approved clip he tells the visitor about), got ' + JSON.stringify(e.clip)); }
+            if (e.clip.media.data !== held.clip.media.data) { throw new Error('[maxi-lab] the loop\'s maxi:' + TOLD + ' clip is not the one the Owl approved in round ' + held.round + '.'); }
+            const slip = slipWords(registerSlips(e.words));
+            return [row('maxi', 'imagination', e.words)]
+                .concat(slip ? [row('maxi', 'imagination', slip, { lead: slip })] : [])
+                .concat([row('maxi', 'conversation', plainTalk(e.words), { clip: e.clip })]);
+        },
+        think: function () { return { end: THINKING_ENDS.approve }; },
+        hold: function () { return null; }
+    },
     // refused before the visitor's words were taken (no Thinking line): the why in the drawer, a plain Lab fact linking to it
     'loop:refused': { rows: function (e) { return [stopRow(e), row('lab', 'conversation', NOT_STARTED_FACT, { toDrawer: true })]; }, think: function () { return null; } },
     // a question the platform refused because nobody is signed in (maxi-auth.js): a Lab notice, never a red stop; any other
     // stop is the drawer's alone — the conversation's whole stop is the Thinking line, closed red
+    // A stop after the approve (Maxi's closing turn threw): the stop in full in the drawer, the held clip once as the Lab's.
     'loop:stopped': {
-        rows: function (e) { return isSignInRefusal(e.words) ? [row('lab', 'conversation', SIGN_IN_NOTICE)] : [stopRow(e)]; },
-        think: function (e) { return isSignInRefusal(e.words) ? { none: true } : { end: THINKING_ENDS.stopped }; }
+        rows: function (e, held) {
+            if (held) { return untoldRows(stopRow(e), held); }
+            return isSignInRefusal(e.words) ? [row('lab', 'conversation', SIGN_IN_NOTICE)] : [stopRow(e)];
+        },
+        think: function (e, held) { return !held && isSignInRefusal(e.words) ? { none: true } : { end: THINKING_ENDS.stopped }; },
+        hold: function () { return null; }
     },
     // while a role's brain is asked: nothing to show but what Maxi is doing now
-    ['designer:' + ASKING]: { rows: function () { return []; }, think: function () { return { line: 'thinking it through' }; } },
+    // the Designer's thread asked after the approve is Maxi's closing turn being written
+    ['designer:' + ASKING]: { rows: function () { return []; }, think: function (e, held) { return { line: held ? TELLING_LINE : 'thinking it through' }; } },
     ['builder:' + ASKING]: { rows: function () { return []; }, think: function () { return { line: 'building' }; } },
     ['owl:' + ASKING]: { rows: function () { return []; }, think: function () { return { line: 'watching the clip' }; } }
 }, VERDICTS.reduce(function (o, v) { o['owl:' + v] = owlEntry(v); return o; }, {})));
@@ -299,17 +367,58 @@ function entryOf(e) {
     return entry;
 }
 
-/** The rows a loop event shows, each with its pane. THROWS naming an event the page does not show, or a row in a pane its role never shows in. */
-export function loopRowsOf(e) {
-    const rows = entryOf(e).rows(e);
+/** A conversation turn's memory across its events: `held`, the approved clip not yet told ({clip, round}), else null. The page keeps one. */
+export function talkTurn() { return { held: null }; }
+
+function heldOf(turn, op) {
+    if (turn === undefined) { return null; }
+    if (!turn || typeof turn !== 'object' || !('held' in turn)) { throw new Error('[maxi-talk] ' + op + ' takes a turn made by talkTurn(), got ' + JSON.stringify(turn)); }
+    return turn.held;
+}
+
+function checked(e, rows) {
     const bad = paneFaults(rows);
     if (bad.length) { throw new Error('[maxi-talk] ' + e.role + ':' + e.kind + ' made rows the page cannot paint: ' + bad.join('; ') + '.'); }
     return rows;
 }
 
-/** What the conversation's Thinking line does at a loop event ({begin, line} | {line} | {end} | {none} | null). THROWS like loopRowsOf. */
-export function thinkingOf(e) {
-    return entryOf(e).think(e);
+/**
+ * The rows a loop event shows in `turn` (talkTurn; none given: a turn holding nothing), each with its pane. Reads the turn, never
+ * steps it. THROWS naming an event the page does not show, or a row in a pane its role never shows in.
+ */
+export function loopRowsOf(e, turn) {
+    return checked(e, entryOf(e).rows(e, heldOf(turn, 'loopRowsOf')));
+}
+
+/** What the conversation's Thinking line does at a loop event in `turn` ({begin, line} | {line} | {end} | {none} | null). THROWS like loopRowsOf. */
+export function thinkingOf(e, turn) {
+    return entryOf(e).think(e, heldOf(turn, 'thinkingOf'));
+}
+
+/**
+ * THE page's step of a turn at a loop event: {rows, think} as the turn stood before the event, then the turn steps (an approve
+ * holds its clip; Maxi's closing turn or a stop lets it go). THROWS like loopRowsOf, and leaves the turn as it was.
+ */
+export function loopStep(e, turn) {
+    const held = heldOf(turn, 'loopStep');
+    if (turn === undefined) { throw new Error('[maxi-talk] loopStep takes the page\'s turn (talkTurn()), got none.'); }
+    const entry = entryOf(e);
+    const out = { rows: checked(e, entry.rows(e, held)), think: entry.think(e, held) };
+    turn.held = entry.hold ? entry.hold(e, held) : held;
+    return out;
+}
+
+/**
+ * The turn's end once the loop has returned: an approved clip still held (the loop handed back with no closing turn) is shown
+ * once as the Lab's, the loop's fault in the drawer, and the Thinking line closes red. {rows: [], think: null} when nothing is held.
+ */
+export function turnEnd(turn) {
+    const held = heldOf(turn, 'turnEnd');
+    if (turn === undefined) { throw new Error('[maxi-talk] turnEnd takes the page\'s turn (talkTurn()), got none.'); }
+    if (!held) { return { rows: [], think: null }; }
+    const rows = checked({ role: 'loop', kind: 'ended' }, untoldRows(row('loop', 'imagination', NO_TOLD_WORDS), held));
+    turn.held = null;
+    return { rows: rows, think: { end: THINKING_ENDS.stopped } };
 }
 
 /** The Thinking line while the loop runs: what Maxi is doing now, the round named once it is past the first. */

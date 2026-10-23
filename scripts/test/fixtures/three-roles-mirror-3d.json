@@ -12,6 +12,17 @@
         "media_tokens": 0,
         "model_used": "replay"
       }
+    },
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] The mirror slid toward you, deeper into the scene's near side, and the beam still meets it and turns. What I still do not understand is how the bounce keeps its plane as the slab moves. Want me to fly around it?",
+      "interaction_id": "replay.designer.2",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 0,
+        "model_used": "replay"
+      }
     }
   ],
   "builder": [

@@ -39,7 +39,8 @@
  * Stops LOUDLY (exit 1, the reason on stderr, the report still written) whenever the loop stops (maxi-loop.js
  * names every rule: a malformed hand-off, an undescribed clip, json:done before any clip, --max-steps Builder
  * replies in a round, --max-rounds revises, a clip outside 5–10 s).
- * Report: minimaxi/out/runs/<run>.json — every turn, every hand, every clip, the verdicts, the token
+ * Report: minimaxi/out/runs/<run>.json — every turn, every hand, every clip, the verdicts, what Maxi told Tony after the approve
+ * (report.told, maxi-loop.js's closing turn), the token
  * cost per thread (the sum of each answer's usage).
  */
 
@@ -309,7 +310,9 @@ export async function runLoop(a, env) {
             rr.clip = { path: path.relative(env.root, e.clip.path), label: e.clip.label, prediction: e.prediction };
             save();
             if (e.kind === 'revise') { recordCall(a.bridge, 'next', env); }   // the next round records anew: its chain begins before its first hand
-        }
+        } else if (e.role === 'maxi' && e.kind === 'told') {   // the closing turn: what Maxi told Tony about the approved clip
+            report.told = { round: e.round, words: e.words, clip: path.relative(env.root, e.clip.path) }; save();
+        } else if (e.role === 'loop' && e.kind === 'stopped') { report.stopped = e.words; save(); }   // a stop; after an approve, the closing turn's
     };
     const loop = createLoop({ roles: roles, brain: nodeBrain(a, report, env, save), body: nodeBody(a, env), onEvent: onEvent, limits: { rounds: a.maxRounds, builderTurns: a.maxSteps } });
     let recording = false;
@@ -323,6 +326,7 @@ export async function runLoop(a, env) {
             save();
             return report;
         }
+        if (out.told === null) { report.told = null; }   // the closing turn failed (report.stopped says why); the approved build is kept
         const chain = recordCall(a.bridge, 'end', env);
         recording = false;
         report.record = writeLoopRecord(out, chain, a, env);
@@ -334,14 +338,16 @@ export async function runLoop(a, env) {
         const why = hb.planFaults.length ? ' (the Record does not state its plan: ' + hb.planFaults.join(' · ') + ')' : '';
         if (a.brain === 'local') {
             report.memory = writeSeenMemory(recordDir, owlLook(readRun(recordDir), sampleFrames(out.clip.frames, a.frames).length, { draft: draft }), { root: env.root, draft: draft });
-            report.outcome = 'approved in round ' + out.rounds + (draft ? '; the Record is incomplete, so the memory is a draft under ' + path.dirname(report.memory.draft) + '/' + why : '');
+            report.outcome = 'approved in round ' + out.rounds + (draft ? '; the Record is incomplete, so the memory is a draft under ' + path.dirname(report.memory.draft) + '/' + why : '') +
+                (out.told === null ? '; ' + report.stopped : '');
         } else {
             report.awaitingLook = {
                 record: path.relative(env.root, recordDir), stills: out.clip.frames.map((f) => path.relative(env.root, f)),
                 command: 'node scripts/gen-memories-seen.mjs ' + path.relative(env.root, recordDir) + ' --looked-by <' + LOOKERS.filter((k) => k !== 'local-owl').join('|') +
                     '>:<role> --stills <N looked at> --account "<contact, after, passes, in your words>"' + (draft ? ' --draft' : '')
             };
-            report.outcome = 'approved in round ' + out.rounds + ' by the platform Owl: no memory written until a human or the seat looks at the stills (' + report.awaitingLook.command + ')' + why;
+            report.outcome = 'approved in round ' + out.rounds + ' by the platform Owl: no memory written until a human or the seat looks at the stills (' + report.awaitingLook.command + ')' + why +
+                (out.told === null ? '; ' + report.stopped : '');
         }
         save();
         return report;

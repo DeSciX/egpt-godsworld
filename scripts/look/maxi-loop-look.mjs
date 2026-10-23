@@ -34,9 +34,16 @@
  *      memory files under Designing ("From my memories: …"); no error bar, no demonstration card, no Records; only the
  *      Designer is asked; the stage's parts are where they were; the status line no longer says Maxi is working and the
  *      Imagine box is given back; no Thinking line; his row's link opens the drawer at that group.
- *   G. THE TWO PANES at a phone's width (390 x 844, touch): the replay double's outline approved; the conversation holds
- *      the visitor's words, the Thinking line and the approved clip only; the drawer's ticker sits below the stage and
- *      never covers the lab's toolbar, collapsed or open; it opens on a tap and its turn is reached from the Thinking line.
+ *   G. THE TWO PANES at a phone's width (390 x 844, touch): the replay double's outline approved and told; the conversation
+ *      holds the visitor's words, the Thinking line and Maxi's closing words with the clip only; the drawer's ticker sits below
+ *      the stage and never covers the lab's toolbar, collapsed or open; it opens on a tap and its turn is reached from the
+ *      Thinking line.
+ *   H. THE CLOSING TURN REFUSED: the replay double's outline approved, then its closing reply is a hand block where Maxi's
+ *      words belong (scripts/test/fixtures/three-roles-told-fails.json, page-only): the loop stops naming the closing turn and
+ *      keeps the build; the Thinking line closes red, the clip shows ONCE, on the Lab's "did not get to tell you — why ↗"
+ *      fact, the stop in full in the drawer, the card still holds the approved clip.
+ * MAXI'S CLOSING TURN (B, E, G): after the approve the loop asks the Designer's thread one more turn (the replay's
+ * replay.designer.2) and emits {role:'maxi', kind:'told', round, words, clip}; the result carries told: {words}.
  * In B, F and G no conversation row but the visitor's carries code, a file name or a backtick (maxi-talk.js
  * conversationFaults, the gate the page's rows pass). In B the conversation (#talk-lines) carries no Builder, Owl or Designing row: they are in the Imagination drawer
  * (#imagination-lines), whose collapsed ticker shows the last process line; the drawer opens on a click, the Thinking
@@ -68,6 +75,10 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'test', 'fixtures', 'three-roles-mirror.json'), 'utf8'));
 const FIXTURE_3D = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'test', 'fixtures', 'three-roles-mirror-3d.json'), 'utf8'));
 const FIXTURE_Q = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'test', 'fixtures', 'three-roles-question.json'), 'utf8'));
+/** The mirror replay with its closing turn refused (page-only: three-roles-told-fails.json's closing reply as replay.designer.2). */
+const FIXTURE_TOLD_FAILS = Object.assign({}, FIXTURE, { designer: [FIXTURE.designer[0], JSON.parse(fs.readFileSync(path.join(HERE, '..', 'test', 'fixtures', 'three-roles-told-fails.json'), 'utf8')).closing] });
+/** What Maxi tells the visitor after the mirror replay's approve: its closing reply (replay.designer.2), as the loop hands it on. */
+const TOLD_WORDS = FIXTURE.designer[1].response;
 const PREFACES = { designer: ROLES.designer.preface, builder: ROLES.builder.preface, owl: ROLES.owl.preface };
 const OWL_KB = JSON.stringify(ROLES.owl.knowledgebase_names);
 const DESIGNER_KB = ROLES.designer.knowledgebase_names;
@@ -159,13 +170,17 @@ async function paneChecks(page, part, rounds) {
     const re = new RegExp('^Thought for \\d+ s · ' + rounds + ' rounds? · approved ↗$');
     check(thought.length === 1 && re.test(thought[0].text) && !/talk-refused/.test(thought[0].cls), part + ': ONE Thinking line, ending "Thought for <s> s · ' + rounds + ' round(s) · approved"', thought);
     const at = rows.indexOf(thought[0]);
-    check(rows.length === 3 && at === 1 && rows[2].who === 'Lab' && rows[2].text === '[built and approved — watch]' && rows[2].video && rows.filter((r) => r.video).length === 1,
-        part + ': the conversation holds the visitor\'s words, the Thinking line and the approved clip after it, nothing else', rows.map((r) => r.who + ': ' + r.text.slice(0, 80) + (r.video ? ' [video]' : '')));
-    check(d.turns.length === 1 && d.turns[0].id === 'imagination-turn-1' && d.turns[0].blocks.every((b) => ['Designing', 'Building', 'Checking'].includes(b.who)) && d.turns[0].blocks[0].who === 'Designing',
-        part + ': the drawer holds turn 1 under Designing, Building, Checking', d.turns.map((t) => ({ id: t.id, blocks: t.blocks.map((b) => b.who + ' x' + b.rows.length + (b.videos ? ' +' + b.videos + ' video' : '')) })));
-    check(!d.open && d.expanded === 'false' && /^Checking · Approved\. /.test(d.ticker), part + ': the drawer is collapsed to its ticker, which shows the last process line', { open: d.open, ticker: d.ticker });
+    check(rows.length === 3 && at === 1 && rows[2].who === 'Maxi' && /talk-maxi/.test(rows[2].cls) && rows[2].text === TOLD_WORDS && rows[2].video && rows.filter((r) => r.video).length === 1 && !rows.some((r) => r.who === 'Lab'),
+        part + ': the conversation holds the visitor\'s words, the Thinking line and Maxi\'s closing words with the approved clip on his row, nothing else', rows.map((r) => r.who + ': ' + r.text.slice(0, 80) + (r.video ? ' [video]' : '')));
+    const blocks = d.turns.length ? d.turns[0].blocks : [];
+    check(d.turns.length === 1 && d.turns[0].id === 'imagination-turn-1' && blocks.every((b) => ['Designing', 'Building', 'Checking', 'Telling'].includes(b.who)) && blocks[0].who === 'Designing' && blocks[blocks.length - 1].who === 'Telling' && blocks[blocks.length - 1].videos === 0,
+        part + ': the drawer holds turn 1 under Designing, Building, Checking, then Telling (no second copy of the clip)', d.turns.map((t) => ({ id: t.id, blocks: t.blocks.map((b) => b.who + ' x' + b.rows.length + (b.videos ? ' +' + b.videos + ' video' : '')) })));
+    check(!d.open && d.expanded === 'false' && d.ticker === 'Telling · ' + TOLD_WORDS, part + ': the drawer is collapsed to its ticker: Telling and Maxi\'s first words', { open: d.open, ticker: d.ticker });
     return { rows, d };
 }
+
+/** The approved turn is over: the Thinking line has closed (told, or stopped red). */
+const turnClosed = (page) => page.waitForFunction(() => document.querySelector('#talk-lines .talk-thought') && !window.MaxiLab.loop().running, null, { timeout: 300000 });
 
 const gate0 = ownBrowserPids();
 note('orphan gate before launch', gate0);
@@ -226,7 +241,12 @@ try {
         await page.waitForFunction(() => Array.from(document.querySelectorAll('#imagination-lines video')).length >= 1, null, { timeout: 240000 });
         await page.waitForTimeout(1500);
         await page.screenshot({ path: path.join(OUT, 'B2-built-watch.png') });
-        await page.waitForFunction(() => window.MaxiLab.loop() && window.MaxiLab.loop().last, null, { timeout: 300000 });
+        // between the approve and Maxi's words (the closing turn is asked on the Designer's thread): read the moment it is painted
+        const telling = await page.waitForFunction(() => { const p = document.querySelector('#talk-lines .talk-thinking p'); return p && /telling you what the clip shows/.test(p.textContent) ? p.textContent : null; }, null, { timeout: 300000, polling: 'raf' }).then((h) => h.jsonValue());
+        await page.screenshot({ path: path.join(OUT, 'B3a-telling.png') });
+        check(/^Thinking: round 2 · telling you what the clip shows$/.test(telling) && await page.evaluate(() => document.querySelectorAll('#talk-lines video').length === 0),
+            'B: between the approve and Maxi\'s words the Thinking line says he is telling, and the conversation shows no clip yet', telling);
+        await turnClosed(page);
         await page.waitForTimeout(1500);
         await page.screenshot({ path: path.join(OUT, 'B3-owl-approved.png') });
         const rows = await talk(page);
@@ -235,6 +255,8 @@ try {
         const panes = await paneChecks(page, 'B', 2);
         fs.writeFileSync(path.join(OUT, 'B-drawer.json'), JSON.stringify(panes.d, null, 2));
         check(panes.d.turns[0].blocks.reduce((n, b) => n + b.videos, 0) === 2, 'B: both built clips play inline in the drawer (Building)');
+        check(panes.d.turns[0].blocks.filter((b) => b.who === 'Telling').flatMap((b) => b.rows).join() === TOLD_WORDS, 'B: Maxi\'s closing words under Telling in the drawer');
+        check(await page.evaluate(() => window.MaxiLab.loop().last.told && window.MaxiLab.loop().last.told.words) === TOLD_WORDS, 'B: the loop\'s result carries told: {words}');
         const owlRows = panes.d.turns[0].blocks.filter((b) => b.who === 'Checking').flatMap((b) => b.rows);
         check(owlRows.length === 2 && owlRows.every((r) => /What I saw — contact: .+; after: .+; passes: .+\./.test(r)), 'B: the Owl\'s account of the footage shows as words, in the drawer', owlRows.map((r) => r.slice(0, 160)));
         await page.screenshot({ path: path.join(OUT, 'B3b-conversation-pane.png') });
@@ -255,7 +277,7 @@ try {
         await page.click('#imagination-toggle');
         const sent = await page.evaluate(() => window.__replaySent.map((s) => ({ role: s.role, prev: s.params.previous_interaction_id || null, kb: s.params.knowledgebase_names, media: (s.params.media || []).map((m) => ({ mime: m.mime_type, label: m.label || null, b64: m.data.length })), user_input: s.params.user_input })));
         fs.writeFileSync(path.join(OUT, 'B-sent.json'), JSON.stringify(sent, null, 2));
-        check(sent.map((s) => s.role).join(',') === 'designer,builder,builder,builder,builder,owl,builder,builder,owl', 'B: the turn order', sent.map((s) => s.role));
+        check(sent.map((s) => s.role).join(',') === 'designer,builder,builder,builder,builder,owl,builder,builder,owl,designer', 'B: the turn order (the closing turn last, on the Designer\'s thread)', sent.map((s) => s.role));
         const owl = sent.filter((s) => s.role === 'owl');
         check(owl.every((s) => JSON.stringify(s.kb) === OWL_KB && !s.kb.some((k) => DESIGNER_KB.includes(k)) && s.prev === null && s.media.length === 1 && s.media[0].mime === 'video/mp4' && !s.user_input.includes('the mirror memory turns the slab')),
             'B: the Owl gets outline + prediction + one clip, fresh thread, its own KB (none of the Designer\'s), no plan', owl.map((s) => ({ kb: s.kb, prev: s.prev, media: s.media })));
@@ -371,7 +393,7 @@ try {
         await page.screenshot({ path: path.join(OUT, 'E2-picker-refused-while-working.png') });
         const shell = await page.evaluate(async () => { try { await window.DeSciX_Actions.loadScene({ id: 'r7-3d' }); return { ran: true }; } catch (e) { return { error: String(e.message || e) }; } });
         check(/^the shell's loadScene \(Run\) is refused while Maxi is working/.test(shell.error || ''), 'E: the shell\'s Run (DeSciX_Actions.loadScene) is refused by name while Maxi works', shell);
-        await page.waitForFunction(() => window.MaxiLab.loop() && window.MaxiLab.loop().last, null, { timeout: 300000 });
+        await turnClosed(page);
         await page.waitForTimeout(1500);
         await page.screenshot({ path: path.join(OUT, 'E3-3d-owl-approved.png') });
         const e3 = await st();
@@ -392,7 +414,7 @@ try {
             'E: the Builder\'s loadScene closes the stage\'s world (no act there, so no Record) and the 3D world is ONE Record: the slab\'s move, no sketch row, the hand-back its last clip', rec3);
         const sent = await page.evaluate(() => window.__replaySent.map((x) => ({ role: x.role, user_input: x.params.user_input, media: (x.params.media || []).length })));
         fs.writeFileSync(path.join(OUT, 'E-sent.json'), JSON.stringify(sent, null, 2));
-        check(sent.map((x) => x.role).join(',') === 'designer,builder,builder,builder,owl', 'E: the turn order', sent.map((x) => x.role));
+        check(sent.map((x) => x.role).join(',') === 'designer,builder,builder,builder,owl,designer', 'E: the turn order (the closing turn last, on the Designer\'s thread)', sent.map((x) => x.role));
         check(/THE STAGE \(loaded in the lab now, on Tony's screen\): "Double Slit[^"]*" — scene id dse-tunnel-rebuild, registry modes declared: 3d, 2d \(loaded: 2d\); 2D \(x, y\): a world/.test(sent[0].user_input), 'E: the Designer was shown the 2D stage, its declared registry modes listed');
         check(sent[1].user_input.includes('The plan\'s scene is not on the stage: your first hand loads it — loadScene {"id":"cl1a-mirror-3d"} (or openSketch'), 'E: the Builder was told to load the plan\'s scene first');
         check(sent[3].media === 1 && sent[4].media === 1 && !/THE STAGE|toward the viewer is|azimuth|spans [xyz] /.test(sent[4].user_input), 'E: the drag clip rides on the Builder\'s next turn and to the Owl, who never sees the stage, the camera, the viewer axis or an extent');
@@ -404,7 +426,7 @@ try {
         await pick('dse-tunnel-rebuild#2d', 'dse-tunnel-rebuild');
         await pick('cl1a-mirror-3d', 'cl1a-mirror-3d');
         const e4 = await st();
-        check(!e4.card && e4.designer === e3.designer && e4.designer === 'replay.designer.1', 'E: a switch after the approval hides the card and keeps Maxi\'s Designer thread', e4);
+        check(!e4.card && e4.designer === e3.designer && e4.designer === 'replay.designer.2', 'E: a switch after the approval hides the card and keeps Maxi\'s Designer thread', e4);
         await page.waitForTimeout(1500);
         await page.evaluate(() => document.activeElement && document.activeElement.blur());
         await page.keyboard.press('KeyH');
@@ -491,7 +513,7 @@ try {
         check(g0.bar.top >= g0.stage.bottom - 1 && g0.bar.bottom <= g0.talk.top + 1 && g0.bar.h <= 32 && g0.bar.top > g0.header.bottom && g0.hits.every((h) => h.ok),
             'G: at 390 px the ticker sits under the stage, above the conversation, and covers none of the toolbar', g0);
         await say(page, FIXTURE.outline);
-        await page.waitForFunction(() => window.MaxiLab.loop() && window.MaxiLab.loop().last, null, { timeout: 300000 });
+        await turnClosed(page);
         await page.waitForTimeout(1500);
         await paneChecks(page, 'G', 2);
         conversationScan('G', await talk(page));
@@ -508,6 +530,36 @@ try {
         const g2 = await drawer(page);
         check(g2.open && g2.turns[0].id === 'imagination-turn-1', 'G: the Thinking line\'s link opens the drawer at its turn on a tap', { open: g2.open });
         check(pageErrors.length === 0, 'G: no page errors', pageErrors);
+        await ctx.close();
+    }
+    // ── H. the closing turn refused after the approve: the loop stops naming it, the build kept ──
+    {
+        const ctx = await browser.newContext({ viewport: { width: 1360, height: 820 } });
+        await ctx.addInitScript((key) => { window.localStorage.setItem(key, '1'); }, INTRO_SEEN_KEY);
+        await ctx.addInitScript({ content: '(' + installReplayDoor.toString() + ')(window, ' + JSON.stringify(FIXTURE_TOLD_FAILS) + ', ' + JSON.stringify(PREFACES) + ', 700);' });
+        const page = await ctx.newPage();
+        const pageErrors = [];
+        page.on('pageerror', (e) => pageErrors.push(e.message));
+        await boot(page);
+        await say(page, FIXTURE.outline);
+        await turnClosed(page);
+        await page.waitForTimeout(1500);
+        const rows = await talk(page);
+        const d = await drawer(page);
+        fs.writeFileSync(path.join(OUT, 'H-conversation.json'), JSON.stringify(rows, null, 2));
+        conversationScan('H', rows);
+        check(rows.length === 3 && /talk-thinking/.test(rows[1].cls) && /talk-refused/.test(rows[1].cls) && /^Thought for \d+ s · 2 rounds · stopped ↗$/.test(rows[1].text),
+            'H: the Thinking line closes red after the approve', rows.map((r) => r.cls + ' ' + r.who + ': ' + r.text.slice(0, 90)));
+        check(rows.length === 3 && rows[2].who === 'Lab' && /talk-lab/.test(rows[2].cls) && !/talk-refused/.test(rows[2].cls) && rows[2].text === '[built and approved — watch; Maxi did not get to tell you about it — why] ↗' && rows[2].video && rows.filter((r) => r.video).length === 1,
+            'H: the approved clip shows ONCE, on the Lab\'s "did not get to tell you — why" fact', rows.map((r) => r.who + ': ' + r.text + (r.video ? ' [video]' : '')));
+        check(d.turns.length === 1 && d.turns[0].blocks.some((b) => b.rows.some((x) => /^Maxi stopped before telling you what the approved clip shows: the closing turn failed — [\s\S]*The build was approved and is kept\.$/.test(x))), 'H: the stop in full in the drawer', d.turns.map((t) => t.blocks.map((b) => b.who + ': ' + b.rows.join(' / ').slice(0, 120))));
+        await page.screenshot({ path: path.join(OUT, 'H1-told-stopped-conversation.png') });
+        await page.click('#talk-lines .talk-lab a.talk-to-drawer');
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: path.join(OUT, 'H2-told-stopped-drawer.png') });
+        const kept = await page.evaluate(() => ({ told: window.MaxiLab.loop().last.told, verdict: window.MaxiLab.loop().last.verdict, card: !document.getElementById('demo').hidden, bar: document.getElementById('error').textContent }));
+        check(kept.verdict === 'approve' && kept.told === null && kept.card && kept.bar === '', 'H: the loop kept the approved build (told null), the card holds it, no error bar', kept);
+        check(pageErrors.length === 0, 'H: no page errors', pageErrors);
         await ctx.close();
     }
 } finally {

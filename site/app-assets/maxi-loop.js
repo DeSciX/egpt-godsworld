@@ -30,8 +30,15 @@
  *     changes lie inside its footage), within the round's limits.builderTurns. The reply after a refused hand
  *     must first say in words what was refused (before its PREDICTION line), else the loop stops.
  *   Owl (the distinct verifier) — a fresh thread per verdict, shown the outline, the prediction and the
- *     clip ONLY; it accounts for the footage (`seen`) before it judges. approve → the record is returned;
- *     revise → the Owl's reasons go to the Builder, who must film again.
+ *     clip ONLY; it accounts for the footage (`seen`) before it judges. approve → the closing turn, then the record is
+ *     returned; revise → the Owl's reasons go to the Builder, who must film again.
+ *   Maxi (the closing turn) — after an approve, the DESIGNER'S OWN thread is asked one words-only turn with the round's
+ *     clip attached (maxi-roles.js toldTurn: the outline, the prediction, the Owl's account and reasons); his reply
+ *     (parseTold) is what he tells Tony, emitted as maxi:told {round, words, clip} — the one event whose role is `maxi`,
+ *     always after owl:approve and before the result, which carries it as `told: {words}`. Its ask emits designer:asking,
+ *     like every Designer ask. A failed closing turn (an empty reply, one carrying a plan or a hand, or the ask throwing)
+ *     never loses the build: the loop emits loop:stopped naming the closing turn and RETURNS the approved result with
+ *     `told: null`, its Records and verdicts intact. After an approve, exactly one of maxi:told or loop:stopped follows.
  *
  * Stops LOUDLY (throws "Maxi stopped: …", and emits it) on: a refused question, a malformed hand-off, a
  * clip outside 5–10 s, a clip the Builder never described, a refusal the Builder answered with no words, `json:done` with no clip, more than
@@ -74,9 +81,10 @@ function assertClip(hand, clip) {
 
 /**
  * @param {object} spec
- *   roles   — the roles module (ROLES, designerTurn, builderTurn, owlTurn, parseDesignerReply, parseBuilderReply, parseVerdict)
+ *   roles   — the roles module (ROLES, designerTurn, builderTurn, owlTurn, toldTurn, parseDesignerReply, parseBuilderReply, parseVerdict, parseTold)
  *   brain   — see BRAIN above;  body — see BODY above
- *   onEvent — {role:'tony'|'designer'|'builder'|'owl'|'loop', kind, round?, …} (the conversation, the run report)
+ *   onEvent — {role:'tony'|'designer'|'builder'|'owl'|'maxi'|'loop', kind, round?, …} (the conversation, the run report);
+ *             the closing turn is exactly {role:'maxi', kind:'told', round, words, clip}
  *   limits  — optional {rounds, builderTurns} (defaults LOOP_LIMITS)
  *   recorder — optional, the human's Record (maxi-record.js attachRecorder): while it is recording the loop
  *              refuses to start (the page passes it; the node driver has none)
@@ -85,7 +93,7 @@ function assertClip(hand, clip) {
  */
 export function createLoop(spec) {
     const roles = spec && spec.roles;
-    ['designerTurn', 'builderTurn', 'owlTurn', 'parseDesignerReply', 'parseBuilderReply', 'parseVerdict', 'stageOf', 'emptyStage'].forEach(function (k) {
+    ['designerTurn', 'builderTurn', 'owlTurn', 'toldTurn', 'parseDesignerReply', 'parseBuilderReply', 'parseVerdict', 'parseTold', 'stageOf', 'emptyStage'].forEach(function (k) {
         if (!roles || typeof roles[k] !== 'function') { throw new Error('[loop] the roles module exports no ' + k + '() — maxi-roles.js and the loop disagree.'); }
     });
     if (!Array.isArray(roles.ROLE_ORDER)) { throw new Error('[loop] the roles module exports no ROLE_ORDER — maxi-roles.js owns the list of roles.'); }
@@ -267,11 +275,21 @@ export function createLoop(spec) {
                 if (v.verdict === 'approve') {
                     const after = await inventoryNow();   // the last world's close; a refusal is kept in words (the Record assembly refuses it)
                     worlds[worlds.length - 1].after = after.inventory; worlds[worlds.length - 1].afterRefused = after.refused;
+                    // THE CLOSING TURN: Maxi, on his own thread, tells Tony what the approved clip shows. A failure is emitted as
+                    // loop:stopped naming the closing turn, and the approved result is still returned (told: null): the build stands.
+                    const ticks = (Number.isInteger(built.clip.firstTick) && Number.isInteger(built.clip.lastTick)) ? { first: built.clip.firstTick, last: built.clip.lastTick } : null;
+                    let told = null;
+                    try {
+                        told = roles.parseTold(await ask('designer', st.designer, roles.toldTurn({ outline: outline, prediction: built.prediction, owl: { seen: v.seen, reasons: v.reasons }, ticks: ticks }), built.clip));
+                    } catch (err) {
+                        emit({ role: 'loop', kind: 'stopped', words: 'Maxi stopped before telling you what the approved clip shows: the closing turn failed — ' + String((err && err.message) || err) + ' The build was approved and is kept.' });
+                    }
+                    if (told) { emit({ role: 'maxi', kind: 'told', round: round, words: told.words, clip: built.clip }); }
                     st.last = {
                         worlds: worlds.map(function (w) { return { before: w.before, after: w.after, afterRefused: w.afterRefused, changes: w.changes.slice(), clips: w.clips.slice() }; }),
                         outline: outline, verdict: 'approve', rounds: round, plan: parsed.plan, designerWords: parsed.words, steps: steps.slice(),
                         clip: built.clip, prediction: built.prediction, builderWords: built.words, owl: v, verdicts: verdicts,
-                        threads: { designer: st.designer.id, builder: builder.id, owl: owl.id }
+                        threads: { designer: st.designer.id, builder: builder.id, owl: owl.id }, told: told ? { words: told.words } : null
                     };
                     return st.last;
                 }

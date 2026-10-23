@@ -24,7 +24,12 @@
  *      Designing there; a conversation row the page composes never carries a file name (a token ending .md outside a link)
  *      or a backtick (conversationFaults, in paneFaults, a throw); Maxi's model words are shown without backticks and each
  *      slip is counted in a plain drawer row (registerSlips), never a stop;
- *   8. the collapsed drawer's ticker (tickerOf) shows the process label and the row's lead, never a file name.
+ *   8. the collapsed drawer's ticker (tickerOf) shows the process label and the row's lead, never a file name;
+ *   9. maxi:told (Maxi's closing turn): his row in the conversation, Maxi by the event's role, Maxi's words through plainTalk with
+ *      each slip counted under Telling in the drawer, the approved clip on HIS row; the approve itself shows its clip nowhere
+ *      (the turn holds it, talkTurn/loopStep); a stop after the approve, or a loop that ends without telling (turnEnd), shows
+ *      the clip once as the Lab's UNTOLD_FACT linking to the drawer. Plants: the told entry deleted (the unknown-event throw),
+ *      the clip off the told row, the old approved Lab fact restored beside told (two clips), the stop losing the clip (none).
  */
 
 import { test } from 'node:test';
@@ -36,8 +41,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
     loopRowsOf, thinkingOf, thinkingLine, thinkingSummary, paneFaults, labFactFaults, conversationFaults, turnAnchor,
-    registerSlips, slipWords, plainTalk, tickerOf, fileNames,
-    LOOP_ROWS, ROLE_ROW, PANES, PROCESSES, DONE_REFUSED, ANSWERED, ASKING, MEMORIES_LEAD, APPROVED_FACT, NOT_STARTED_FACT, THINKING_ENDS, IMAGINATION_TITLE
+    registerSlips, slipWords, plainTalk, tickerOf, fileNames, isPageRow, talkTurn, loopStep, turnEnd,
+    LOOP_ROWS, ROLE_ROW, PANES, PROCESSES, DONE_REFUSED, ANSWERED, ASKING, MEMORIES_LEAD, NOT_STARTED_FACT, THINKING_ENDS, IMAGINATION_TITLE,
+    TOLD, TELLING, TELLING_LINE, UNTOLD_FACT, NO_TOLD_WORDS
 } from '../../site/app-assets/maxi-talk.js';
 import { VERDICTS, SEEN_ACCOUNT, ROLE_ORDER, ROLES } from '../../site/app-assets/maxi-roles.js';
 import { signInRefusal, SIGN_IN_NOTICE, SIGN_IN_MARK } from '../../site/app-assets/maxi-auth.js';
@@ -53,6 +59,14 @@ function emittedKinds(src) {
     return [...out];
 }
 
+/** Each event's step as the page takes it: one turn (talkTurn) stepped through `events` by loopStep, its {rows, think} per event. */
+const stepped = (events, mod) => { const m = mod || { talkTurn, loopStep }; const t = m.talkTurn(); return events.map((e) => m.loopStep(e, t)); };
+/** Every row the table makes for EVENTS (stepped as one turn) and OTHERS (each on its own). */
+const allRows = () => stepped(EVENTS).flatMap((s, i) => s.rows.map((r) => Object.assign({ kind: EVENTS[i].role + ':' + EVENTS[i].kind }, r)))
+    .concat(OTHERS.flatMap((e) => loopRowsOf(e).map((r) => Object.assign({ kind: e.role + ':' + e.kind }, r))));
+const TOLD_AT = EVENTS.findIndex((e) => e.role === 'maxi' && e.kind === TOLD);
+const APPROVE_AT = EVENTS.findIndex((e) => e.role === 'owl' && e.kind === 'approve');
+
 const OTHERS = Object.freeze([
     { role: 'designer', kind: ANSWERED, reading: 'question', words: 'This is the tunnel.', memories: ['dse-tunnel-rebuild-card.md'] },
     { role: 'loop', kind: 'refused', words: 'Maxi did not start on "x": Record is on (a segment is rolling) — press Stop (R) first; the loop films with the same recorder.' },
@@ -65,11 +79,12 @@ test('every event the loop emits has an entry; one the page does not show throws
     assert.ok(kinds.length >= 6 && kinds.includes('builder:working') && kinds.includes('loop:stopped'), 'the scan reads the loop\'s emits: ' + kinds);
     assert.ok(kinds.includes('designer:' + ANSWERED), 'the scan reads the Designer\'s answer emit: ' + kinds);
     assert.match(read('site/app-assets/maxi-loop.js'), /emit\(\{ role: role, kind: 'asking' \}\)/, 'the loop emits `asking` for the role it asks');
-    const owed = kinds.concat(VERDICTS.map((v) => 'owl:' + v), ['builder:' + DONE_REFUSED, 'designer:' + ANSWERED], ROLE_ORDER.map((r) => r + ':' + ASKING));
+    // maxi:told is the closing turn's contract (the loop's closing turn emits it after an approve): owed whether or not this tree's loop emits it yet
+    const owed = kinds.concat(VERDICTS.map((v) => 'owl:' + v), ['builder:' + DONE_REFUSED, 'designer:' + ANSWERED, 'maxi:' + TOLD], ROLE_ORDER.map((r) => r + ':' + ASKING));
     assert.deepEqual(owed.filter((k) => !LOOP_ROWS[k]), [], 'a loop event with no entry');
     for (const k of Object.keys(LOOP_ROWS)) { assert.equal(typeof LOOP_ROWS[k].rows, 'function', k + ' rows'); assert.equal(typeof LOOP_ROWS[k].think, 'function', k + ' think'); }
     for (const r of ROLE_ORDER) { assert.deepEqual(loopRowsOf({ role: r, kind: ASKING }), [], r + ' asking shows no row, only the Thinking line'); }
-    for (const bad of [{ role: 'builder', kind: 'frobbed' }, { role: 'designer', kind: 'second-thoughts' }, { role: 'owl', kind: 'maybe', seen: SEEN, reasons: [] }]) {
+    for (const bad of [{ role: 'builder', kind: 'frobbed' }, { role: 'designer', kind: 'second-thoughts' }, { role: 'owl', kind: 'maybe', seen: SEEN, reasons: [] }, { role: 'maxi', kind: 'mused' }]) {
         assert.throws(() => loopRowsOf(bad), new RegExp('^Error: \\[maxi-lab\\] the loop emitted an event the page does not show: ' + bad.role + ':' + bad.kind + ' '));
         assert.throws(() => thinkingOf(bad), /the loop emitted an event the page does not show/);
     }
@@ -82,7 +97,7 @@ const routes = (e) => loopRowsOf(e).map((r) => r.role + '@' + r.pane);
 
 test('every row carries its pane: the visitor, Maxi\'s answer and the Lab\'s facts in the conversation; the plan, the Builder, the Owl and the stops in the drawer (negative controls: a row with no pane, an unknown pane, a Builder or Owl row in the conversation are each red)', () => {
     assert.deepEqual(PANES, ['conversation', 'imagination']);
-    const all = EVENTS.concat(OTHERS).flatMap((e) => loopRowsOf(e).map((r) => Object.assign({ kind: e.role + ':' + e.kind }, r)));
+    const all = allRows();
     assert.deepEqual(paneFaults(all), [], 'every row the table makes is paintable');
     for (const r of all) { assert.ok(PANES.includes(r.pane), r.kind + ' has a pane'); }
     assert.deepEqual(routes(EVENTS[0]), ['tony@conversation']);
@@ -91,7 +106,8 @@ test('every row carries its pane: the visitor, Maxi\'s answer and the Lab\'s fac
     assert.deepEqual(routes(EVENTS[5]), ['builder@imagination', 'loop@imagination']);
     assert.deepEqual(routes(EVENTS[6]), ['builder@imagination']);
     assert.deepEqual(routes(EVENTS[8]), ['owl@imagination']);
-    assert.deepEqual(routes(EVENTS[11]), ['owl@imagination', 'lab@conversation'], 'the approve: the verdict in the drawer, the clip in the conversation');
+    assert.deepEqual(routes(EVENTS[APPROVE_AT]), ['owl@imagination'], 'the approve: the verdict in the drawer only; its clip is held for Maxi\'s closing turn');
+    assert.deepEqual(stepped(EVENTS)[TOLD_AT].rows.map((r) => r.role + '@' + r.pane), ['maxi@imagination', 'maxi@conversation'], 'the closing turn: Telling in the drawer, Maxi\'s words with the clip in the conversation');
     assert.deepEqual(routes(OTHERS[0]), ['designer@imagination', 'designer@conversation'], 'the answer to a question: its memory files in the drawer, Maxi\'s words in the conversation');
     assert.deepEqual(routes(OTHERS[1]), ['loop@imagination', 'lab@conversation'], 'a refusal before any outline: the why in the drawer, a plain Lab fact in the conversation');
     assert.deepEqual(routes(OTHERS[2]), ['loop@imagination'], 'a stop: the drawer alone (the conversation\'s stop is the red Thinking line)');
@@ -99,15 +115,15 @@ test('every row carries its pane: the visitor, Maxi\'s answer and the Lab\'s fac
     // no Builder or Owl row is ever in the conversation; the conversation's labels are Maxi's, the visitor's and the Lab's
     assert.deepEqual(all.filter((r) => r.pane === 'conversation' && (r.role === 'builder' || r.role === 'owl')), []);
     assert.deepEqual([...new Set(all.filter((r) => r.pane === 'conversation').map((r) => r.who))].sort(), ['Lab', ROLES.designer.name, 'You'].sort());
-    assert.deepEqual([...new Set(all.filter((r) => r.pane === 'imagination').map((r) => r.who))].sort(), ['Lab', PROCESSES.designer, PROCESSES.builder, PROCESSES.owl].sort(), 'the drawer\'s labels are the three processes (and the Lab\'s stops)');
+    assert.deepEqual([...new Set(all.filter((r) => r.pane === 'imagination').map((r) => r.who))].sort(), ['Lab', PROCESSES.designer, PROCESSES.builder, PROCESSES.owl, TELLING].sort(), 'the drawer\'s labels are the three processes, Telling (and the Lab\'s stops)');
     assert.deepEqual(PROCESSES, { designer: 'Designing', builder: 'Building', owl: 'Checking' });
     assert.ok(!all.some((r) => /^(the )?(Designer|Builder|Owl)$/i.test(r.who)), 'no row is labelled as another speaker');
-    const approved = loopRowsOf(EVENTS[11])[1];
-    assert.equal(approved.text, APPROVED_FACT); assert.equal(approved.cls, 'talk-lab'); assert.equal(approved.clip, CLIP, 'the approved clip rides on the conversation\'s Lab fact');
+    const told = stepped(EVENTS)[TOLD_AT].rows[1];
+    assert.deepEqual([told.role, told.who, told.cls], ['maxi', ROLES.designer.name, 'talk-maxi']); assert.equal(told.clip, CLIP, 'the approved clip rides on Maxi\'s own row');
     // negative controls: rows built by hand that the table must never make
     const ok = loopRowsOf(EVENTS[4])[0];
     assert.match(paneFaults([Object.assign({}, ok, { pane: 'conversation' })]).join(), /row 1 \(builder\) is in the conversation pane, where a builder row never shows/);
-    const owl = loopRowsOf(EVENTS[11])[0];
+    const owl = loopRowsOf(EVENTS[APPROVE_AT])[0];
     assert.match(paneFaults([Object.assign({}, owl, { pane: 'conversation' })]).join(), /row 1 \(owl\) is in the conversation pane, where a owl row never shows/);
     const noPane = Object.assign({}, ok); delete noPane.pane;
     assert.match(paneFaults([noPane]).join(), /row 1 \(builder\) has no pane/);
@@ -134,18 +150,18 @@ async function plantedTalk(edit) {
 test('planted copies of maxi-talk.js: a Builder row put in the conversation, an Owl row put there, a row with no pane, and a hand-made row that skips the table\'s row() are each refused by loopRowsOf by name', async () => {
     const b = await plantedTalk((s) => s.replace("row('builder', 'imagination', (e.words ? e.words + '\\n' : '') + '['", "row('builder', 'conversation', (e.words ? e.words + '\\n' : '') + '['"));
     assert.throws(() => b.loopRowsOf(EVENTS[4]), /^Error: \[maxi-talk\] a builder row never shows in the conversation pane \(it shows in: imagination\)\.$/);
-    const o = await plantedTalk((s) => s.replace("const out = [row('owl', 'imagination',", "const out = [row('owl', 'conversation',"));
-    assert.throws(() => o.loopRowsOf(EVENTS[11]), /a owl row never shows in the conversation pane/);
+    const o = await plantedTalk((s) => s.replace("            return [row('owl', 'imagination',", "            return [row('owl', 'conversation',"));
+    assert.throws(() => o.loopRowsOf(EVENTS[APPROVE_AT]), /a owl row never shows in the conversation pane/);
     const n = await plantedTalk((s) => s.replace("rows: function (e) { return [row('designer', 'imagination', (e.words", "rows: function (e) { return [row('designer', undefined, (e.words"));
     assert.throws(() => n.loopRowsOf(EVENTS[2]), /a row's pane is one of conversation, imagination, got undefined \(role designer\)/);
-    const raw = await plantedTalk((s) => s.replace("'tony:said': { rows: function (e) { return [row('tony', 'conversation', e.words)]; }",
-        "'tony:said': { rows: function (e) { return [{ role: 'builder', who: 'Building', cls: 'talk-builder', text: e.words }]; }"));
+    const raw = await plantedTalk((s) => s.replace("    'tony:said': {\n        rows: function (e) { return [row('tony', 'conversation', e.words)]; }",
+        "    'tony:said': {\n        rows: function (e) { return [{ role: 'builder', who: 'Building', cls: 'talk-builder', text: e.words }]; }"));
     assert.throws(() => raw.loopRowsOf(EVENTS[0]), /^Error: \[maxi-talk\] tony:said made rows the page cannot paint: row 1 \(builder\) has no pane/);
-    const raw2 = await plantedTalk((s) => s.replace("'tony:said': { rows: function (e) { return [row('tony', 'conversation', e.words)]; }",
-        "'tony:said': { rows: function (e) { return [{ role: 'owl', pane: 'conversation', who: 'Checking', cls: 'talk-owl', text: e.words }]; }"));
+    const raw2 = await plantedTalk((s) => s.replace("    'tony:said': {\n        rows: function (e) { return [row('tony', 'conversation', e.words)]; }",
+        "    'tony:said': {\n        rows: function (e) { return [{ role: 'owl', pane: 'conversation', who: 'Checking', cls: 'talk-owl', text: e.words }]; }"));
     assert.throws(() => raw2.loopRowsOf(EVENTS[0]), /tony:said made rows the page cannot paint: row 1 \(owl\) is in the conversation pane, where a owl row never shows/);
-    // the unplanted table, for contrast: every one of these events paints
-    for (const e of EVENTS) { assert.doesNotThrow(() => loopRowsOf(e)); }
+    // the unplanted table, for contrast: every one of these events paints, stepped as one turn
+    assert.doesNotThrow(() => stepped(EVENTS));
 });
 
 test('a stop or a refusal: the loop\'s words in full in the drawer only; a refusal before any outline is the plain Lab fact "Maxi did not start — why" linking there (negative controls: the old "I stopped" row, a role name, loop words or code in a Lab fact are each red)', async () => {
@@ -158,10 +174,11 @@ test('a stop or a refusal: the loop\'s words in full in the drawer only; a refus
     assert.equal(NOT_STARTED_FACT, 'Maxi did not start — why');
     assert.ok(!/talk-refused/.test(fact.cls), 'the Lab fact is never red');
     assert.deepEqual(labFactFaults(NOT_STARTED_FACT), []);
-    assert.deepEqual(labFactFaults(APPROVED_FACT), []);
+    assert.deepEqual(labFactFaults(UNTOLD_FACT), []);
     // no loop words ever reach the conversation
-    for (const e of EVENTS.concat(OTHERS)) {
-        for (const r of loopRowsOf(e).filter((x) => x.pane === 'conversation' && x.role !== 'tony' && x.role !== 'designer')) {
+    const steps = stepped(EVENTS).map((st, i) => [EVENTS[i], st.rows]).concat(OTHERS.map((e) => [e, loopRowsOf(e)]));
+    for (const [e, rows] of steps) {
+        for (const r of rows.filter((x) => x.pane === 'conversation' && x.role !== 'tony' && x.role !== 'designer' && x.role !== 'maxi')) {
             assert.ok(!e.words || r.text.indexOf(e.words) === -1 || r.text === e.words && e.role === 'tony', e.role + ':' + e.kind + ' carries the loop\'s words into the conversation');
         }
     }
@@ -171,11 +188,11 @@ test('a stop or a refusal: the loop\'s words in full in the drawer only; a refus
     assert.match(labFactFaults('I stopped: Maxi stopped: designer: nothing was asked.').join(), /carries a role's name.*|carries the loop's words/);
     assert.match(labFactFaults("window.DeSciX.call('ask_question_to_app')").join(), /carries code/);
     // planted copies of maxi-talk.js through the real loopRowsOf: the old "I stopped" row, and a role name in the Lab fact
-    const old = await plantedTalk((s) => s.replace("rows: function (e) { return isSignInRefusal(e.words) ? [row('lab', 'conversation', SIGN_IN_NOTICE)] : [stopRow(e)]; },",
-        "rows: function (e) { return isSignInRefusal(e.words) ? [row('lab', 'conversation', SIGN_IN_NOTICE)] : [stopRow(e), row('loop', 'conversation', 'I stopped: ' + e.words, { toDrawer: true })]; },"));
+    const old = await plantedTalk((s) => s.replace("return isSignInRefusal(e.words) ? [row('lab', 'conversation', SIGN_IN_NOTICE)] : [stopRow(e)];",
+        "return isSignInRefusal(e.words) ? [row('lab', 'conversation', SIGN_IN_NOTICE)] : [stopRow(e), row('loop', 'conversation', 'I stopped: ' + e.words, { toDrawer: true })];"));
     assert.throws(() => old.loopRowsOf(OTHERS[2]), /a loop row never shows in the conversation pane/, 'negative control: the old row in Maxi\'s voice is red');
-    const asLab = await plantedTalk((s) => s.replace("rows: function (e) { return isSignInRefusal(e.words) ? [row('lab', 'conversation', SIGN_IN_NOTICE)] : [stopRow(e)]; },",
-        "rows: function (e) { return isSignInRefusal(e.words) ? [row('lab', 'conversation', SIGN_IN_NOTICE)] : [stopRow(e), row('lab', 'conversation', 'I stopped: ' + e.words)]; },"));
+    const asLab = await plantedTalk((s) => s.replace("return isSignInRefusal(e.words) ? [row('lab', 'conversation', SIGN_IN_NOTICE)] : [stopRow(e)];",
+        "return isSignInRefusal(e.words) ? [row('lab', 'conversation', SIGN_IN_NOTICE)] : [stopRow(e), row('lab', 'conversation', 'I stopped: ' + e.words)];"));
     assert.throws(() => asLab.loopRowsOf(OTHERS[2]), /made rows the page cannot paint: row 2 \(lab\): a Lab fact carries/, 'negative control: the old row\'s words as a Lab fact are red');
     const named = await plantedTalk((s) => s.replace("export const NOT_STARTED_FACT = 'Maxi did not start — why';", "export const NOT_STARTED_FACT = 'the Builder did not start — why';"));
     assert.throws(() => named.loopRowsOf(OTHERS[1]), /row 2 \(lab\): a Lab fact carries a role's name: "the Builder did not start — why"/, 'negative control: a role name in the Lab fact is red');
@@ -206,11 +223,13 @@ test('the drawer\'s title lives once: app.html\'s labels and the page\'s titleDr
 });
 
 test('the Thinking line: opened by the visitor\'s words, process words while the loop runs, closed by the approve or the stop, taken away for an answer or a sign-in notice (negative controls: an unknown end, a bad summary are refused)', () => {
-    const steps = EVENTS.map((e) => thinkingOf(e));
+    const steps = stepped(EVENTS).map((s) => s.think);
     assert.deepEqual(steps[0], { begin: true, line: 'reading what you said' });
     assert.deepEqual(steps.slice(1, 11).map((s) => s.line), ['thinking it through', 'planning from my memory of cl1a-mirror', 'building', 'building: dragTo ran',
         'building: the hand-back was refused, filming again', 'built: handing the clip over', 'watching the clip', 'sent back: round 2', 'building: see was refused', 'built: handing the clip over']);
-    assert.deepEqual(steps[11], { end: 'approved' });
+    assert.deepEqual(steps.slice(APPROVE_AT), [{ line: TELLING_LINE }, { line: TELLING_LINE }, { end: 'approved' }], 'the approve: telling, the Designer thread asked for the closing turn: telling, Maxi\'s words: the line closes approved');
+    assert.equal(TELLING_LINE, 'telling you what the clip shows');
+    assert.deepEqual(thinkingOf({ role: 'designer', kind: ASKING }), { line: 'thinking it through' }, 'the Designer asked with nothing held is the plan being thought');
     assert.deepEqual(thinkingOf(OTHERS[0]), { none: true }, 'a question\'s answer: no Thinking line');
     assert.equal(thinkingOf(OTHERS[1]), null, 'a refusal before the visitor\'s words are taken leaves the line alone');
     assert.deepEqual(thinkingOf(OTHERS[2]), { end: 'stopped' });
@@ -264,7 +283,7 @@ test('a conversation row the page composes never carries a file name or a backti
     assert.match(conversationFaults('The `Tunnel` part.').join(), /carries a backtick/);
     assert.deepEqual(conversationFaults('a.mdx, Ph.D.'), [], 'only a token ending .md');
     // every row the table makes passes
-    for (const e of EVENTS.concat(OTHERS)) { assert.deepEqual(paneFaults(loopRowsOf(e)), [], e.role + ':' + e.kind); }
+    assert.deepEqual(paneFaults(allRows()), []);
     // Maxi's model words: rendered, backticks gone, bare file names left; the slip counted in the drawer, never a throw
     const words = 'It is a `Tunnel` with two slits, as dse-tunnel-rebuild-card.md and https://egpt.descix.net/#04_ROTA/x.md say; `SlitScreen` is not in it.';
     assert.deepEqual(registerSlips(words), { backticks: 4, files: 1 }, 'a file name inside a link is not a slip');
@@ -305,7 +324,7 @@ function answerFaults(rowsOf) {
 }
 
 test('the collapsed drawer\'s ticker shows the process label and the row\'s lead, never a file name (negative controls: the memory row\'s lead planted out, a ticker that keeps the whole first line, are each red)', async () => {
-    const all = EVENTS.concat(OTHERS).flatMap((e) => loopRowsOf(e)).filter((r) => r.pane === 'imagination');
+    const all = allRows().filter((r) => r.pane === 'imagination');
     for (const r of all) { assert.ok(!/\w\.md\b/.test(tickerOf(r).replace(/https?:\/\/\S+/g, '')), 'a ticker with a file name: ' + tickerOf(r)); }
     const [mem] = loopRowsOf(OTHERS[0]);
     assert.equal(tickerOf(mem), 'Designing · From my memories');
@@ -329,12 +348,15 @@ test('the collapsed drawer\'s ticker shows the process label and the row\'s lead
     assert.throws(() => wholeLead.tickerOf(wholeLead.loopRowsOf(OTHERS[0])[0]), /the drawer's ticker would show a file name: "Designing · From my memories: dse-tunnel-rebuild-card\.md"/);
 });
 
-test('maxi-lab.js paints the loop through loopRowsOf only (negative control: a planted row shape in the page is red)', () => {
+test('maxi-lab.js paints the loop through loopStep only, stepping its one turn, and closes the turn through turnEnd (negative controls: a planted row shape in the page, the turn end removed, are each red)', () => {
     const own = (src) => {
         const bad = [];
-        if (!/import\s*\{[^}]*\bloopRowsOf\b[^}]*\}\s*from\s*'\.\/maxi-talk\.js'/.test(src)) { bad.push('does not import loopRowsOf from ./maxi-talk.js'); }
+        if (!/import\s*\{[^}]*\bloopStep\b[^}]*\}\s*from\s*'\.\/maxi-talk\.js'/.test(src)) { bad.push('does not import loopStep from ./maxi-talk.js'); }
         const body = src.slice(src.indexOf('\nfunction renderLoop('), src.indexOf('\n}\n', src.indexOf('\nfunction renderLoop(')));
-        if (!/loopRowsOf\(e\)/.test(body)) { bad.push('renderLoop does not read its rows from loopRowsOf'); }
+        if (!/loopStep\(e, talk\)/.test(body)) { bad.push('renderLoop does not read its rows from loopStep over the page\'s turn'); }
+        const im = src.slice(src.indexOf('\nasync function imagine('), src.indexOf('\n}\n', src.indexOf('\nasync function imagine(')));
+        if (!/const out = await theLoop\(\)\.imagine\(outline\);\n\s*closeTurn\(\);/.test(im)) { bad.push('imagine does not close the turn as soon as the loop returns'); }
+        if (!/\nfunction closeTurn\(\) \{\n\s*paintStep\(turnEnd\(talk\), \{\}\);/.test(src)) { bad.push('closeTurn does not paint turnEnd of the page\'s turn'); }
         for (const [what, re] of [['a role table', /\bROLE_ROW\b/], ['the verdict words', /'Approved\. '|'Sent back\. '/], ['an unknown-kind throw', /event the page does not show/], ['a role:kind branch', /e\.kind === '(?!asking)/]]) {
             if (re.test(src)) { bad.push('holds ' + what + ' of its own'); }
         }
@@ -342,9 +364,12 @@ test('maxi-lab.js paints the loop through loopRowsOf only (negative control: a p
     };
     const lab = read('site/app-assets/maxi-lab.js');
     assert.deepEqual(own(lab), []);
-    const planted = lab.replace('    const rows = loopRowsOf(e);\n', "    if (e.role === 'builder' && e.kind === 'done-refused') { talkLine('Lab', e.refusal, 'talk-refused'); return; }\n    const rows = loopRowsOf(e);\n");
+    const planted = lab.replace('    const s = loopStep(e, talk);\n', "    if (e.role === 'builder' && e.kind === 'done-refused') { talkLine('Lab', e.refusal, 'talk-refused'); return; }\n    const s = loopStep(e, talk);\n");
     assert.notEqual(planted, lab);
     assert.deepEqual(own(planted), ['holds a role:kind branch of its own']);
+    const unclosed = lab.replace(/\n\s*closeTurn\(\);[^\n]*/, '');
+    assert.notEqual(unclosed, lab);
+    assert.deepEqual(own(unclosed), ['imagine does not close the turn as soon as the loop returns']);
 });
 
 /** The talk rows of `e` through a LOOP_ROWS entry planted back to the old shape (`old`), for the negative controls below. */
@@ -382,4 +407,112 @@ test('a sign-in refusal is the SIGN IN Lab notice, never a red stop; an answer n
     const plant = (key, fn) => (e) => (e.role + ':' + e.kind === key ? fn(e) : loopRowsOf(e));
     assert.match(noticeFaults(plant('designer:' + ANSWERED, OLD_NOTICE)).join(), /an answer naming no memory shows talk-maxi, talk-lab/);
     assert.match(noticeFaults(plant('loop:stopped', OLD_STOPPED)).join(), /a sign-in stop shows/);
+});
+
+// ── maxi:told, Maxi's closing turn: his voice, the clip on his row; the approve holds the clip; a stop or a silent end shows it once ──
+
+/** A stop after the approve (Maxi's closing turn threw), as the loop's catch emits it. */
+const STOP_AFTER = Object.freeze({ role: 'loop', kind: 'stopped', words: 'Maxi stopped: designer: the question was NOT answered — Request entity too large' });
+
+/**
+ * The faults of a table (`m`: a module with talkTurn, loopStep, turnEnd) over the three ways an approved turn ends: Maxi tells it
+ * (the clip once, on his row, no Lab row), the loop stops after the approve (the clip once, on the Lab's UNTOLD_FACT linking to
+ * the drawer, the line red), the loop returns with no closing turn (turnEnd: the same, the fault in the drawer).
+ */
+function turnClipFaults(m) {
+    const f = [];
+    const conv = (steps) => steps.flatMap((s) => s.rows).filter((r) => r.pane === 'conversation');
+    const clips = (rows) => rows.filter((r) => r.clip);
+    const run = (name, fn) => { try { fn(); } catch (err) { f.push(name + ' threw: ' + err.message); } };
+    run('told', () => {
+        const steps = stepped(EVENTS, m);
+        const c = conv(steps);
+        if (clips(c).length !== 1) { f.push('told: the conversation shows the clip ' + clips(c).length + ' times'); }
+        else if (clips(c)[0].role !== 'maxi' || clips(c)[0].who !== ROLES.designer.name) { f.push('told: the clip is on a ' + clips(c)[0].role + ' row'); }
+        if (c.some((r) => r.role === 'lab')) { f.push('told: a Lab row is in the conversation: ' + JSON.stringify(c.filter((r) => r.role === 'lab').map((r) => r.text))); }
+        if (JSON.stringify(steps[steps.length - 1].think) !== JSON.stringify({ end: THINKING_ENDS.approve })) { f.push('told: the Thinking line does not close approved'); }
+    });
+    run('stopped', () => {
+        const steps = stepped(EVENTS.slice(0, TOLD_AT).concat([STOP_AFTER]), m);
+        const c = clips(conv(steps));
+        if (c.length !== 1) { f.push('stopped: the conversation shows the clip ' + c.length + ' times'); }
+        else if (c[0].role !== 'lab' || c[0].text !== UNTOLD_FACT || !c[0].toDrawer) { f.push('stopped: the clip is on ' + JSON.stringify([c[0].role, c[0].text])); }
+        if (JSON.stringify(steps[steps.length - 1].think) !== JSON.stringify({ end: THINKING_ENDS.stopped })) { f.push('stopped: the Thinking line does not close red'); }
+    });
+    run('ended', () => {
+        const t = m.talkTurn();
+        const steps = EVENTS.slice(0, APPROVE_AT + 1).map((e) => m.loopStep(e, t));
+        const end = m.turnEnd(t);
+        const c = clips(conv(steps.concat([end])));
+        if (c.length !== 1 || c[0].text !== UNTOLD_FACT) { f.push('ended: the conversation shows the clip ' + c.length + ' times'); }
+        if (JSON.stringify(end.think) !== JSON.stringify({ end: THINKING_ENDS.stopped })) { f.push('ended: the Thinking line does not close red'); }
+        if (m.turnEnd(t).rows.length) { f.push('ended: a second turnEnd shows the clip again'); }
+    });
+    return f;
+}
+
+test('maxi:told is Maxi speaking by the event\'s role: Maxi\'s words in the conversation through plainTalk, the clip on his row, each slip counted under Telling in the drawer, never the page\'s gate; the approve shows no clip of its own', () => {
+    const steps = stepped(EVENTS);
+    const told = steps[TOLD_AT].rows;
+    assert.deepEqual(told.map((r) => [r.role, r.pane, r.who, r.cls]), [['maxi', 'imagination', TELLING, 'talk-telling'], ['maxi', 'conversation', ROLES.designer.name, 'talk-maxi']]);
+    assert.equal(ROLE_ROW.maxi.conversation[0], ROLE_ROW.designer.conversation[0], 'one name for Maxi in the conversation');
+    assert.equal(told[1].text, EVENTS[TOLD_AT].words); assert.equal(told[1].clip, CLIP); assert.equal(told[0].clip, undefined, 'the drawer\'s Telling row carries no second copy of the clip');
+    assert.equal(tickerOf(told[0]), 'Telling · ' + EVENTS[TOLD_AT].words, 'the collapsed ticker: Telling and his first words');
+    assert.equal(isPageRow(told[1].who, told[1].cls), false, 'Maxi\'s own row is never held to the page\'s gate');
+    assert.deepEqual(steps[APPROVE_AT].rows.filter((r) => r.pane === 'conversation' || r.clip), [], 'the approve shows its verdict in the drawer only, no clip');
+    assert.equal(TOLD, 'told'); assert.equal(TELLING, 'Telling');
+    // model words that slip: shown without backticks, a bare file name left (never a stop), the slip counted under Telling
+    const words = 'The `mirror` turned the beam, as cl1a-mirror-card.md predicted; I do not yet see why the spot widens.';
+    const t = talkTurn();
+    EVENTS.slice(0, TOLD_AT).forEach((e) => loopStep(e, t));
+    const slipped = loopStep({ role: 'maxi', kind: TOLD, round: 2, words, clip: CLIP }, t).rows;
+    assert.deepEqual(slipped.map((r) => [r.pane, r.who, r.text]), [
+        ['imagination', TELLING, words], ['imagination', TELLING, 'register slip: 2 backticks, 1 file name'], ['conversation', ROLES.designer.name, plainTalk(words)]]);
+    assert.equal(slipped[2].clip, CLIP);
+    assert.ok(!slipped.some((r) => /talk-refused/.test(r.cls)), 'a slip is never red');
+    assert.equal(t.held, null, 'the told turn lets the clip go');
+    // each fault of the event, by name
+    const held = () => { const x = talkTurn(); EVENTS.slice(0, TOLD_AT).forEach((e) => loopStep(e, x)); return x; };
+    assert.throws(() => loopStep(EVENTS[TOLD_AT], talkTurn()), /maxi:told with no approved clip held for it/);
+    assert.throws(() => loopStep({ role: 'maxi', kind: TOLD, round: 2, words: ' ', clip: CLIP }, held()), /maxi:told event carries no `words`/);
+    assert.throws(() => loopStep({ role: 'maxi', kind: TOLD, round: 2, words: 'w' }, held()), /maxi:told event carries no `clip`/);
+    assert.throws(() => loopStep({ role: 'maxi', kind: TOLD, round: 2, words: 'w', clip: { media: { mime_type: 'video/mp4', data: 'BBBB' } } }, held()), /clip is not the one the Owl approved in round 2/);
+    assert.throws(() => loopStep(Object.assign({}, EVENTS[APPROVE_AT], { clip: null }), talkTurn()), /owl:approve event carries no clip/);
+    assert.throws(() => loopStep(EVENTS[0], held()), /a new outline began while the last turn's approved clip \(round 2\) was never shown/);
+    assert.throws(() => loopStep(EVENTS[0]), /loopStep takes the page's turn/);
+    assert.throws(() => loopRowsOf(EVENTS[0], {}), /loopRowsOf takes a turn made by talkTurn/);
+    const failed = held();
+    assert.throws(() => loopStep({ role: 'maxi', kind: TOLD, round: 2, words: 'w' }, failed));
+    assert.ok(failed.held && failed.held.clip === CLIP, 'a told event that throws leaves the clip held: the stop that follows still shows it');
+});
+
+test('an approved turn shows its clip once: on Maxi\'s told row; on the Lab\'s "did not get to tell you" fact after a stop or a silent end (negative controls: the told entry deleted, the clip off the told row, the old approved Lab fact restored beside told, the stop losing the clip, are each red)', async () => {
+    assert.deepEqual(turnClipFaults({ talkTurn, loopStep, turnEnd }), []);
+    // the stop after the approve: the loop's words in full in the drawer; the Lab fact plain (labFactFaults) and linking there
+    const steps = stepped(EVENTS.slice(0, TOLD_AT).concat([STOP_AFTER]));
+    assert.deepEqual(steps[steps.length - 1].rows.map((r) => [r.role, r.pane, r.text]), [['loop', 'imagination', STOP_AFTER.words], ['lab', 'conversation', UNTOLD_FACT]]);
+    assert.equal(UNTOLD_FACT, '[built and approved — watch; Maxi did not get to tell you about it — why]');
+    assert.deepEqual(labFactFaults(UNTOLD_FACT), []); assert.deepEqual(conversationFaults(UNTOLD_FACT), []);
+    // a sign-in refusal after the approve is a stop that still shows the clip (never the notice that takes the line away)
+    const signIn = stepped(EVENTS.slice(0, TOLD_AT).concat([OTHERS[3]]));
+    assert.deepEqual(signIn[signIn.length - 1].think, { end: THINKING_ENDS.stopped });
+    assert.equal(signIn[signIn.length - 1].rows.filter((r) => r.clip).length, 1);
+    // the silent end: the loop's fault in the drawer
+    const t = talkTurn(); EVENTS.slice(0, APPROVE_AT + 1).forEach((e) => loopStep(e, t));
+    assert.deepEqual(turnEnd(t).rows.map((r) => [r.role, r.pane, r.text]), [['loop', 'imagination', NO_TOLD_WORDS], ['lab', 'conversation', UNTOLD_FACT]]);
+    assert.deepEqual(turnEnd(talkTurn()), { rows: [], think: null }, 'nothing held: the turn end shows nothing');
+    // plant 1: the told entry deleted — the event the page does not show throws by its role:kind
+    const gone = await plantedTalk((s) => s.replace("    ['maxi:' + TOLD]: {", "    ['maxi:' + TOLD + '-gone']: {"));
+    assert.throws(() => stepped(EVENTS, gone), /^Error: \[maxi-lab\] the loop emitted an event the page does not show: maxi:told /);
+    assert.match(turnClipFaults(gone).join('\n'), /told threw: \[maxi-lab\] the loop emitted an event the page does not show: maxi:told/);
+    // plant 2: the clip off the told row — the conversation shows it nowhere
+    const bare = await plantedTalk((s) => s.replace("row('maxi', 'conversation', plainTalk(e.words), { clip: e.clip })", "row('maxi', 'conversation', plainTalk(e.words))"));
+    assert.match(turnClipFaults(bare).join('\n'), /told: the conversation shows the clip 0 times/);
+    // plant 3: the old approved Lab fact restored beside told — the clip twice, and a Lab row beside Maxi's words
+    const twice = await plantedTalk((s) => s.replace("e.reasons.map(function (r) { return '· ' + r; }).join('\\n') + (e.change ? '\\nChange: ' + e.change : ''), { approve: e.kind === 'approve' })];",
+        "e.reasons.map(function (r) { return '· ' + r; }).join('\\n') + (e.change ? '\\nChange: ' + e.change : ''), { approve: e.kind === 'approve' })].concat(v === 'approve' ? [row('lab', 'conversation', '[built and approved — watch]', { clip: e.clip })] : []);"));
+    assert.match(turnClipFaults(twice).join('\n'), /told: the conversation shows the clip 2 times[\s\S]*told: a Lab row is in the conversation/);
+    // plant 4: the stop after the approve losing the clip
+    const lost = await plantedTalk((s) => s.replace('            if (held) { return untoldRows(stopRow(e), held); }\n', ''));
+    assert.match(turnClipFaults(lost).join('\n'), /stopped: the conversation shows the clip 0 times/);
 });
