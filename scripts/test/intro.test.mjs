@@ -2,8 +2,9 @@
 
 /**
  * intro.test.mjs — gates on the lab's run-once walk-through (site/app-assets/maxi-intro.js):
- *   1. INTRO_TEXT is pinned by sha256: it moves only on purpose (a one-character edit is red),
- *      and none of the corrected misspellings is back;
+ *   1. INTRO_TEXT and INTRO_CREDITS are pinned by sha256: they move only on purpose (a one-character edit is red),
+ *      none of the corrected misspellings is back, neither is copied into another published file, and the walk-through
+ *      paints the two paragraphs then the Credits heading and its text, last in its first step;
  *   2. EXPLAINERS covers exactly the header's <button>/<select> ids and the conversation's controls in
  *      app.html (a missing row, a row for an id the page lacks, a new control without a row: each red);
  *      a control whose title names a shortcut key has that key named in its row;
@@ -29,8 +30,8 @@ import { publishedFiles, isPublishedIn, viewOf } from '../publish-paths.mjs';
 import { moduleRows } from '../gen-import-maps.mjs';
 
 import {
-    INTRO_TEXT, EXPLAINERS, ENTRY_LABELS, INTRO_SEEN_KEY, PADS, PADS_LEDE,
-    buttonLabelFor, introDecision, introParagraphs, enterAct, readSeen
+    INTRO_TEXT, INTRO_CREDITS, EXPLAINERS, ENTRY_LABELS, INTRO_SEEN_KEY, PADS, PADS_LEDE,
+    buttonLabelFor, introDecision, introParagraphs, enterAct, readSeen, installIntro
 } from '../../site/app-assets/maxi-intro.js';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -39,7 +40,9 @@ const read = (rel) => fs.readFileSync(path.join(REPO, rel), 'utf8');
 // ── 1. the intro text ────────────────────────────────────────────────────────────────────────
 
 /** sha256 of INTRO_TEXT. Moves only with a deliberate change to the intro text. */
-const INTRO_SHA256 = '5d9395d8f5a0e9130d30296e954e50b3c11922f7b15df5c30dc72d78cc0fc9e8';
+const INTRO_SHA256 = 'bb09a2c743079a9ab97a2cfdd265668d98bb33555ff5e905b1450ad186fd0179';
+/** sha256 of INTRO_CREDITS.text. Moves only with a deliberate change to the credits. */
+const CREDITS_SHA256 = '9437fb76f98541a8093085059a9bd713d2fa5eed4f8ada56b9dc8fdd466602f7';
 
 /** The misspellings corrected when the text was first set; none may come back. */
 const CORRECTED = ["LLM's", 'renaisance', "1400's", "1950's", 'highlevel', 'clealy', 'spacial', '  '];
@@ -57,6 +60,25 @@ test('INTRO_TEXT is pinned by sha256 and carries none of the corrected misspelli
     assert.ok(INTRO_TEXT.endsWith('and "The Barrier of Meaning."'));
     assert.throws(() => assertIntroText(INTRO_TEXT.replace('toddler', 'todler')), /INTRO_TEXT moved/);
     assert.throws(() => assertIntroText(INTRO_TEXT.replace('\n\n', ' ')), /INTRO_TEXT moved/);
+});
+
+export function assertIntroCredits(credits) {
+    assert.deepEqual(Object.keys(credits), ['title', 'text'], 'INTRO_CREDITS is { title, text }');
+    assert.ok(Object.isFrozen(credits), 'INTRO_CREDITS is frozen');
+    assert.equal(credits.title, 'Credits');
+    const sha = crypto.createHash('sha256').update(credits.text, 'utf8').digest('hex');
+    assert.equal(sha, CREDITS_SHA256, 'INTRO_CREDITS.text moved (sha256 ' + sha + '): the credits change only on purpose — re-pin them in the same commit as the change');
+    assert.equal(introParagraphs(credits.text).length, 1, 'INTRO_CREDITS.text is one paragraph');
+}
+
+test('INTRO_CREDITS is pinned by sha256 and its credit lives only there, not in INTRO_TEXT (plants are red)', () => {
+    assertIntroCredits(INTRO_CREDITS);
+    assert.ok(INTRO_CREDITS.text.startsWith('The robotic AI stack of the Designer, Builder, and Owl'));
+    assert.ok(INTRO_CREDITS.text.endsWith("(it would have been considered stealing if it weren't my daughter)."));
+    assert.ok(!INTRO_TEXT.includes('Jolie'), 'the credit is INTRO_CREDITS\'s, never INTRO_TEXT\'s too');
+    assert.throws(() => assertIntroCredits(Object.freeze({ title: 'Credits', text: INTRO_CREDITS.text.replace('Owl', 'owl') })), /INTRO_CREDITS.text moved/);
+    assert.throws(() => assertIntroCredits(Object.freeze({ title: 'Thanks', text: INTRO_CREDITS.text })), /Thanks/);
+    assert.throws(() => assertIntroCredits({ title: 'Credits', text: INTRO_CREDITS.text }), /frozen/);
 });
 
 /**
@@ -96,8 +118,9 @@ export function introHolders(files, readOf, windows) {
     return out;
 }
 
-test('the intro text has one home: no published text file but maxi-intro.js carries any 6-word window of it (plants are red)', () => {
-    const windows = introWindows(INTRO_TEXT);
+test('the intro text and its credits have one home: no published text file but maxi-intro.js carries any 6-word window of them (plants are red)', () => {
+    const windows = new Set([...introWindows(INTRO_TEXT), ...introWindows(INTRO_CREDITS.text)]);
+    assert.ok(introWindows(INTRO_CREDITS.text).size > 20, 'the credits are long enough to probe');
     const paragraphs = introParagraphs(INTRO_TEXT);
     assert.equal(paragraphs.length, 2);
     for (const p of paragraphs) { assert.ok(wordsOf(p).length > 100, 'a paragraph is too short to probe'); }
@@ -109,7 +132,7 @@ test('the intro text has one home: no published text file but maxi-intro.js carr
     const home = 'site/app-assets/maxi-intro.js';
     const holders = introHolders(files, read, windows);
     assert.deepEqual(Object.keys(holders), [home], 'the intro text is copied outside maxi-intro.js INTRO_TEXT: ' + JSON.stringify(holders));
-    assert.equal(holders[home], windows.size, 'maxi-intro.js carries every window of the text');
+    assert.equal(holders[home], windows.size, 'maxi-intro.js carries every window of the text and the credits');
     // plants: a fragment, a cut-short sentence, a line-wrapped copy; each in a different file, each red
     const secondOf2 = paragraphs[1].split('. ')[1];
     const plants = {
@@ -117,13 +140,80 @@ test('the intro text has one home: no published text file but maxi-intro.js carr
         'site/index.html': '<p>' + secondOf2.split(' ').slice(0, 9).join(' ') + '</p>',
         'docs/concepts/x.md': paragraphs[0].split('. ')[1],
         'site/app-assets/y.js': '// ' + paragraphs[1].split('. ')[0],
-        'site/share.json': '"description": "' + paragraphs[0].split('. ')[2].split(' ').join('\n      ') + '"'
+        'site/share.json': '"description": "' + paragraphs[0].split('. ')[2].split(' ').join('\n      ') + '"',
+        'assets/system_instructions.md': INTRO_CREDITS.text.split(' ').slice(3, 12).join(' ')
     };
     for (const [f, add] of Object.entries(plants)) {
         const readPlanted = (g) => (g === f ? (files.includes(f) ? read(f) : '') + '\n' + add + '\n' : read(g));
         const list = files.includes(f) ? files : files.concat([f]);
         assert.deepEqual(Object.keys(introHolders(list, readPlanted, windows)).sort(), [f, home].sort(), 'the plant in ' + f + ' stayed green: ' + JSON.stringify(add));
     }
+});
+
+/** A fake window just wide enough for installIntro: elements keep tag, attributes, children and text; nothing lays out. */
+function fakeWindow(search) {
+    const el = (tag) => {
+        const n = {
+            tag, attrs: {}, children: [], textContent: '', hidden: false, style: {}, dataset: {}, inert: false, tagName: tag.toUpperCase(),
+            classList: { add() {}, remove() {}, toggle() {} },
+            setAttribute(k, v) { n.attrs[k] = v; if (k === 'hidden') { n.hidden = true; } if (k.startsWith('data-')) { n.dataset[k.slice(5)] = v; } },
+            appendChild(c) { n.children.push(c); return c; },
+            addEventListener() {}, focus() {}, contains: () => true,
+            getBoundingClientRect: () => ({ left: 0, top: 0, width: 0, height: 0 })
+        };
+        return n;
+    };
+    const body = el('body'); const head = el('div');
+    const document = { body, activeElement: body, createElement: el, getElementById: () => null, addEventListener() {},
+        querySelector: (q) => (q === 'aside#talk .talk-head' ? head : null) };
+    const win = { document, location: { search }, localStorage: { getItem: () => null, setItem() {} }, addEventListener() {},
+        DeSciX: { ready: async () => ({ mode: 'standalone', members: [] }) } };
+    return { win, body, head };
+}
+
+/** The first step's painted blocks, before its button bar: [tag, class, text]. */
+function stepOneBlocks(body) {
+    const root = body.children.find((c) => c.attrs.id === 'intro');
+    const step = root.children[0].children.find((c) => c.attrs['data-step'] === '1');
+    const nav = step.children[step.children.length - 1];
+    assert.equal(nav.attrs.class, 'intro-nav', 'the button bar closes the first step');
+    return { step, blocks: step.children.slice(0, -1).map((c) => [c.tag, c.attrs.class || '', c.textContent]) };
+}
+
+/** The faults of a first step's blocks: the heading, the two paragraphs of INTRO_TEXT, then the Credits heading and text, last. */
+export function stepOneFaults(blocks) {
+    const want = [['h2', '', 'What Maxi is']]
+        .concat(introParagraphs(INTRO_TEXT).map((p) => ['p', 'intro-text', p]))
+        .concat([['h3', 'intro-credits-title', INTRO_CREDITS.title], ['p', 'intro-text intro-credits', INTRO_CREDITS.text]]);
+    return JSON.stringify(blocks) === JSON.stringify(want) ? [] : ['the first step paints ' + JSON.stringify(blocks.map((b) => b[0] + '.' + b[1] + ':' + b[2].slice(0, 24)))];
+}
+
+test('the walk-through paints the two paragraphs, then the Credits heading and text, last; the "What is this?" re-open shows them (plants are red)', async () => {
+    // a closed start (?intro=0), then the way back in: open() is what the "What is this?" button calls
+    const { win, body, head } = fakeWindow('?intro=0');
+    const intro = installIntro(win);
+    await intro.settled;
+    assert.equal(intro.root.hidden, true, '?intro=0 starts closed');
+    assert.equal(head.children.length, 1, 'the "What is this?" button is in the conversation head');
+    assert.equal(head.children[0].textContent, 'What is this?');
+    intro.open();
+    const { step, blocks } = stepOneBlocks(body);
+    assert.equal(intro.root.hidden, false, 'the re-open shows the walk-through');
+    assert.equal(step.hidden, false, 'the re-open shows the first step, credits included');
+    assert.deepEqual(stepOneFaults(blocks), []);
+    // a first visit (no seen flag) paints the same step
+    const first = fakeWindow('');
+    await installIntro(first.win).settled;
+    assert.deepEqual(stepOneFaults(stepOneBlocks(first.body).blocks), []);
+    // plants: credits dropped, credits before the paragraphs, a retyped credit, the heading as a paragraph; each red
+    const para = blocks.slice(0, 3); const cred = blocks.slice(3);
+    const plants = {
+        dropped: para,
+        'moved first': [blocks[0]].concat(cred, blocks.slice(1, 3)),
+        retyped: para.concat([cred[0], ['p', cred[1][1], cred[1][2].replace('daughter', 'child')]]),
+        'heading as text': para.concat([['p', 'intro-text', INTRO_CREDITS.title], cred[1]])
+    };
+    for (const [name, b] of Object.entries(plants)) { assert.equal(stepOneFaults(b).length, 1, 'the plant "' + name + '" stayed green'); }
 });
 
 // ── 2. the explainers against the page ───────────────────────────────────────────────────────

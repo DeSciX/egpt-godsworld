@@ -7,6 +7,8 @@
 #intro h1 { margin: 0 28px 10px 0; font-size: 18px; color: var(--cyan, #5fd3ff); letter-spacing: .02em; }
 #intro h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim, #7f93a6); }
 #intro .intro-text { margin: 0 0 12px; }
+#intro .intro-credits-title { margin: 16px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim, #7f93a6); }
+#intro .intro-credits { font-size: 13px; color: var(--dim, #7f93a6); }
 #intro .intro-lede { margin: 0 0 8px; color: var(--dim, #7f93a6); }
 #intro .intro-explainers { margin: 0 0 12px; padding-left: 22px; }
 #intro .intro-explainers li { margin: 0 0 8px; padding: 2px 4px; border-radius: 4px; outline: none; }

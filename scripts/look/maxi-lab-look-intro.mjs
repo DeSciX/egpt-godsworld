@@ -7,11 +7,11 @@
  *   node scripts/look/maxi-lab-look-intro.mjs --url http://127.0.0.1:<port>/site/app.html \
  *        --playwright <absolute node_modules holding playwright> --out .scratch/intro-look
  *
- * A. desktop 1232x720 (the shell frame at a 1280x800 window) under a stubbed shell whose powch says nobody is signed in: step 1 (the intro text), step 2
+ * A. desktop 1232x720 (the shell frame at a 1280x800 window) under a stubbed shell whose powch says nobody is signed in: step 1 (the intro text, its Credits last), step 2
  *    (the explainers and the rings on the controls, the MOVE and LOOK pads drawn after them), the entry button's label, 15 Tabs that stay in the overlay,
  *    H after tabbing (the hand stays off), a login that throws (shown by name), Esc, H and R working after close, the lab booted underneath, the reload that
  *    skips (run once), the "What is this?" button that re-opens it;
- * B. 390x844 standalone: both steps, a tapped row peeking at its control, the entry button reachable, Enter, the lab;
+ * B. 390x844 standalone: both steps (step 1's Credits last), a tapped row peeking at its control, the entry button reachable, Enter, the lab;
  * C. localStorage that throws: the walk-through shows and the lab still boots;
  * D. 844x390 landscape, touch (coarse pointer): the Full screen control is ringed, Enter goes full screen.
  * Browsers close by handle; the orphan gate counts only chrome-headless-shell processes descended from THIS process.
@@ -22,7 +22,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 
-import { EXPLAINERS } from '../../site/app-assets/maxi-intro.js';
+import { EXPLAINERS, INTRO_CREDITS } from '../../site/app-assets/maxi-intro.js';
 
 function argOf(flag, dflt) { const i = process.argv.indexOf(flag); return i === -1 ? dflt : process.argv[i + 1]; }
 const URL_ = argOf('--url', null);
@@ -83,6 +83,17 @@ const shot = async (page, name) => { const p = path.join(OUT, name); await page.
 /** The lab booted after a navigation: a scene ticking. A navigation that cuts a boot short aborts its fetches, so each one waits for this. */
 const booted = (page) => page.waitForFunction(() => window.MaxiLab && window.MaxiLab.state && window.MaxiLab.state.scene && window.MaxiLab.state.scene.tick() > 5, null, { timeout: 60000 });
 const visible = (page) => page.evaluate(() => !document.getElementById('intro').hidden);
+/** Step 1 read back: its blocks before the button bar, then the Credits scrolled into view for a still. */
+async function creditsLast(page, where, still) {
+    const blocks = await page.evaluate(() => Array.from(document.querySelectorAll('#intro [data-step="1"] > :not(.intro-nav)')).map((n) => [n.tagName, n.className, n.textContent]));
+    check(blocks.length === 5 && blocks[3][0] === 'H3' && blocks[3][2] === 'Credits' && blocks[4][2] === INTRO_CREDITS.text && blocks[1][1] === 'intro-text' && blocks[2][1] === 'intro-text',
+        where + ': step 1 paints the heading, the two paragraphs, then the Credits heading and text, last (read: ' + blocks.map((b) => b[0] + '.' + b[1]).join(' ') + ')');
+    // the panel scrolled to its end, where the sticky button bar sits in its own place below the Credits
+    await page.evaluate(() => { const p = document.querySelector('#intro .intro-panel'); p.scrollTop = p.scrollHeight; const o = document.getElementById('intro'); o.scrollTop = o.scrollHeight; });
+    const seen = await page.evaluate(() => { const c = document.querySelector('#intro .intro-credits').getBoundingClientRect(); const n = document.querySelector('#intro [data-step="1"] .intro-nav').getBoundingClientRect(); return { creditsBottom: Math.round(c.bottom), navTop: Math.round(n.top), innerHeight: window.innerHeight }; });
+    check(seen.creditsBottom <= seen.navTop && seen.creditsBottom <= seen.innerHeight, where + ': at the end of step 1 the Credits text sits above the button bar, in view (read: ' + JSON.stringify(seen) + ')');
+    await shot(page, still);
+}
 
 note('orphan gate before launch', { own: ownBrowserPids() });
 const browser = await chromium.launch({ headless: true });
@@ -99,6 +110,7 @@ try {
         const focusAtBoot = await page.evaluate(() => { const a = document.activeElement; return a && a.closest('#intro') ? 'intro' : (a ? a.id || a.tagName : 'null'); });
         check(focusAtBoot === 'intro', 'A: after the lab boots, focus is still in the walk-through (read: ' + focusAtBoot + ')');
         await shot(page, 'A1-desktop-step1.png');
+        await creditsLast(page, 'A', 'A1c-desktop-step1-credits.png');
         const onStage = await page.evaluate(() => { const r = document.getElementById('stage').getBoundingClientRect(); const e = document.elementFromPoint(r.left + 40, r.top + r.height / 2); return e && (e.closest('#intro') ? '#intro' : e.className || e.id || e.tagName); });
         check(onStage === '#intro' || onStage === 'intro-backdrop', 'A: the open walk-through takes a pointer aimed at the stage (hit: ' + onStage + ') — a driver that clicks the stage seeds INTRO_SEEN_KEY first');
         await page.click('.intro-next');
@@ -197,6 +209,8 @@ try {
         await page.goto(URL_, { waitUntil: 'load' });
         await page.waitForSelector('#intro:not([hidden])');
         await shot(page, 'B1-390-step1.png');
+        await creditsLast(page, 'B', 'B1c-390-step1-credits.png');
+        await page.evaluate(() => { document.querySelector('#intro .intro-panel').scrollTop = 0; window.scrollTo(0, 0); document.getElementById('intro').scrollTop = 0; });
         const nextBox = await (await page.$('.intro-next')).boundingBox();
         check(nextBox && nextBox.y + nextBox.height <= 844 && nextBox.x >= 0 && nextBox.x + nextBox.width <= 390, 'B: Next is on screen at 390 px without scrolling (box ' + JSON.stringify(nextBox) + ')');
         await page.click('.intro-next');
