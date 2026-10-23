@@ -31,13 +31,16 @@ import * as roles from '../../site/app-assets/maxi-roles.js';
 import { HANDS, inventoryOf } from '../../site/app-assets/maxi-hands.js';
 import { createLoop, LOOP_LIMITS, threadBrain, labBody } from '../../site/app-assets/maxi-loop.js';
 import { assembleLoopRecords, changesAsText, completenessWords } from '../../site/app-assets/maxi-record-folder.js';
-import { loopRowsOf } from '../../site/app-assets/maxi-talk.js';
+import { loopRowsOf, loopStep, talkTurn, turnEnd, UNTOLD_FACT, NO_TOLD_WORDS } from '../../site/app-assets/maxi-talk.js';
 import { isSignInRefusal, signInRefusal, SIGN_IN_NOTICE, SIGN_IN_MARK } from '../../site/app-assets/maxi-auth.js';
 import { fakeRunner, sdkCameraControl, withSketch, recordDoors } from './fake-runner.mjs';
 import { replayDoor } from './replay-door.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(fs.readFileSync(path.join(HERE, 'fixtures', 'three-roles-mirror.json'), 'utf8'));
+/** The mirror replay with its closing turn refused (page-only: three-roles-told-fails.json's closing reply as replay.designer.2). */
+const TOLD_FAILS = JSON.parse(fs.readFileSync(path.join(HERE, 'fixtures', 'three-roles-told-fails.json'), 'utf8'));
+const FIXTURE_TOLD_FAILS = Object.assign({}, FIXTURE, { designer: [FIXTURE.designer[0], TOLD_FAILS.closing] });
 const KBS = { designer: roles.ROLES.designer.knowledgebase_names, builder: roles.ROLES.builder.knowledgebase_names, owl: roles.ROLES.owl.knowledgebase_names };
 const PREFACES = { designer: roles.ROLES.designer.preface, builder: roles.ROLES.builder.preface, owl: roles.ROLES.owl.preface };
 const B64 = Buffer.from('fake mp4 bytes, ftyp isom').toString('base64');
@@ -137,7 +140,7 @@ test('the mirror loop runs click-free, three roles, the drag executed; the conve
     // the conversation
     const kinds = r.events.filter((e) => e.kind !== 'asking').map((e) => e.role + ':' + e.kind);
     assert.deepEqual(kinds, ['tony:said', 'designer:plan', 'builder:working', 'builder:working', 'builder:working', 'builder:built', 'owl:revise',
-        'builder:working', 'builder:built', 'owl:approve']);
+        'builder:working', 'builder:built', 'owl:approve', 'maxi:told']);
     const built = r.events.filter((e) => e.kind === 'built');
     assert.ok(built.every((e) => e.clip && e.clip.media.mime_type === 'video/mp4' && e.clip.seconds >= 5 && e.clip.seconds <= 10), 'every built clip is 5–10 s video');
     assertWordsOnly(r.events);
@@ -163,7 +166,7 @@ test('interaction ids stay per role: one Designer thread, one Builder thread per
     const r = run(FIXTURE);
     await r.loop.imagine(FIXTURE.outline);
     const prev = (role) => of(r.sent, role).map((p) => p.previous_interaction_id);
-    assert.deepEqual(prev('designer'), [undefined]);
+    assert.deepEqual(prev('designer'), [undefined, 'replay.designer.1'], 'the closing turn continues the Designer\'s own thread');
     assert.deepEqual(prev('builder'), [undefined, 'replay.builder.1', 'replay.builder.2', 'replay.builder.3', 'replay.builder.4', 'replay.builder.5']);
     assert.deepEqual(prev('owl'), [undefined, undefined], 'every verdict on a fresh Owl thread');
     const crossed = (sent) => sent.some((s) => s.params.previous_interaction_id && s.params.previous_interaction_id.indexOf('replay.' + s.role + '.') !== 0);
@@ -179,7 +182,7 @@ test('interaction ids stay per role: one Designer thread, one Builder thread per
 
     // a second imagine: the Designer remembers (its thread continues), the Builder starts fresh
     const two = Object.assign({}, FIXTURE, {
-        designer: FIXTURE.designer.concat([Object.assign({}, FIXTURE.designer[0], { interaction_id: 'replay.designer.2' })]),
+        designer: FIXTURE.designer.concat([Object.assign({}, FIXTURE.designer[0], { interaction_id: 'replay.designer.3' }), Object.assign({}, FIXTURE.designer[1], { interaction_id: 'replay.designer.4' })]),
         builder: FIXTURE.builder.concat(FIXTURE.builder.slice(2, 4).map((x, i) => Object.assign({}, x, { interaction_id: 'replay.builder.' + (7 + i) }))),
         owl: FIXTURE.owl.concat([FIXTURE.owl[1]])
     });
@@ -187,8 +190,8 @@ test('interaction ids stay per role: one Designer thread, one Builder thread per
     const r2 = run(two);
     await r2.loop.imagine(FIXTURE.outline);
     await r2.loop.imagine('the same mirror, once more');
-    assert.deepEqual(of(r2.sent, 'designer').map((p) => p.previous_interaction_id), [undefined, 'replay.designer.1'], 'the Designer\'s thread continues across outlines');
-    assert.ok(!of(r2.sent, 'designer')[1].user_input.includes('the Designer'), 'the preface rides only on the Designer thread\'s first turn');
+    assert.deepEqual(of(r2.sent, 'designer').map((p) => p.previous_interaction_id), [undefined, 'replay.designer.1', 'replay.designer.2', 'replay.designer.3'], 'the Designer\'s thread continues across outlines (plan, closing turn, plan, closing turn)');
+    assert.ok(!of(r2.sent, 'designer')[2].user_input.includes('the Designer'), 'the preface rides only on the Designer thread\'s first turn');
     assert.equal(of(r2.sent, 'builder')[6].previous_interaction_id, undefined, 'a new imagine starts a new Builder thread');
 });
 
@@ -478,11 +481,22 @@ test('a question AND an outline: the answer row first, then the plan, then the b
 
 const LAB_SRC = fs.readFileSync(path.join(HERE, '..', '..', 'site', 'app-assets', 'maxi-lab.js'), 'utf8');
 
-/** maxi-lab.js's imagine() (its own source, `src` for a plant) over `loop`, its CONVERSATION rows painted through maxi-talk.js loopRowsOf (`rows`), the drawer's (Maxi's processes) kept apart (`drawn`). */
+/**
+ * maxi-lab.js's imagine() (its own source, `src` for a plant) over `loop`, the loop's events stepped as they come through ONE
+ * turn by maxi-talk.js loopStep (its closeTurn: the events so far, then turnEnd): the CONVERSATION rows (`rows`, their `classes`,
+ * `clips`: who each inline clip's row is), the drawer's (Maxi's processes) kept apart (`drawn`), the Thinking line's ends (`ends`).
+ */
 function pageImagine(src, r) {
     const at = src.indexOf('\nasync function imagine(');
     assert.ok(at !== -1, 'maxi-lab.js has no async function imagine()');
-    const rows = [], drawn = [], painted = [], cards = [], enabled = [], status = [], classes = [];
+    const rows = [], drawn = [], painted = [], cards = [], enabled = [], status = [], classes = [], clips = [], ends = [];
+    const turn = talkTurn();
+    let seen = 0;
+    const paint = (st) => {
+        st.rows.forEach((row) => { if (row.pane === 'conversation') { rows.push(row.who + ': ' + row.text); classes.push(row.cls); if (row.clip) { clips.push(row.who); } } else { drawn.push(row.who + ': ' + row.text); } });
+        if (st.think && st.think.end) { ends.push(st.think.end); }
+    };
+    const flush = () => { while (seen < r.events.length) { paint(loopStep(r.events[seen++], turn)); } };
     const box = { value: '', focus() {} };
     r.events.length = 0;
     const state = { host: 'ready', records: null, loop: r.loop };
@@ -494,11 +508,11 @@ function pageImagine(src, r) {
         clearError: (owner) => painted.push({ owner, cleared: true }),
         setConversationEnabled: (on) => enabled.push(on), renderStatus: () => status.push(r.loop.running ? 'Maxi is working' : 'idle'),
         el: { imagineText: box },
-        pageAuth: () => ({ refresh: () => new Promise(() => {}) }), isSignInRefusal, window: {}
+        pageAuth: () => ({ refresh: () => new Promise(() => {}) }), isSignInRefusal, window: {},
+        closeTurn: () => { flush(); paint(turnEnd(turn)); }
     };
     const imagine = new Function(...Object.keys(deps), src.slice(at + 1, src.indexOf('\n}\n', at) + 2) + '\nreturn imagine;')(...Object.values(deps));
-    const paintRows = () => r.events.forEach((e) => loopRowsOf(e).forEach((row) => { if (row.pane === 'conversation') { rows.push(row.who + ': ' + row.text); classes.push(row.cls); } else { drawn.push(row.who + ': ' + row.text); } }));
-    return { imagine: async (m) => { try { return await imagine(m); } finally { paintRows(); } }, rows, drawn, classes, painted, cards, enabled, status, state, box };
+    return { imagine: async (m) => { try { return await imagine(m); } finally { flush(); } }, rows, drawn, classes, clips, ends, painted, cards, enabled, status, state, box, turn };
 }
 
 test('the page\'s imagine(): a question paints Maxi\'s words alone in the conversation and its memory files in the drawer, no error, no demonstration card, no Records, and the status clears (negative controls: the answered branch removed throws the Record assembly into the error bar; an outline still paints the card)', async () => {
@@ -529,6 +543,8 @@ test('the page\'s imagine(): a question paints Maxi\'s words alone in the conver
     assert.equal(o.cards.length, 1);
     assert.ok(Array.isArray(o.state.records) && o.state.records.length >= 1);
     assert.deepEqual(o.painted, [{ owner: 'loop', cleared: true }]);
+    // the approve is followed by Maxi's closing turn (the replay's replay.designer.2): the clip once, on his row
+    assert.deepEqual([o.clips, o.ends, o.rows.slice(-1)], [['Maxi'], ['approved'], ['Maxi: ' + built.told.words]], 'the approved clip rides Maxi\'s closing row');
 });
 
 // ── a visitor nobody signed in, and an answer that names no memory: the strip shows a notice, never a red stop ──
@@ -612,4 +628,58 @@ test('an answer whose model words slip the register is still the answer: the tur
     const shown = (rows) => rows.filter((r) => r.pane === 'conversation').map((r) => r.text).join('\n');
     const e = { role: 'designer', kind: 'answer', words: out.answered.words, memories: out.answered.memories, reading: 'question' };
     assert.ok(!/`/.test(shown(loopRowsOf(e))));
+});
+
+// ── Maxi's closing turn (maxi:told) through the page's imagine(): the clip once, on his row; a stop after the approve keeps it ──
+
+/**
+ * A loop that BREAKS the closing-turn contract (stand-in for a loop bug): its approve hands back with the maxi:told event (and the
+ * Designer ask before it) dropped, so neither told nor stopped follows the approve. Only the page's closeTurn can show the clip then.
+ */
+function droppingTold(r) {
+    const real = r.loop;
+    const loop = Object.create(real);
+    loop.imagine = async (outline) => {
+        const out = await real.imagine(outline);
+        const at = r.events.findIndex((e) => e.role === 'owl' && e.kind === 'approve');
+        r.events.splice(at + 1);
+        return out;
+    };
+    return Object.assign({}, r, { loop });
+}
+
+test('the page\'s imagine() with Maxi\'s closing turn: the visitor\'s words, the Thinking line closed approved, and Maxi\'s words with the approved clip on HIS row, no Lab row; a closing turn the loop refuses keeps the build and shows the clip once on the Lab\'s fact, the line red (negative control: closeTurn removed, a loop that drops told loses the clip)', async () => {
+    const o = pageImagine(LAB_SRC, run(FIXTURE));
+    const out = await o.imagine(FIXTURE.outline);
+    assert.equal(out.verdict, 'approve');
+    assert.ok(out.told && out.told.words.includes('The beam now leaves the mirror at a shallower angle'), 'the result carries told: {words} from the replay\'s closing reply');
+    assert.deepEqual(o.rows, ['You: ' + FIXTURE.outline, 'Maxi: ' + out.told.words], 'the conversation: the visitor, then Maxi (the Thinking line is the page\'s own row)');
+    assert.deepEqual(o.classes, ['talk-tony', 'talk-maxi']);
+    assert.deepEqual(o.clips, ['Maxi'], 'the clip once, on Maxi\'s row');
+    assert.deepEqual(o.ends, ['approved']);
+    assert.ok(o.drawn.includes('Telling: ' + out.told.words), 'the closing words under Telling in the drawer');
+    assert.equal(o.cards.length, 1); assert.ok(Array.isArray(o.state.records) && o.state.records.length >= 1);
+    assert.deepEqual(o.painted, [{ owner: 'loop', cleared: true }]);
+    assert.equal(o.turn.held, null);
+    // the closing turn refused (a hand block where words belong): the loop stops naming it and RETURNS the approved build, told null
+    const s = pageImagine(LAB_SRC, run(FIXTURE_TOLD_FAILS));
+    const kept = await s.imagine(FIXTURE.outline);
+    assert.equal(kept.verdict, 'approve'); assert.equal(kept.told, null);
+    assert.deepEqual(s.rows, ['You: ' + FIXTURE.outline, 'Lab: ' + UNTOLD_FACT]);
+    assert.deepEqual(s.clips, ['Lab'], 'the clip once, on the Lab\'s fact');
+    assert.deepEqual(s.ends, ['stopped'], 'the Thinking line closes red');
+    assert.ok(s.drawn.some((d) => /^Lab: Maxi stopped before telling you what the approved clip shows: the closing turn failed — .*The build was approved and is kept\.$/s.test(d)), 'the stop in full in the drawer');
+    assert.equal(s.cards.length, 1, 'the build is kept on the card'); assert.ok(Array.isArray(s.state.records) && s.state.records.length >= 1, 'and its Records');
+    assert.deepEqual(s.painted, [{ owner: 'loop', cleared: true }], 'the build stands: no error bar (the stop is the red line and the drawer)');
+    // the turn end guards a loop that breaks the contract: told dropped, the clip still shows once as the Lab's
+    const d = pageImagine(LAB_SRC, droppingTold(run(FIXTURE)));
+    await d.imagine(FIXTURE.outline);
+    assert.deepEqual([d.clips, d.ends], [['Lab'], ['stopped']]);
+    assert.ok(d.drawn.includes('Lab: ' + NO_TOLD_WORDS));
+    // negative control: the page's closeTurn removed — that loop's approved clip is shown nowhere
+    const unclosed = LAB_SRC.replace(/\n\s*closeTurn\(\);[^\n]*/, '');
+    assert.notEqual(unclosed, LAB_SRC);
+    const u = pageImagine(unclosed, droppingTold(run(FIXTURE)));
+    await u.imagine(FIXTURE.outline);
+    assert.deepEqual(u.clips, [], 'negative control: without the turn end the approved clip is lost');
 });

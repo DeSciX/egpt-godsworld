@@ -35,7 +35,15 @@
  *      hands that close with `see` straight after `dragTo` (negative controls: see-only, see after setDeclared or
  *      setCamera, and a plan ending on dragTo pass);
  *   7. LOOK, NOT ASK: the rule's words live in the persona's BUILDING FROM AN OUTLINE once; the Designer's preface
- *      points at it by maxi-roles.js LOOK_RULE and restates none of it.
+ *      points at it by maxi-roles.js LOOK_RULE and restates none of it;
+ *  10. THE CLOSING TURN: toldTurn carries the outline, the prediction, the check's account (SEEN_ACCOUNT order) and reasons,
+ *      the Brief figure and the LOOK FIRST pointer, and no preface; parseTold returns the words cleaned as the Designer's
+ *      answer is, counting a stray fence or reading line, and refuses a plan block, a hand and no words, each by name;
+ *  11. THE OWL'S TWO QUESTIONS (maxi-roles.js OWL_QUESTIONS) open the Owl's preface in order, before the account, with the
+ *      look-only clause; the part-by-part check is the means (planted prefaces without them are red);
+ *  12. LOOK FIRST: the persona section stands once, right after IMAGINING VERSUS TALKING, with its key sentences; the talk
+ *      section routes such a message to it; the Designer preface and the closing turn point at it by name and restate none
+ *      of it; the generated Designer carries it (each key sentence deleted, the section deleted or moved, are red).
  */
 
 import { test } from 'node:test';
@@ -47,7 +55,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
     ROLES, ROLE_ORDER, parsePlan, parseBuilderReply, parseVerdict, designerTurn, builderTurn, owlTurn, PARSERS, SEEN_ACCOUNT,
     stageOf, emptyStage, stageWords, extentWords, planOnStage, LOADING_HANDS, PLAN_REFUSED_KEYS, loadArgsOf, REFUSAL_ASK,
-    parseDesignerReply, readingOf, READING_LINE, DESIGNER_READINGS, PLAN_KEYS, ANSWER_KEYS, TALK_RULE, HANDOFF_TAGS, LAST_CLIP, LAST_CLIP_RULE, briefWordLimit
+    parseDesignerReply, readingOf, READING_LINE, DESIGNER_READINGS, PLAN_KEYS, ANSWER_KEYS, TALK_RULE, HANDOFF_TAGS, LAST_CLIP, LAST_CLIP_RULE, briefWordLimit,
+    toldTurn, parseTold, OWL_QUESTIONS, LOOK_FIRST, BRIEF_SECTION
 } from '../../site/app-assets/maxi-roles.js';
 import { HANDS, INVENTORY_KEYS, SKETCH_KEYS, inventoryOf } from '../../site/app-assets/maxi-hands.js';
 import { fakeRunner, sdkCameraControl } from './fake-runner.mjs';
@@ -876,4 +885,118 @@ test('THE FIRST QUESTIONS stands once, right after THE PREVIEW LAUNCH, with its 
     const movedLink = text.replace(' ' + NO_COMPOSED_LINKS, '').replace('Never a bibliography, never a file name as a citation.', 'Never a bibliography, never a file name as a citation. ' + NO_COMPOSED_LINKS);
     assert.match(firstQuestionsFaults(movedLink).join(' | '), /no-composed-links sentence does not follow the link-count sentence/, 'the links sentence moved into WHY YOU ARE is red');
     assert.match(plant('you never compose one.', 'you rarely compose one.'), /not there once: The only links you hand/, 'a weakened links sentence is red');
+});
+
+
+// ── THE CLOSING TURN, THE OWL'S TWO QUESTIONS, LOOK FIRST ─────────────────────────────────────────
+const OWL_OK = { seen: { contact: 'the detector, its middle third', after: 'straight on', passes: 'no' }, reasons: ['the stage is shown as it stands; the bands have not built up yet'] };
+
+test('the closing turn: toldTurn carries the outline, the prediction, the check\'s account and reasons, the Brief and LOOK FIRST, and no preface; parseTold cleans and counts slips, and refuses a plan block, a hand and no words by name (negative controls: each planted reply)', () => {
+    const t = toldTurn({ outline: 'Explain what we are seeing', prediction: 'dots arriving, no bands yet', owl: OWL_OK, ticks: { first: 1, last: 251 } });
+    assert.match(t, /^THE CLIP IS BACK: /);
+    assert.ok(!t.includes(ROLES.designer.preface.slice(0, 40)), 'no preface: the thread already has it');
+    for (const piece of ['TONY\'S MESSAGE: Explain what we are seeing', 'WHAT YOU PREDICTED IT WOULD SHOW: dots arriving, no bands yet', 'WHY IT PASSED: ' + OWL_OK.reasons[0],
+        'WHAT YOU SAW WHEN YOU CHECKED IT: ' + Object.keys(SEEN_ACCOUNT).map((k) => k + ': ' + OWL_OK.seen[k]).join('; '), '(ticks 1 to 251 of the world\'s clock)',
+        BRIEF_SECTION + ': under ' + BRIEF_WORDS + ' words', 'answered as ' + LOOK_FIRST + ' says, in your persona',
+        'what the clip shows against what he asked; what changed in the world, or that nothing did; and what you still do not understand about it']) {
+        assert.ok(t.includes(piece), 'the closing turn carries: ' + piece);
+    }
+    assert.ok(!toldTurn({ outline: 'o', prediction: 'p', owl: OWL_OK }).includes('ticks'), 'no ticks when the body gave none');
+    assert.throws(() => toldTurn({ outline: 'o', prediction: 'p' }), /toldTurn needs owl \{seen, reasons\}/);
+    assert.throws(() => toldTurn({ outline: 'o', prediction: 'p', owl: { seen: { contact: 'x' }, reasons: ['r'] } }), /the check's account lacks after, passes/);
+    assert.throws(() => toldTurn({ prediction: 'p', owl: OWL_OK }), /toldTurn\.outline must be a non-empty string/);
+
+    const words = 'It has only just started: dots are arriving, but the bands have not built up yet. Want me to look again in a moment?';
+    assert.deepEqual(parseTold(words), { words, slips: { fenced: 0, reading: 0 } });
+    assert.deepEqual(parseTold(READING_LINE + ' ' + DESIGNER_READINGS.outline + '\n' + words), { words, slips: { fenced: 0, reading: 1 } }, 'a stray reading line is stripped and counted');
+    assert.deepEqual(parseTold(words + '\n' + fence('json:answer', '{"memories":["x-seen.md"]}')), { words, slips: { fenced: 1, reading: 0 } }, 'a stray block is stripped and counted, never thrown on');
+    assert.throws(() => parseTold(words + '\n' + fence(HANDOFF_TAGS.plan, JSON.stringify(PLAN))), /^Error: \[designer → told\]: the closing turn is words to Tony, and this reply carries a json:plan block/);
+    assert.throws(() => parseTold(words + '\n' + fence(HANDOFF_TAGS.call + 'see', '{}')), /this reply carries a hand \(json:call:see\) — nothing is planned or built on it/);
+    assert.throws(() => parseTold('  \n'), /the closing turn has no words for Tony/);
+    assert.throws(() => parseTold(fence('json', '{}')), /the closing turn has no words for Tony/, 'a reply that is only a block has no words');
+});
+
+/** The Owl preface's faults against OWL_QUESTIONS: each question once, in order, before the account; the look-only clause. */
+function owlQuestionFaults(pre) {
+    const f = [];
+    const qs = Object.keys(OWL_QUESTIONS).map((k) => OWL_QUESTIONS[k]);
+    qs.forEach((q, i) => { if (pre.split((i + 1) + '. ' + q).length - 1 !== 1) { f.push('question ' + (i + 1) + ' is not in the preface once: ' + q.slice(0, 50)); } });
+    const at = qs.map((q) => pre.indexOf(q));
+    if (at.every((x) => x !== -1) && !(at[0] < at[1])) { f.push('the two questions are out of order'); }
+    if (at[1] !== -1 && pre.indexOf('ACCOUNT') !== -1 && at[1] > pre.indexOf('ACCOUNT')) { f.push('the questions come after the account: the check would be the voice'); }
+    if (!/answers two questions, in this order/.test(pre)) { f.push('the preface does not open the judgement on the two questions'); }
+    if (!/The account is how you check, not what you say/.test(pre)) { f.push('the part-by-part check is not named as the means'); }
+    if (!/asks to LOOK \(what is happening, what is to be seen\) and asks for no change is answered when\s+the footage shows the thing asked about at the state it is in/.test(pre)) { f.push('no look-only clause'); }
+    if (!/Approve only when the footage visually answers the question asked/.test(pre)) { f.push('the approve rule is not the question asked'); }
+    return f;
+}
+
+test('the Owl judges by two questions, in order — what the person was expecting or hoping to see, and whether the footage visually answers the question asked — the account its means, a look approved at the state it is in (negative controls: each question deleted, swapped, moved after the account, the look clause deleted, are red)', () => {
+    assert.deepEqual(Object.keys(OWL_QUESTIONS), ['expected', 'answers']);
+    assert.match(OWL_QUESTIONS.expected, /expecting, or hoping, would visually happen/);
+    assert.match(OWL_QUESTIONS.answers, /visually answer the question they asked/);
+    const pre = ROLES.owl.preface;
+    assert.deepEqual(owlQuestionFaults(pre), []);
+    assert.ok(owlTurn({ outline: 'o', prediction: 'p' }).startsWith(pre), 'the Owl\'s one turn carries them');
+    const plant = (from, to) => { const t = pre.replace(from, to); assert.notEqual(t, pre, 'the plant must change the preface'); return owlQuestionFaults(t).join(' | '); };
+    assert.match(plant('1. ' + OWL_QUESTIONS.expected, ''), /question 1 is not in the preface once/, 'the first question deleted is red');
+    assert.match(plant('2. ' + OWL_QUESTIONS.answers, ''), /question 2 is not in the preface once/, 'the second question deleted is red');
+    assert.match(plant('1. ' + OWL_QUESTIONS.expected + '\n2. ' + OWL_QUESTIONS.answers, '2. ' + OWL_QUESTIONS.answers + '\n1. ' + OWL_QUESTIONS.expected), /out of order/, 'swapped is red');
+    const moved = pre.replace('\n2. ' + OWL_QUESTIONS.answers, '').replace('toward the bottom edge of the frame.', 'toward the bottom edge of the frame.\n2. ' + OWL_QUESTIONS.answers);
+    assert.match(owlQuestionFaults(moved).join(' | '), /after the account/, 'the second question moved after the account is red');
+    assert.match(plant(/An outline that asks to LOOK[\s\S]*?is what was asked\./, ''), /no look-only clause/, 'the look-only clause deleted is red');
+    assert.match(plant('The account is how you check, not what you say:', 'Then judge item by item:'), /not named as the means/, 'the old item-by-item voice is red');
+    const verdict = parseVerdict('Tony hoped to see the bands. They have not formed yet, and this shows the stage as it is.\n' + fence('json:verdict', JSON.stringify(Object.assign({ verdict: 'approve', change: null }, OWL_OK))));
+    assert.deepEqual(Object.keys(verdict.seen), Object.keys(SEEN_ACCOUNT), 'the json:verdict shape the page and Record read is unchanged');
+});
+
+/** LOOK FIRST (seat-authored): its key sentences, in its one body line, right after IMAGINING VERSUS TALKING. */
+const LOOK_FIRST_LINES = Object.freeze([
+    'When the person asks what is happening, what they are seeing, or what changed, you look before you speak.',
+    'Your memories say what a scene did when it was watched before; only a clip says what it is doing now.',
+    'So you read such a message as an outline whose plan is a plan of looks only: see the stage as it is now, and when the thing asked about needs time to form, such as the bands of the double slit, let it run on and see again.',
+    'A plan of looks changes nothing in the world.',
+    'Then, when the clip is back, you tell the person what you saw at that tick, what has not formed yet, and what you expect to see later from your past looks at that scene, your memories of it, said as what you expect and never as something you watched in this conversation; and you offer to look again.'
+]);
+const LOOK_FIRST_ROUTE = '- A message about what is happening on the stage now, what the person is seeing or what changed is to imagine, as LOOK FIRST says: you look, then you talk.';
+function lookFirstFaults(text) {
+    const f = [];
+    const lines = text.split('\n');
+    const heads = lines.filter((l) => l === LOOK_FIRST).length;
+    if (heads !== 1) { f.push(LOOK_FIRST + ' heading is there ' + heads + ' times, not once'); }
+    const talk = lines.indexOf(TALK_RULE);
+    const talkEnd = lines.findIndex((l, i) => i > talk && l === '');
+    const sec = lines.indexOf(LOOK_FIRST);
+    if (talk === -1 || sec !== talkEnd + 1) { f.push(LOOK_FIRST + ' does not stand right after ' + TALK_RULE); }
+    const body = sec === -1 ? '' : (lines[sec + 1] || '');
+    if (sec !== -1 && body !== LOOK_FIRST_LINES.join(' ')) { f.push(LOOK_FIRST + ' body is not exactly its key sentences, in order'); }
+    for (const s of LOOK_FIRST_LINES) { if (text.split(s).length - 1 !== 1) { f.push('not there once: ' + s.slice(0, 60)); } }
+    const talkBody = talk === -1 ? [] : lines.slice(talk + 1, talkEnd);
+    if (talkBody.filter((l) => l === LOOK_FIRST_ROUTE).length !== 1) { f.push(TALK_RULE + ' does not route a question about the stage to ' + LOOK_FIRST); }
+    if (text.split('\n' + LOOK_RULE_TEXT).length - 1 !== 1) { f.push('LOOK, NOT ASK is no longer intact'); }
+    return f;
+}
+const LOOK_RULE_TEXT = 'LOOK, NOT ASK. A word in the outline that could mean more than one thing';
+
+test('LOOK FIRST stands once, right after IMAGINING VERSUS TALKING, with its key sentences; the talk section routes to it; the Designer preface and the closing turn point at it by name and restate none of it; the generated Designer carries it; LOOK, NOT ASK stays intact (negative controls: each sentence deleted, the section deleted or moved, the route deleted, a restating preface, are red)', () => {
+    const text = fs.readFileSync(path.join(REPO, PERSONA), 'utf8');
+    assert.deepEqual(lookFirstFaults(text), []);
+    assert.deepEqual(lookFirstFaults(fs.readFileSync(path.join(REPO, 'plugin/agents/maxi-designer.md'), 'utf8')), [], 'the generated Designer agent carries it');
+    const plant = (from, to) => { const t = text.replace(from, to); assert.notEqual(t, text, 'the plant must change the persona'); return lookFirstFaults(t).join(' | '); };
+    LOOK_FIRST_LINES.forEach((s, i) => { assert.match(plant(s, ''), new RegExp('not there once: ' + reText(s.slice(0, 20))), 'key sentence ' + i + ' deleted is red'); });
+    const section = text.match(/\nLOOK FIRST\n[^\n]*\n\n/)[0];
+    assert.match(plant(section, '\n'), /LOOK FIRST heading is there 0 times/, 'the section deleted is red');
+    const moved = text.replace(section, '\n').replace('\nHOW YOU ENGAGE A VISITOR\n', section + 'HOW YOU ENGAGE A VISITOR\n');
+    assert.match(lookFirstFaults(moved).join(' | '), /does not stand right after IMAGINING VERSUS TALKING/, 'the section moved is red');
+    assert.match(plant(LOOK_FIRST_ROUTE + '\n', ''), /does not route a question about the stage/, 'the route deleted is red');
+    assert.match(plant('A plan of looks changes nothing in the world.', 'A plan of looks may change one thing.'), /not there once: A plan of looks changes nothing/, 'a looser looks-only rule is red');
+    const pre = ROLES.designer.preface;
+    assert.ok(pre.includes('is read by ' + LOOK_FIRST + ' (in your\npersona)'), 'the Designer preface points at the section by name');
+    assert.ok(pre.includes(READING_LINE + ' ' + DESIGNER_READINGS.outline + ', and its plan is looks only (`changes` empty, `hands` only ' + LAST_CLIP.looks + ')'), 'and says the reply\'s shape only');
+    const body = LOOK_FIRST_LINES.join(' ');
+    assert.deepEqual(restated(body, pre), [], 'the Designer preface restates LOOK FIRST');
+    const told = toldTurn({ outline: 'o', prediction: 'p', owl: OWL_OK });
+    assert.deepEqual(restated(body, told), [], 'the closing turn restates LOOK FIRST');
+    assert.notDeepEqual(restated(body, pre + '\nYour memories say what a scene did when it was watched before.'), [], 'negative control: a restating preface is red');
+    for (const id of ['builder', 'owl']) assert.ok(!ROLES[id].preface.includes(LOOK_FIRST), 'only the Designer reads the message (' + id + ')');
 });

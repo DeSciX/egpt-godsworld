@@ -32,7 +32,7 @@ import { createLoop, threadBrain, labBody, refuseWhileWorking } from './maxi-loo
 import { assembleLoopRecords, changesAsText, completenessWords, folderHere, filesAcross, sceneFacts, base64OfBytes, MAX_SEGMENTS, FILES, CARRIED_KEY, TEACHING_KEY, parseRecordFolder, projectEntryOf, partsEqual } from './maxi-record-folder.js';
 import { openMemories, memoryKey, memoryNote, memoryMedia, memoryTeaching, memoryBundle } from './maxi-local-memory.js';
 import * as roles from './maxi-roles.js';
-import { loopRowsOf, thinkingOf, thinkingLine, thinkingSummary, turnAnchor, tickerOf, conversationFaults, isPageRow, plainTalk, registerSlips, slipWords, IMAGINATION_TITLE } from './maxi-talk.js';
+import { loopStep, talkTurn, turnEnd, thinkingLine, thinkingSummary, turnAnchor, tickerOf, conversationFaults, isPageRow, plainTalk, registerSlips, slipWords, IMAGINATION_TITLE } from './maxi-talk.js';
 import { pageAuth, signInRefusal, isSignInRefusal, SIGNED_IN_NOTICE } from './maxi-auth.js';
 import { ASK, createThread, footageUserInput, plainWords } from './maxi-ask.js';
 import { loadPageIcons, iconButton } from './maxi-icons.js';
@@ -981,7 +981,7 @@ function newThread() {
     // both panes are cleared with the threads: their rows go, the drawer's turns start again, and every inline clip's URL is freed
     el.talkLines.textContent = '';
     el.imaginationLines.textContent = '';
-    pendingRow = null; thinking = null;
+    pendingRow = null; thinking = null; talk = talkTurn();
     drawer.turn = 0; drawer.outline = null; drawer.group = null; drawer.block = null; drawer.process = null; drawer.last = null;
     drawerTicker();
     inlineUrls.revokeAll();
@@ -1028,6 +1028,8 @@ function inlineClip(row, clip) {
 const drawer = { turn: 0, outline: null, group: null, block: null, process: null, last: null };
 /** The conversation's Thinking line for the outline turn now running: {row, body, started, round, turn}, else null. */
 let thinking = null;
+/** The conversation turn's memory across the loop's events (maxi-talk.js talkTurn): the approved clip Maxi has not told yet. */
+let talk = talkTurn();
 
 function drawerTicker() {
     el.imaginationTicker.textContent = drawer.last ? drawer.last : 'nothing yet';
@@ -1144,12 +1146,21 @@ function think(step, e) {
 
 // Words, never code — the loop hands over only the words before each hand-off block. An event with no row THROWS by name.
 function renderLoop(e) {
-    const rows = loopRowsOf(e);
-    const step = thinkingOf(e);
+    const s = loopStep(e, talk);
     if (e.role === 'tony') { el.imagineText.value = ''; }   // the box empties only when the loop takes the outline
-    if (step && step.begin) { drawer.turn += 1; drawer.outline = e.words; drawer.group = null; }
-    rows.forEach(function (r) { return r.pane === 'imagination' ? paintImagination(r) : paintConversation(r); });
-    think(step, e);
+    if (s.think && s.think.begin) { drawer.turn += 1; drawer.outline = e.words; drawer.group = null; }
+    paintStep(s, e);
+}
+
+/** One step's rows, each in its pane (maxi-talk.js says which), then the Thinking line. */
+function paintStep(s, e) {
+    s.rows.forEach(function (r) { return r.pane === 'imagination' ? paintImagination(r) : paintConversation(r); });
+    think(s.think, e);
+}
+
+/** The loop has returned: an approved clip it never told is shown once as the Lab's, and the Thinking line closes red (maxi-talk.js turnEnd). */
+function closeTurn() {
+    paintStep(turnEnd(talk), {});
 }
 
 /**
@@ -1186,6 +1197,7 @@ async function imagine(outline) {
     try {
         if (!state.chain) { await beginChain('loop'); recording = true; }   // a human Record that is on is refused by the loop itself, by name
         const out = await theLoop().imagine(outline);
+        closeTurn();   // an approve the loop handed back with no closing turn still shows its clip, once
         if (out.answered) { clearError('loop'); return out; }   // a question: the answer row is painted; the card and the Records stay the last build's (the chain is let go below)
         const ch = await endChain();
         recording = false;

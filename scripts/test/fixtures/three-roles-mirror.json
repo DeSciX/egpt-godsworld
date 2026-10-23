@@ -12,6 +12,17 @@
         "media_tokens": 0,
         "model_used": "replay"
       }
+    },
+    {
+      "status": "OK",
+      "response": "[replayed fixture answer, authored for the page test — not a platform reply] The beam now leaves the mirror at a shallower angle than before, as you asked: turning it to 30 degrees moved where the light lands. What I still do not understand is why the spread stays so tight after the bounce. Want me to look again?",
+      "interaction_id": "replay.designer.2",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "media_tokens": 0,
+        "model_used": "replay"
+      }
     }
   ],
   "builder": [

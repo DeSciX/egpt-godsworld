@@ -1,0 +1,9 @@
+{
+  "about": "Page-only: a closing reply the loop refuses (a hand block where Maxi's words to the visitor belong), spliced in as the Designer's closing turn (replay.designer.2) of three-roles-mirror.json, so the approved build's closing turn fails: the loop emits loop:stopped and returns the approved result with told: null. Read by page-loop.test.mjs and maxi-loop-look.mjs part H.",
+  "closing": {
+    "status": "OK",
+    "response": "[replayed fixture answer, authored for the page test — not a platform reply] I will look once more first.\n\n```json:call:see\n{}\n```",
+    "interaction_id": "replay.designer.2",
+    "usage": { "input_tokens": 0, "output_tokens": 0, "media_tokens": 0, "model_used": "replay" }
+  }
+}
