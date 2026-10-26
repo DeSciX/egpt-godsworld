@@ -1,6 +1,6 @@
 # Memory: Infinite mirror — card
 
-load: GYM scene id `cl1d-mirror-route` (mode `2d`, also `3d`; the GYM tile opens in `3d`) · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/mirror-route.js
+load: GYM scene id `cl1d-mirror-route` (mode `2d`, also `3d`; the GYM tile opens in `3d`) · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/mirror-route.js
 
 tile: Ten mirrors in a ring. Light walks the loop. No Fresnel equations.
 

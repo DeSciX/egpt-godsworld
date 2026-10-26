@@ -1,6 +1,6 @@
 # Memory: 1C · Counting Wall (3D) — card
 
-load: GYM scene id `cl1c-counting-wall-3d` · 3D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/counting-wall-3d.js
+load: GYM scene id `cl1c-counting-wall-3d` · 3D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/counting-wall-3d.js
 
 group: Collision Lab · 3D
 

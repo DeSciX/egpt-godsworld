@@ -417,15 +417,23 @@ function applyInFreshNode(doorText) {
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
 
-test('the ./project door registers the part kinds applyRows reads: a 6-number Wall rect row applies in a fresh node, spelled as the entry spells it (negative control: the door rendered without its ./parts import throws by name)', async () => {
+test('the ./project door is one re-export, and ./project alone registers the part kinds applyRows reads: a 6-number Wall rect row applies in a fresh node (negative controls: the door re-importing ./parts is a second owner; a door past the package entry to record-format.js throws by name)', async () => {
     const { renderProjectDoor } = await import('../gen-import-maps.mjs');
     const door = renderProjectDoor();
     assert.equal(fs.readFileSync(path.join(REPO, 'site/app-assets/frqtl-web-project.js'), 'utf8'), door, 'the door is the generator\'s text');
+    const codeLines = (t) => t.split('\n').filter((l) => l.trim() !== '' && !/^\s*(\/\/|\/\*|\*)/.test(l));
+    const ONE = /^export \* from '[^']*\/shim\/project\/index\.js';$/;
+    const doorFaults = (t) => { const c = codeLines(t); return c.length === 1 && ONE.test(c[0]) ? [] : ['the door is not exactly one re-export of ./project: ' + JSON.stringify(c)]; };
+    assert.deepEqual(doorFaults(door), []);
     assert.deepEqual(applyInFreshNode(door), { screen: ['GraphingDetectorWall', { rect: [315, 0, 20, 400], z: -77, depth: 154, preset: 'transparent-probe', color: [120, 200, 120], alpha: 220, binPx: 12 }] });
-    const PARTS_LINE = /^import '[^']*\/frqtl\/parts\/index\.js';\n/m;
-    assert.equal(door.split('\n').filter((l) => PARTS_LINE.test(l + '\n')).length, 1, 'the plant target moved — the control would measure nothing');
-    const planted = applyInFreshNode(door.replace(PARTS_LINE, ''));
-    assert.match(String(planted.threw), /derivedReads\("GraphingDetectorWall"\): no descriptor for kind "GraphingDetectorWall"/, 'the door without ./parts planted is RED: ' + JSON.stringify(planted));
+    const EXPORT_LINE = /^export \* from '([^']*)\/shim\/project\/index\.js';$/m;
+    const m = door.match(EXPORT_LINE);
+    assert.ok(m, 'the plant target moved — the controls would measure nothing');
+    const secondOwner = door.replace(EXPORT_LINE, "import '" + m[1] + "/frqtl/parts/index.js';\n$&");
+    assert.equal(doorFaults(secondOwner).length, 1, 'the door re-importing ./parts planted is RED (a second owner of the registrations)');
+    const pastEntry = door.replace(EXPORT_LINE, "export * from '" + m[1] + "/shim/project/record-format.js';");
+    const planted = applyInFreshNode(pastEntry);
+    assert.match(String(planted.threw), /the kind "GraphingDetectorWall" is not registered in this realm/, 'a door past the package entry planted is RED: ' + JSON.stringify(planted));
 });
 
 // ── the human's teaching words: lab.json TEACHING_KEY, owned here ─────────────────────────────────

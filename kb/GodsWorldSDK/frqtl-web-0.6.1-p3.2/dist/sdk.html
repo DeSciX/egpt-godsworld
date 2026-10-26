@@ -132,7 +132,7 @@ universe.experimentTickFunctions.push(<span class="keyword">function</span> (u) 
 
 <p>In the browser (<code>@descix/frqtl-web</code>), <code>bootScene(mount, sketch)</code> boots the engine and the renderer and runs a sketch — a <code>buildExperiment(exp)</code> function whose first statement creates the world. Import the parts the sketch uses from the same dist the doors come from:</p>
 
-<pre><code><span class="keyword">const</span> DIST = <span class="string">'https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.1/dist'</span>;
+<pre><code><span class="keyword">const</span> DIST = <span class="string">'https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.2/dist'</span>;
 <span class="keyword">const</span> { bootScene } = <span class="keyword">await</span> import(DIST + <span class="string">'/frqtl/experiments/_shared/doors.js'</span>);
 <span class="keyword">const</span> { SphereEmitter } = <span class="keyword">await</span> import(DIST + <span class="string">'/frqtl/parts/index.js'</span>);
 
@@ -343,7 +343,8 @@ screen.getCollisionHistogram(tickData);   <span class="comment">// y -> count on
     <tr><th>Method</th><th>Description</th></tr>
     <tr><td><code>setV2Prop(prop, value)</code></td><td>Retarget a lexicon field live (collisionBehavior / bounceDirection / decoherence / hooks / markTag / countFilter / capacity / orientationDeg / pitchDeg) — recompiles the running op-program. <code>emissivity</code> is also accepted and takes the short path: a radiator knob, so it retunes the live radiator with no recompile</td></tr>
     <tr><td><code>getCollisionHistogram(tickData)</code></td><td>For a wall carrying the <code>count</code> hook: accumulate and return <code>{combined, grid, total}</code> hit counts</td></tr>
-    <tr><td><code>getLiveCount(tickData)</code></td><td>For a wall with the count hook: the number of frames colliding this tick (live population)</td></tr>
+    <tr><td><code>getLiveCount(tickData)</code></td><td>For a NON-removing wall with the count hook (<code>nothing</code> / <code>block</code> / <code>bounce</code>): the number of frames inside its zone this tick — the wall's rect padded by one cell of the frames' scale, so a full-area <code>nothing</code> wall reads the live population. Throws on a <code>destroy</code> or <code>absorb</code> wall: use <code>getArrivals</code></td></tr>
+    <tr><td><code>getArrivals(tickData)</code></td><td>For a wall with the count hook: <code>{total, delta}</code> read from the engine's own per-wall count — each frame that triggers the wall counts once (on a <code>destroy</code>/<code>absorb</code> wall, once per frame removed). <code>total</code> is cumulative; <code>delta</code> is the change since the previous sampled tick</td></tr>
     <tr><td><code>resetHistogram()</code></td><td>Clear the accumulated histogram</td></tr>
     <tr><td><code>dispose()</code></td><td>Tear down (unregisters any host tick-fn, disposes the inner LargeObject)</td></tr>
     <tr><td><code>setOrientation(deg)</code> / <code>getOrientation()</code></td><td>Live re-aim (see <code>orientationDeg</code> below)</td></tr>

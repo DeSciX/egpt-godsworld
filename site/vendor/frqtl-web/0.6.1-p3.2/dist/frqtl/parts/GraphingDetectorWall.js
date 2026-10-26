@@ -36,7 +36,7 @@
  *     colour washed under the bins, so an un-hit face still reads as a plate and
  *     intensity rises monotonically from empty through every bin.
  *
- * Readouts: `getCollisionHistogram()` / `resetHistogram()` / `getLiveCount()` —
+ * Readouts: `getCollisionHistogram()` / `resetHistogram()` / `getArrivals()` —
  * inherited from `Wall`, UNCHANGED. `heatCanvas()` returns the ferry canvas.
  *
  * ── ESTIMATION BEFORE RUNNING: when will this plate have counted anything? ───

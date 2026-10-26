@@ -774,14 +774,26 @@ import { wallBehaviorV2ValuesMap as _wallBehaviorV2ValuesMap, bounceDirectionVal
         return out;
     };
 
+    /** Does the op-program this wall's LargeObject is RUNNING remove the frame it triggers
+     *  on (`set 0.is_alive = …`)? Read off the program itself — the one statement of what
+     *  the wall does — never a hand list of behavior names (today: destroy and absorb). On
+     *  such a wall a frame's listing in `tickData.objects[handle].frames` is not one
+     *  arrival: the engine collects every frame in the mb_w-padded search rect
+     *  (ENGINE_CONTRACT §5.1), so a frame is listed alive through its approach ticks and
+     *  once more on its kill tick. */
+    function _runningProgramRemoves(wall) {
+        var prog = wall.lo && wall.lo.program;
+        return !!(prog && Array.isArray(prog.ops) &&
+            prog.ops.some(function (op) { return op && op.set === '0.is_alive'; }));
+    }
+
     /**
-     * LIVE-POPULATION readout (loop-polish B): the number of frames
-     * that collided with THIS wall on the sampled tick. For a FULL-AREA background
-     * wall (collisionBehavior 'nothing' + the count hook, intersects trigger) every
-     * live leaf inside the rect collides every tick, so this per-tick collided-frame
-     * count IS the current live population inside the wall — the ONE canonical
-     * "how many live" authority (replaces any host-side scan, e.g. an emission-cap
-     * thermostat's activeQuanta read).
+     * ZONE-OCCUPANCY readout (loop-polish B): the number of frames THIS wall's
+     * engine collect pass listed on the sampled tick — every frame in its search rect
+     * (the rect padded by the dimension's mb_w). For a FULL-AREA background wall
+     * (collisionBehavior 'nothing' + the count hook) that listing IS the current live
+     * population inside the wall — the ONE canonical "how many live" authority (the
+     * emission-cap gate and the LiveChart `liveCount` projector read it).
      *
      * Layer 1 (API): dual-lane, mirroring the LiveChart PROJECTOR_SPEC shape —
      *   getLiveCount(tickData) — SAMPLE lane (per tick): read
@@ -794,12 +806,23 @@ import { wallBehaviorV2ValuesMap as _wallBehaviorV2ValuesMap, bounceDirectionVal
      * COUNT increment only (bench LO7); counting never moves, kills, or recolors a
      * frame (SU1).
      *
-     * Guard: THROWS on a wall without the count hook / legacy detect behavior (no
-     * collected-frames buffer → it would silently report 0 forever).
+     * Guards: THROWS on a REMOVING wall (destroy / absorb) — there the listing reads
+     * (1 + approach-halo ticks) x arrivals, never the arrivals; `getArrivals` is the
+     * reader. THROWS on a wall without the count hook (no collected-frames buffer → it
+     * would silently report 0 forever).
      * @param {Object} [tickData] — the universe.doTick() result (sample lane).
      * @returns {number}
      */
     Wall.prototype.getLiveCount = function (tickData) {
+        if (_runningProgramRemoves(this)) {
+            throw new Error(
+                '[Wall.getLiveCount] this wall REMOVES what it hits (collisionBehavior "' +
+                this.collisionBehavior + '") — getLiveCount is the zone-occupancy reader of a ' +
+                'non-removing wall, and on a removing wall it would count each frame once per ' +
+                'approach tick plus once on its kill tick. Read arrivals with ' +
+                'wall.getArrivals(tickData) → { total, delta } (the engine\'s own per-wall count).'
+            );
+        }
         var counts = Array.isArray(this.hooks) && this.hooks.indexOf('count') !== -1;
         if (!counts) {
             throw new Error(
@@ -816,6 +839,70 @@ import { wallBehaviorV2ValuesMap as _wallBehaviorV2ValuesMap, bounceDirectionVal
             this._liveCount = (oc && Array.isArray(oc.frames)) ? oc.frames.length : 0;
         }
         return this._liveCount || 0;
+    };
+
+    /**
+     * ARRIVALS readout: how many frames have triggered THIS wall's collision program —
+     * read from the engine's own per-wall counter, `tickData.objects[handle].count`, the
+     * contract's one read authority for an LO count (ENGINE_CONTRACT §4.3). The `count`
+     * hook compiles `set 1.count = 1.count + 1` behind the trigger, so the engine counts
+     * one per trigger event; on a removing wall (destroy / absorb) each trigger is the
+     * frame's removal, so the count IS the arrivals. Never derived from the collected
+     * frame listing (that is the padded search-rect census — see getLiveCount).
+     *
+     * Layer 1 (API): dual-lane, the same shape as getLiveCount —
+     *   getArrivals(tickData) — SAMPLE lane: read the engine count and return
+     *     `{ total, delta }`: `total` = cumulative arrivals since the wall registered,
+     *     `delta` = the change since the previously sampled TickData (this tick's
+     *     arrivals when sampled every tick). IDEMPOTENT per TickData — sampling the same
+     *     TickData twice returns the same `{ total, delta }`.
+     *   getArrivals() — READ lane: the last sample (`{ total: 0, delta: 0 }` before the
+     *     first tick).
+     *
+     * Layer 2 (physics): zero physics — a pure reader of a counter the compiled program
+     * already maintains (bench LO7); reading it moves nothing (SU1).
+     *
+     * Guards: THROWS on a wall without the count hook (the engine counter never moves →
+     * it would silently report 0 forever), and on a TickData that is not the one this
+     * wall's universe last produced (`universe._lastTickData`, the object `doTick()` returned
+     * and every tick listener receives). LO handles restart at 0 in every universe, so a
+     * TickData from another world indexes a different wall's count at the same handle; and
+     * an earlier TickData of this world would yield a wrong delta.
+     * @param {Object} [tickData] — the universe.doTick() result (sample lane).
+     * @returns {{ total: number, delta: number }}
+     */
+    Wall.prototype.getArrivals = function (tickData) {
+        var counts = Array.isArray(this.hooks) && this.hooks.indexOf('count') !== -1;
+        if (!counts) {
+            throw new Error(
+                '[Wall.getArrivals] this wall does not COUNT (collisionBehavior "' +
+                this.collisionBehavior + '", hooks ' + JSON.stringify(this.hooks || []) +
+                ') — the engine increments a wall\'s count only through the `count` hook; ' +
+                'add hooks: [\'count\'] (preset \'detector-screen\' = destroy + count).'
+            );
+        }
+        if (!this._arrivals) { this._arrivals = { td: null, total: 0, delta: 0 }; }
+        var a = this._arrivals;
+        if (tickData != null && tickData !== a.td) {
+            if (tickData !== this.universe._lastTickData) {
+                throw new Error('[Wall.getArrivals] "' + this.name + '": this is not the TickData its ' +
+                    'own universe last produced (universe._lastTickData) — it is another world\'s, ' +
+                    'where handle ' + this.lo.handle + ' is a different wall, or an earlier tick of ' +
+                    'this one. Sample the TickData this wall\'s universe.doTick() just returned. (FAIL-LOUD.)');
+            }
+            var handle = this.lo.handle;
+            var oc = tickData.objects && tickData.objects[handle];
+            if (!oc || typeof oc.count !== 'number') {
+                throw new Error('[Wall.getArrivals] "' + this.name + '": this world\'s TickData carries no ' +
+                    'objects[' + handle + '].count — every registered LargeObject is marshalled each ' +
+                    'tick, so the wall is not registered here. (FAIL-LOUD.)');
+            }
+            var total = oc.count;
+            a.delta = total - a.total;
+            a.total = total;
+            a.td = tickData;
+        }
+        return { total: a.total, delta: a.delta };
     };
 
     /**
