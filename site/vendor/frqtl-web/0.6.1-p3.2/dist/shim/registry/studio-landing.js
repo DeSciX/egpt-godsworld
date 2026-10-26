@@ -8,7 +8,10 @@
  * its error copy.
  *
  *   STUDIO_LANDING_ATTR          the <html> attribute carrying the outcome id
- *   STUDIO_LANDING_OUTCOMES      the closed table: one row per branch of STUDIO's link resolution, `{ id, means }`
+ *   STUDIO_LANDING_OUTCOMES      the closed table: one row per branch of STUDIO's link resolution, `{ id, runs, means }`;
+ *                                `runs` says whether the scene that landing opens starts on load (through STUDIO's Run
+ *                                control's own path) — true only on `ok`, a deep link that named a scene; every other
+ *                                landing opens its scene in Design, waiting for Run
  *   recordStudioLanding(root, id) writes `id` on `root` (an Element, or null to only validate); an id outside the
  *                                table THROWS — that is a defect in the writer, never a landing
  *
@@ -29,23 +32,23 @@ export const STUDIO_LANDING_ATTR = 'data-frqtl-studio-landing';
 
 /** The closed table of STUDIO deep-link landings, in the order the resolver tests them (lib/features/ide/test/studio-landing-of.test.mjs holds it). */
 export const STUDIO_LANDING_OUTCOMES = Object.freeze([
-    { id: 'refused-key',
+    { id: 'refused-key', runs: false,
       means: 'the link carries a key STUDIO does not own, or a deleted key (deep-link.js deepLinkRefusalOf): the refusal is on the deep-link strip and the opening rung opens' },
-    { id: 'conflict',
+    { id: 'conflict', runs: false,
       means: 'the link names both a walkthrough and a saved project: nothing opens' },
-    { id: 'mode-without-walkthrough',
+    { id: 'mode-without-walkthrough', runs: false,
       means: 'the link names a mode and no walkthrough: nothing opens' },
-    { id: 'unknown-walkthrough',
+    { id: 'unknown-walkthrough', runs: false,
       means: 'the linked walkthrough is not in the walkthrough registry (walkthroughById): nothing opens' },
-    { id: 'unknown-mode',
+    { id: 'unknown-mode', runs: false,
       means: 'the linked mode is not one the linked rung declares (walkthroughModes): nothing opens' },
-    { id: 'project-unreadable',
+    { id: 'project-unreadable', runs: false,
       means: 'the linked saved project is present but its folder is refused by the load: nothing opens' },
-    { id: 'project-not-found',
+    { id: 'project-not-found', runs: false,
       means: 'no saved project of the linked name in this browser: nothing opens' },
-    { id: 'ok',
-      means: 'the linked walkthrough (in the linked mode, else its default) or saved project resolved and was handed to STUDIO\'s selection path' },
-    { id: 'first-contact',
+    { id: 'ok', runs: true,
+      means: 'the linked walkthrough (in the linked mode, else its default) or saved project resolved and was handed to STUDIO\'s selection path; the scene starts on load' },
+    { id: 'first-contact', runs: false,
       means: 'no STUDIO deep link: the walkthrough registry\'s opening rung opens' },
 ].map(Object.freeze));
 

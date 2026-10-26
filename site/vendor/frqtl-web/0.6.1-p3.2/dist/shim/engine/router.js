@@ -152,7 +152,7 @@ var DIST_PROFILE = buildDistProfile('../..');
 // lib/shim/engine/test/router.test.mjs asserts them against the two
 // package.json#version fields so a forgotten bump fails `make verify`, not a
 // silent stale-CDN-URL bug.
-var CDN_SDK_VERSION = '0.6.1-p3.1';  // sdk/frqtl-web/package.json#version (the ONE version owner) — bound by router.test.mjs
+var CDN_SDK_VERSION = '0.6.1-p3.2';  // sdk/frqtl-web/package.json#version (the ONE version owner) — bound by router.test.mjs
 var CDN_MATH_SDK_VERSION = '0.3.3-p2.1';  // sdk/egpt-math-sdk/package.json#version — bound by router.test.mjs; bumped with each npm publish
 
 /**
@@ -526,7 +526,7 @@ var _assertProfileParity = (function () {
  * // CDN mode (static hosting — the artifact host shell has no server, no page anchor):
  * const cdnRouter = engineRouter({ mode: 'cdn', engine: 'wasm' });
  * console.log(cdnRouter.resolve('compat/engine.js'));
- * // 'https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.1/dist/frqtl/compat/engine.js'
+ * // 'https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.2/dist/frqtl/compat/engine.js'
  *
  * // CDN mode, self-hosted: a copy of dist/ served from the consumer's own origin:
  * const selfHosted = engineRouter({ mode: 'cdn', engine: 'wasm', base: 'https://example.org/vendor/frqtl-web/dist' });

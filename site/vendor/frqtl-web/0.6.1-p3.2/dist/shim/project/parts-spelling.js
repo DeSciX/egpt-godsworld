@@ -10,7 +10,8 @@
  *   spellRect(props, { kind, entryKeys, baseline }) — a 6-tuple of a field whose descriptor derives reads from it
  *       (ObjectSchema.derivedReads: Wall `z`, `depth`) is written as the 4-tuple plus each derived key whose value
  *       changed, when the entry spells any of those keys as plain properties; otherwise the 6-tuple stands. A
- *       4-tuple equal to the baseline's is not written (no literalizing an untouched expression).
+ *       4-tuple equal to the baseline's is not written (no literalizing an untouched expression). THROWS, naming the
+ *       remedy, when `kind` is not registered in this realm (no imported module defines it).
  *   spellCenter(props, { entryKeys, centerLength }) — a `center` [x, y, 0] is written as two numbers when the entry
  *       spells two; otherwise the [x, y, z] stands.
  *   captureCenter(v) — the inverse: a spelled `center` in its capture form. [x, y] → [x, y, 0] (an omitted z is 0,
@@ -31,6 +32,12 @@ function _hasSix(props) {
 /** @param {object} props @param {{ kind: string, entryKeys: function(): string[], baseline: object }} o */
 export function spellRect(props, o) {
     if (!_hasSix(props)) { return props; }
+    if (!ObjectSchema.get(o.kind)) {
+        throw new Error('[parts-spelling] the kind "' + o.kind + '" is not registered in this realm: a 6-number rect is spelled by ' +
+            'its descriptor, and a kind registers when the module that defines it is imported (the published parts register ' +
+            'with ./project; a project\'s own part, parts/' + o.kind + '.js, when its module is imported) — import the module ' +
+            'that defines it. (FAIL-LOUD.)');
+    }
     const derived = ObjectSchema.derivedReads(o.kind);
     if (!derived.length) { return props; }
     const spelled = o.entryKeys();

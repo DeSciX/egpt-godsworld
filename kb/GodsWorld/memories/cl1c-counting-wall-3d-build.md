@@ -1,7 +1,7 @@
 # Memory: 1C · Counting Wall (3D) — build
 
-load: GYM scene id `cl1c-counting-wall-3d` · 3D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/counting-wall-3d.js
-source sha256 cbee035233eaf9e5f889bc1d85228e7b1ace7f31fe529923ea6bea6bd85bd09b · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/counting-wall-3d.js
+load: GYM scene id `cl1c-counting-wall-3d` · 3D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/counting-wall-3d.js
+source sha256 cbee035233eaf9e5f889bc1d85228e7b1ace7f31fe529923ea6bea6bd85bd09b · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/counting-wall-3d.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: cl1c's counting screen as a slab with a chart textured into the 3D view. A see-through counter: preset 'transparent-probe'. A thicker slab: predict depth 400 catches more of the ball. The clip (memories/cl1c-counting-wall-3d/clip.mp4, default camera) showed red specks dotted on the green face by 795 ticks and the chart panel as an empty dark box (no bars drawn in that recording).

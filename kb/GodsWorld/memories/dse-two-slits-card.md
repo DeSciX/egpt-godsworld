@@ -1,6 +1,6 @@
 # Memory: Two Slits at the Canonical Leg — card
 
-load: GYM scene id `dse-two-slits` · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/dse-two-slits.js
+load: GYM scene id `dse-two-slits` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/dse-two-slits.js
 
 group: DSE
 

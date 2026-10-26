@@ -5,7 +5,7 @@ in the browser. Physics comes out of local per-pixel rules — a frame moves one
 occupancy, momentum — rather than force equations or wave PDEs. Double-slit fringes, wave interference
 and blackbody spectra are computed live from the automaton, not replayed.
 
-`0.6.1-p3.1` (npm dist-tag `next`). The node twin is `@descix/frqtl-node` (the same modules,
+`0.6.1-p3.2` (npm dist-tag `next`). The node twin is `@descix/frqtl-node` (the same modules,
 plus `bootNode` and the hosted eyes).
 
 ## Install
@@ -14,11 +14,11 @@ plus `bootNode` and the hosted eyes).
 ## See it run immediately
 Open this URL, or embed it in a claude.ai artifact iframe (self-contained):
 
-  https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.1/dist/artifact/double-slit.html
+  https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.2/dist/artifact/double-slit.html
 
 and the one-file form (a `<script>` tag, global `FRQTL`) booting a 3D sun:
 
-  https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.1/dist/artifact/sun.html
+  https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.2/dist/artifact/sun.html
 
 ## A scene is a sketch
 A scene is an ES module whose default export is `buildExperiment(exp)`. Its first statement is the
@@ -44,8 +44,8 @@ refused by name), and `await recipeContext.setDeclared(name, patch)` changes one
 `parts/<NewKind>.js` (class renamed, imports rewritten to package specifiers), points the entry at it and re-runs in place.
 `runner.declared` rows read `inParts` and `module`.
 
-Read a real one before writing your own: `https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.1/dist/frqtl/scenes/double-slit.js` (every walk-through
-rung is a file under `dist/frqtl/scenes/`), and a part: `https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.1/dist/frqtl/parts/DetectorWall.js`.
+Read a real one before writing your own: `https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.2/dist/frqtl/scenes/double-slit.js` (every walk-through
+rung is a file under `dist/frqtl/scenes/`), and a part: `https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.2/dist/frqtl/parts/DetectorWall.js`.
 
 ## Boot it — the two doors (`@descix/frqtl-web/boot`)
   bootScene(mount, buildExperiment, { renderer: 'p5' | 'three', seed, onTick, render })
@@ -70,12 +70,13 @@ imports `./boot`, `./registry`, `./project`, `./host-view` or `./site-graph` by 
 row, so read the manifest from the same root: `new URL('dist-manifest.json', root)`. A page that holds only its map
 recovers the root through `FRQTL_WEB_HOST_SPECIFIERS`: `imports[row.specifier]` minus `row.libPath`.
 The root is an absolute URL or starts with `/`, `./` or `../`. A sketch held as text boots as `bootProject(mount, sketchProject(text))`.
-Or skip the map: `<script src="https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.1/dist/frqtl-web.min.js"></script>` then `FRQTL.bootScene(…)`,
+Or skip the map: `<script src="https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.2/dist/frqtl-web.min.js"></script>` then `FRQTL.bootScene(…)`,
 `FRQTL.Wall`, …
 
 String kinds: `exp.addObject('Wall', props)` resolves the kind in the SCENE's realm (the frame the scene
 runs in). A host that drives a scene in an iframe passes the string through that frame's `recipeContext`;
-it never imports the registry into its own document, where no kind is registered.
+it never resolves a kind in its own document, whose classes (`./parts` and `./project` register the published
+parts there too) are not the frame's.
 
 ## Exports
 | subpath | what |
@@ -83,7 +84,7 @@ it never imports the registry into its own document, where no kind is registered
 | `.` | the parts (`Wall`, `SphereEmitter`, `Tunnel`, `FrqtlVision`, …), `bootScene`, `bootProject`, `engine`, `engineState`, `FrqtlCapture`, `RenderStages`, `FieldBuilder`, `CaptureEnvelope`, `validateRendererProvider` |
 | `./boot` | `bootScene`, `bootProject` (in node it throws naming `@descix/frqtl-node`) |
 | `./parts`, `./parts/*` | the parts barrel; one part = one file |
-| `./project` | `FRQTL_WEB_SPECIFIERS`, `libPathOf`, `importMapFor`, `pageImportMapFor`, `FRQTL_WEB_HOST_SPECIFIERS`, `linkProject`, `sketchProject`, `SKETCH_ENTRY`, `projectIdentity`, `MANIFEST_FILE`, `MANIFEST_KEYS`, `normalizeManifest`, `parseManifest`, `serializeManifest`, `manifestFor`, `RECORD_FILES`, `RECORD_KEYS`, `CHANGE_KEYS`, `OPS`, `BY`, `CLIP_SECONDS`, `CLIP_NAME`, `clipName`, `jsonText`, `recordFolderFaults`, `applyRows` |
+| `./project` | `FRQTL_WEB_SPECIFIERS`, `libPathOf`, `importMapFor`, `pageImportMapFor`, `FRQTL_WEB_HOST_SPECIFIERS`, `linkProject`, `sketchProject`, `SKETCH_ENTRY`, `projectIdentity`, `MANIFEST_FILE`, `MANIFEST_KEYS`, `normalizeManifest`, `parseManifest`, `serializeManifest`, `manifestFor`, `RECORD_FILES`, `RECORD_KEYS`, `CHANGE_KEYS`, `OPS`, `BY`, `CLIP_SECONDS`, `CLIP_NAME`, `clipName`, `jsonText`, `rowFaults`, `recordFolderFaults`, `applyRows` (stands alone: no other import is needed) |
 | `./registry` | the walk-through rungs, the showcase roster, the scene list (`sceneGroups`), `projectOf(id, { mode })` → `{ manifest, files, renderState }`, a showcase tile's link (`showcaseHref(row)` relative to the serving site, `showcaseUrl(row)` absolute on `SHOWCASE_SITE.origin`; `row` is an element of the same imported `EXHIBITS`, and the link carries the row's effective mode on a multi-mode rung), and how STUDIO resolved the link it opened with (`STUDIO_LANDING_ATTR` on `<html>`, a `STUDIO_LANDING_OUTCOMES` id) |
 | `./kinds` | `registerKind`, `kindNamed`, `kindOf` (the parent's row, frozen), `registeredKinds` — a composed fork registers its renamed class |
 | `./host-view` | `declareHostView`, `HOST_VIEW_OUTCOMES`, `CONTRACT_VIOLATIONS`, `HOST_SDK_SCRIPT` — the DeSciX host-view declarer an app calls once, under its own policy |
@@ -126,6 +127,6 @@ Everything is a Frame (recursive); there is no separate "particle" class.
   - The published build is WASM-only on the engine side (compiled surface).
 
 ## Curated notebooks
-Index: `https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.1/dist/notebooks/notebooks.json`
+Index: `https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.2/dist/notebooks/notebooks.json`
 
 ## No account, credits, or tokens are needed for anything above.

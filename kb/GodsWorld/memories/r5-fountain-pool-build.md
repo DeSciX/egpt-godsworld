@@ -1,7 +1,7 @@
 # Memory: A pool — build
 
-load: GYM scene id `r5-fountain-pool` · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/self-interference.js
-source sha256 14a8739ac4e62f3fc3d75a1ce6a13cca796c5fa8125b2532496acf9c6d3ea4ef · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/self-interference.js
+load: GYM scene id `r5-fountain-pool` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/self-interference.js
+source sha256 14a8739ac4e62f3fc3d75a1ce6a13cca796c5fa8125b2532496acf9c6d3ea4ef · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/self-interference.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: the SAME sketch as r4-self-interference, seen through the water lens (the GYM hides the particles and turns the water shader on; that is a render row, not a line here). A wider pool: fundamentalWaveLength 128 → λ 512 px, the ripple ring about twice as far out. Two fountains: r6b. Rougher water: burstSize 144. The tester's clip (memories/r5-fountain-pool/clip.mp4) is the r4 picture (no water shader was carried); the tile still (tile.png) shows the water: dark teal, white glints, the same faint ring round the dark centre.

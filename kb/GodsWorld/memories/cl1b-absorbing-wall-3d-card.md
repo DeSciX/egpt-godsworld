@@ -1,6 +1,6 @@
 # Memory: 1B · Absorbing Wall (3D) — card
 
-load: GYM scene id `cl1b-absorbing-wall-3d` · 3D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/absorbing-wall-3d.js
+load: GYM scene id `cl1b-absorbing-wall-3d` · 3D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/absorbing-wall-3d.js
 
 group: Collision Lab · 3D
 

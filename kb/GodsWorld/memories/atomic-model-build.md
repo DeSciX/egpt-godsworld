@@ -1,7 +1,7 @@
 # Memory: Atomic model — build
 
-load: GYM scene id `atomic-model` · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/atomic-model.js
-source sha256 25d5336471c3aace925b5e502594d7834b9cd05b0a445d912ad9cfc45c91623f · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/atomic-model.js
+load: GYM scene id `atomic-model` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/atomic-model.js
+source sha256 25d5336471c3aace925b5e502594d7834b9cd05b0a445d912ad9cfc45c91623f · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/atomic-model.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: three nested layers: quarks in a proton, proton and electron in an atom. More quarks: QUARKS_PER_PROTON 64 fills the 8 x 8 proton (fullness 1, a different oscillation: wavelength = capacity/mass = 1). A bigger atom: ATOM_LAYER 7 (128 px). Two electrons: a second makeLeafFrame at another corner and atom.insert it. A helium-like nucleus would be a second proton frame in the atom. No clip has been watched yet (memories/atomic-model/ holds only the tile still): the card says the quarks stay bound and the electron keeps its place with no force law; the drag to try is the electron pulled off and watched for whether it is drawn back a pixel per tick.

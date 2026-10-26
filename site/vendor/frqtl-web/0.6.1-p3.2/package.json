@@ -1,6 +1,6 @@
 {
   "name": "@descix/frqtl-web",
-  "version": "0.6.1-p3.1",
+  "version": "0.6.1-p3.2",
   "description": "FRQTL for the browser \u2014 the discrete fractal physics engine (compiled Rust \u2192 WASM), its parts as ES modules, the scene doors (bootScene, bootProject) and frqtl-web.min.js.",
   "type": "module",
   "engines": {

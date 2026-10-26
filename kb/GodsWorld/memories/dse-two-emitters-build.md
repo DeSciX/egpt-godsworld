@@ -1,7 +1,7 @@
 # Memory: Two Emitters at the Canonical Leg — build
 
-load: GYM scene id `dse-two-emitters` · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/dse-two-emitters.js
-source sha256 dbedc0bce5635c2522cce58fce46617fdcd0eca406a646c25fd2d8b2bf60dcb8 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/dse-two-emitters.js
+load: GYM scene id `dse-two-emitters` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/dse-two-emitters.js
+source sha256 dbedc0bce5635c2522cce58fce46617fdcd0eca406a646c25fd2d8b2bf60dcb8 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/dse-two-emitters.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: dse-one-emitter with two source entries in parts (source1, source2): two sources λ/2 apart (y 120 and 280), the plate at the same leg D = λ/4. The claim: each source lays a band λ/4 above and below itself, so the two inner bands meet on the midline y 200: a central peak the one-emitter rung lacks, flanked by bands at y 40 and 360. Variants: sep = lamPx × 3/4 (drag the lower source to y 360) → predict the midline peak falling; lamPx 160 → everything halves. The clip (memories/dse-two-emitters/clip.mp4) showed two fans meeting at mid-height and the chart region filling denser than the one-emitter clip; no central peak was readable by eye and no chart line was drawn in that recording.

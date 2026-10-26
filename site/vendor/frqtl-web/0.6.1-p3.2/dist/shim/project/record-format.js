@@ -22,6 +22,9 @@
  *   CLIP_SECONDS         { min, max } — the length of one clip, in seconds of playback
  *   CLIP_NAME            the clip file pattern; clipName(n) → 'clip-NN.mp4' (n from 1)
  *   jsonText(v)          JSON.stringify(v, null, 2) + '\n' — every JSON file of the folder
+ *   rowFaults(row, at?) → string[]   [] for a valid change row, every fault by name otherwise — THE one shape check of
+ *                        a row (its keys, tick, name, by, op in OPS, from/to per op); recordFolderFaults, applyRows and
+ *                        serializeRecordFolder ask it, so a host checking a row before it writes or applies one asks it too
  *   recordFolderFaults(files) → string[]   [] for a complete §6 folder, every fault by name otherwise
  *   serializeRecordFolder(parts) → { files, record, clips } | { empty: true }   THE writer (Record.js calls it;
  *                        it runs recordFolderFaults on its own output and THROWS on any fault)
@@ -128,8 +131,17 @@ function _placement(v) {
 
 const MOVE_SHAPE = 'move carries from/to as ONE key, {center: [x, y, z]} or {rect: [4 numbers flat | 6 with a z-extent]}, the same key and length in both';
 
-/** The faults of one change row against its op. */
-function _rowFaults(c, at) {
+/**
+ * rowFaults(row, at?) → string[] — THE shape check of one change row: [] when valid, otherwise every fault by name.
+ * Checks the keys (exactly CHANGE_KEYS), `tick` (a whole tick ≥ 0), `name` (the declared name), `by` (one of BY),
+ * `op` (one of OPS) and `from`/`to` (strict JSON, in that op's shape; a move that moves nothing is a fault).
+ * A row alone carries no folder facts: tickRange, tick order and one shape per name's moves are recordFolderFaults'.
+ * @param {*} c the row
+ * @param {string} [at='row'] the row's label at the head of each fault (e.g. 'changes[3]')
+ * @returns {string[]}
+ */
+export function rowFaults(c, at) {
+    if (at === undefined) { at = 'row'; }
     const bad = [];
     if (!_isPlain(c)) { return [at + ' is not a change {' + CHANGE_KEYS.join(', ') + '}']; }
     const keys = Object.keys(c);
@@ -228,7 +240,7 @@ export function recordFolderFaults(files) {
                 let last = -Infinity;
                 rec.changes.forEach(function (c, i) {
                     const at = RECORD_FILES.record + ' changes[' + i + ']';
-                    _rowFaults(c, at).forEach(function (f) { bad.push(f); });
+                    rowFaults(c, at).forEach(function (f) { bad.push(f); });
                     if (!_isPlain(c)) { return; }
                     if (Number.isInteger(c.tick)) {
                         if (range && (c.tick < range[0] || c.tick > range[1])) { bad.push(at + ' at tick ' + c.tick + ' lies outside tickRange ' + JSON.stringify(range)); }
@@ -332,7 +344,7 @@ export function serializeRecordFolder(p) {
     // Check the rows as HELD, before any text: JSON.stringify writes NaN/Infinity as null and drops an undefined key,
     // so a check of the written text would read a different value from the one the Record held.
     const held = [];
-    record.changes.forEach(function (c, i) { held.push.apply(held, _rowFaults(c, 'changes[' + i + ']')); });
+    record.changes.forEach(function (c, i) { held.push.apply(held, rowFaults(c, 'changes[' + i + ']')); });
     if (held.length) { throw new Error('[record-format] a change row is not strict JSON: ' + held.join('; ') + ' (FAIL-LOUD.)'); }
     const files = {};
     files[RECORD_FILES.record] = jsonText(record);
@@ -369,12 +381,16 @@ function _centerLength(props) {
  *   fork          entry `name`'s kind becomes `to.kind` (its props are unchanged)
  * The spelling is the writer's own rule (parts-spelling.js spellRect / spellCenter: a 6-number rect beside spelled
  * `z`/`depth` keys, a two-number center), read off the block, so a block a hand changed and the rows that change
- * wrote agree: applyRows(parts.before, record.changes) is parts.after. A rect row on a kind whose descriptor derives
- * reads (Wall) asks ObjectSchema, so that kind is registered in the realm (its part module imported).
+ * wrote agree: applyRows(parts.before, record.changes) is parts.after. A 6-number rect row asks its kind's descriptor
+ * (ObjectSchema.derivedReads): the ./project entry (index.js) imports the parts roster, so every published kind is
+ * registered wherever ./project is loaded, and a scene page has registered them by its boot's modules phase; a
+ * project's own kind (a fork's parts/<Kind>.js) is registered when its module is imported. This module itself imports
+ * no part: the scene page reaches it statically (RecipeContext → Record.js), and a static barrel import here would load
+ * every part with the page module, ahead of the boot record (a failed part would then leave no boot banner).
  * THROWS, naming the row index and the offending value: a block that is not { name: [kind name, {props}] }; rows
- * that are not an array; a row recordFolderFaults would name (an op that is not one of OPS, its keys, its from/to
- * shape); a name the block does not hold (move, setDeclared, remove, fork) or already holds (add); a fork whose
- * `from` is not the entry's kind.
+ * that are not an array; a row rowFaults names (an op that is not one of OPS, its keys, its from/to shape — the
+ * faults in the error); a 6-number rect row on a kind no imported module registered; a name the block does not
+ * hold (move, setDeclared, remove, fork) or already holds (add); a fork whose `from` is not the entry's kind.
  * @param {Object<string, [string, object]>} partsBlock
  * @param {object[]} rows
  * @returns {Object<string, [string, object]>}
@@ -386,7 +402,7 @@ export function applyRows(partsBlock, rows) {
             JSON.stringify(rows) + '. (FAIL-LOUD.)');
     }
     rows.forEach(function (row, i) {
-        const faults = _rowFaults(row, 'rows[' + i + ']');
+        const faults = rowFaults(row, 'rows[' + i + ']');
         if (faults.length) { _applyFail(i, 'is not a change row: ' + faults.join('; ')); }
         const name = row.name;
         const has = Object.prototype.hasOwnProperty.call(block, name);
@@ -411,8 +427,10 @@ export function applyRows(partsBlock, rows) {
         // move / setDeclared: the row's capture-form values, spelled in the entry's own form.
         const props = JSON.parse(JSON.stringify(row.to));
         const own = entry[1];
-        spellRect(props, { kind: entry[0], baseline: row.from, entryKeys: function () { return Object.keys(own); } });
-        spellCenter(props, { entryKeys: function () { return Object.keys(own); }, centerLength: function () { return _centerLength(own); } });
+        try {
+            spellRect(props, { kind: entry[0], baseline: row.from, entryKeys: function () { return Object.keys(own); } });
+            spellCenter(props, { entryKeys: function () { return Object.keys(own); }, centerLength: function () { return _centerLength(own); } });
+        } catch (e) { throw new Error('[record-format] applyRows: rows[' + i + '] (' + row.op + ') of "' + name + '": ' + ((e && e.message) || String(e))); }
         block[name] = [entry[0], Object.assign({}, own, props)];
     });
     return block;

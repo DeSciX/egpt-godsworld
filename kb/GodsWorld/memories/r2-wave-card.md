@@ -1,6 +1,6 @@
 # Memory: 2 · Wave — card
 
-load: GYM scene id `r2-wave` · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/wave.js
+load: GYM scene id `r2-wave` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/wave.js
 
 group: Light Lab
 

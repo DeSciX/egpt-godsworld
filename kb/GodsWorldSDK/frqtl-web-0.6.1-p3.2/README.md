@@ -5,7 +5,7 @@ comes out of local per-pixel rules — a frame moves one pixel per tick, single 
 rather than force equations. Interference, blackbody spectra and atom-like binding emerge from the
 automaton.
 
-`0.6.1-p3.1` (npm dist-tag `next`). The node twin is `@descix/frqtl-node` — the same
+`0.6.1-p3.2` (npm dist-tag `next`). The node twin is `@descix/frqtl-node` — the same
 modules, built from the same source.
 
 ## Install
@@ -124,8 +124,8 @@ differ from `mode`: `declareHostView` throws a TypeError when they are the same 
 `HOST_SDK_SCRIPT` beside its page.
 
 String kinds — `exp.addObject('Wall', props)` — resolve in the SCENE's realm. A host driving a scene in
-an iframe passes the string through that frame's `recipeContext`; it never imports the kind registry
-into its own document, where no kind is registered.
+an iframe passes the string through that frame's `recipeContext`; it never resolves a kind in its own
+document, whose classes (`./parts` and `./project` register the published parts there too) are not the frame's.
 
 ## Exports
 
@@ -134,7 +134,7 @@ into its own document, where no kind is registered.
 | `.` | the parts, `bootScene`, `bootProject`, `engine`, `engineState`, `FrqtlCapture`, `RenderStages`, `FieldBuilder`, `CaptureEnvelope`, `validateRendererProvider` |
 | `./boot` | `bootScene`, `bootProject` (in node it throws, naming `@descix/frqtl-node`) |
 | `./parts`, `./parts/*` | the parts barrel; one part = one file |
-| `./project` | `FRQTL_WEB_SPECIFIERS`, `libPathOf`, `importMapFor`, `pageImportMapFor`, `FRQTL_WEB_HOST_SPECIFIERS`, `linkProject`, `sketchProject`, `SKETCH_ENTRY`, `projectIdentity`, `MANIFEST_FILE`, `MANIFEST_KEYS`, `normalizeManifest`, `parseManifest`, `serializeManifest`, `manifestFor`, `RECORD_FILES`, `RECORD_KEYS`, `CHANGE_KEYS`, `OPS`, `BY`, `CLIP_SECONDS`, `CLIP_NAME`, `clipName`, `jsonText`, `recordFolderFaults`, `applyRows` |
+| `./project` | `FRQTL_WEB_SPECIFIERS`, `libPathOf`, `importMapFor`, `pageImportMapFor`, `FRQTL_WEB_HOST_SPECIFIERS`, `linkProject`, `sketchProject`, `SKETCH_ENTRY`, `projectIdentity`, `MANIFEST_FILE`, `MANIFEST_KEYS`, `normalizeManifest`, `parseManifest`, `serializeManifest`, `manifestFor`, `RECORD_FILES`, `RECORD_KEYS`, `CHANGE_KEYS`, `OPS`, `BY`, `CLIP_SECONDS`, `CLIP_NAME`, `clipName`, `jsonText`, `rowFaults`, `recordFolderFaults`, `applyRows` (stands alone: no other import is needed) |
 | `./registry` | the walk-through rungs, the showcase roster, the scene list (`sceneGroups`), `projectOf`, a showcase tile's link (`showcaseHref(row)` relative to the serving site, `showcaseUrl(row)` absolute on `SHOWCASE_SITE.origin`; `row` is an element of the same imported `EXHIBITS`, and the link carries the row's effective mode on a multi-mode rung), and how STUDIO resolved the link it opened with (`STUDIO_LANDING_ATTR` on `<html>`, a `STUDIO_LANDING_OUTCOMES` id) |
 | `./kinds` | `registerKind`, `kindNamed`, `kindOf`, `registeredKinds` — the kind registry a composed fork registers in |
 | `./host-view` | `declareHostView`, `HOST_VIEW_OUTCOMES`, `CONTRACT_VIOLATIONS`, `HOST_SDK_SCRIPT` — the DeSciX host-view declarer an app calls under its own policy (below) |

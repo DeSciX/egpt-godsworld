@@ -1,7 +1,7 @@
 # Memory: 1 · Straight Walk — build
 
-load: GYM scene id `r1-straight-walk` · 2D · source site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/straight-walk.js
-source sha256 04cfe8c0efe50ba2275edf7466fc8827ba1d7e94bd2a19a2be04931bb7f8886b · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.1/dist/frqtl/scenes/straight-walk.js
+load: GYM scene id `r1-straight-walk` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/straight-walk.js
+source sha256 04cfe8c0efe50ba2275edf7466fc8827ba1d7e94bd2a19a2be04931bb7f8886b · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/straight-walk.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: the simplest scene: one emitter, one bag. Two beams: add a second exp.addObject('SphereEmitter', {...parts.source[1], center: [300, 100]}) and a third at [300, 300]; expect three parallel bands, each 1 px/tick. A beam the other way: orientationDeg: 180. A visible wave instead of a ripple: r2-wave's two extra fields (fundamentalDimension: 2, wavelength: 8) give peak-to-peak ≈128 px. A spray instead of a beam: preset 'spherical' (r3). The clip (memories/r1-straight-walk/clip.mp4) showed one thin yellow band growing right from the centre at about 1 px per tick with a few px of ripple.
