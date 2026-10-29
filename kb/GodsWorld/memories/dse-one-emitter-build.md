@@ -1,7 +1,7 @@
 # Memory: One Emitter at the Canonical Leg — build
 
-load: GYM scene id `dse-one-emitter` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/dse-one-emitter.js
-source sha256 825e7c2ad37cf760807c05d2a356477dfb24c87aab0d30b3a34cb136d21a95f1 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/dse-one-emitter.js
+load: GYM scene id `dse-one-emitter` · 2D · source site/scenes/61989266/dse-one-emitter.js
+source sha256 825e7c2ad37cf760807c05d2a356477dfb24c87aab0d30b3a34cb136d21a95f1 · every code line below is byte-identical to the scene source; lines beginning `// memo:` are added notes — strip them to diff against site/scenes/61989266/dse-one-emitter.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: the canonical leg: one source, a see-through counting plate at D = λ/4, a count-by-y chart behind it. The claim: the chart shows a band PAIR at y 120 and 280 (±λ/4 of the source) with a plateau between. Variants: legFrac 1/2 → the plate at λ/2, predict the crossings elsewhere; lamPx 160 → everything halves (the plate at 40 px, bands at y 160 and 240), the dip-to-peak structure smeared on a 600 px stage; two source entries in parts (source1, source2) → dse-two-emitters. The clip (memories/dse-one-emitter/clip.mp4) showed the yellow fan reaching the plate by ≈120 ticks and dots over the whole chart region by 1202; no band pair was readable by eye in the particle field, and no chart line was drawn in that recording (the GYM colour scheme was not carried).

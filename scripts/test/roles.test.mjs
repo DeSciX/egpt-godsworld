@@ -66,12 +66,12 @@ import { SECTIONS, spliceBlock, renderPersona } from '../gen-hands-section.mjs';
 import * as rolesModule from '../../site/app-assets/maxi-roles.js';
 import { execFileSync } from 'node:child_process';
 import './site-import-map.mjs';   // the vendored cl1a-mirror imports the package by specifier: resolve it as the page does
-import { sceneFile } from '../frqtl-web-pin.mjs';
+import { registry, roster, sceneFileOf } from '../lab-roster.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 // cl1a-mirror's emitter, as the vendored scene declares it in its parts table (the one owner of its name and centre)
 const { SphereEmitter } = await import('@descix/frqtl-web/parts');
-const MIRROR_PARTS = (await import(pathToFileURL(path.join(REPO, sceneFile('scenes/mirror.js'))).href)).parts;
+const MIRROR_PARTS = (await import(pathToFileURL(path.join(REPO, sceneFileOf(registry.walkthroughById(roster, 'cl1a-mirror')))).href)).parts;
 const EMITTERS = Object.keys(MIRROR_PARTS).filter((k) => MIRROR_PARTS[k][0] === SphereEmitter);
 assert.equal(EMITTERS.length, 1, 'cl1a-mirror declares ' + EMITTERS.length + ' SphereEmitter parts, the fixture needs one: ' + JSON.stringify(Object.keys(MIRROR_PARTS)));
 const EMITTER = EMITTERS[0];

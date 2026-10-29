@@ -19,10 +19,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
-import { sceneFile } from '../frqtl-web-pin.mjs';
+import { registry, roster, sceneFileOf } from '../lab-roster.mjs';
 
-/** Where a registry row's sketch is served, relative to the site root. */
-const servedRel = (scenesRel) => sceneFile(scenesRel).slice('site/'.length);
+/** Where a roster scene's sketch is served, relative to the site root (node's reading of the lab's roster). */
+const servedRel = (id) => sceneFileOf(registry.walkthroughById(roster, id)).slice('site/'.length);
 
 function argOf(flag, dflt) { const i = process.argv.indexOf(flag); return i === -1 ? dflt : process.argv[i + 1]; }
 const URL_ = argOf('--url', null);
@@ -156,7 +156,8 @@ try {
 
     // 2. sceneSource equals the served sketch bytes.
     const src = await must(page, 'sceneSource', { id: 'cl1a-mirror' });
-    const servedUrl = new URL(servedRel(src.path), URL_).href;
+    if (src.path !== servedRel('cl1a-mirror')) { throw new Error('sceneSource names ' + src.path + ', node\'s lab roster ' + servedRel('cl1a-mirror')); }
+    const servedUrl = new URL(servedRel('cl1a-mirror'), URL_).href;
     const served = await (await fetch(servedUrl)).text();
     if (served !== src.source) { throw new Error('sceneSource differs from the served bytes at ' + servedUrl); }
     note('sceneSource == served bytes', { path: src.path, bytes: served.length });

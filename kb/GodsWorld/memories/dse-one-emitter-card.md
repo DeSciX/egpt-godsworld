@@ -1,6 +1,6 @@
 # Memory: One Emitter at the Canonical Leg — card
 
-load: GYM scene id `dse-one-emitter` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/dse-one-emitter.js
+load: GYM scene id `dse-one-emitter` · 2D · source site/scenes/61989266/dse-one-emitter.js
 
 group: DSE
 

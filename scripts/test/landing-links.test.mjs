@@ -12,8 +12,9 @@
  *   3. no FRQTL link carries an `experiment` or a `project` query key: FRQTL 0.6.0 deletes the experiments
  *      registry and refuses `?experiment=<id>` by name, so such a link opens on a deep-link error;
  *   4. no FRQTL link repeats its `walkthrough` or `preset` key, and every `walkthrough` id on any FRQTL link is a
- *      rung of the walkthrough registry this site pins (the vendored @descix/frqtl-web `./registry` export, read
- *      through scripts/frqtl-web-pin.mjs). The registry is the ONE owner of the rung ids; this gate retypes none;
+ *      scene of the lab's roster (site/scenes/roster.json through scripts/lab-roster.mjs and the vendored package's
+ *      walkthroughById). The roster is the ONE owner of the ids this site knows; this gate retypes none. STUDIO resolves
+ *      the id against its own roster (the egpt-frqtl app's media), which this gate does not read;
  *   5. every landing tile that names a scene names it as `?preset=author&walkthrough=<id>`.
  * Every gate is shown red on a planted fault inside its own test.
  */
@@ -22,7 +23,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { REPO, distUrl, exportFile } from '../frqtl-web-pin.mjs';
+import { REPO } from '../frqtl-web-pin.mjs';
+import { registry, roster } from '../lab-roster.mjs';
 
 const FRQTL_HOST = 'egpt-frqtl.descix.net';
 const FRQTL_PATH = '/prod/egpt-frqtl/';
@@ -35,10 +37,8 @@ const REFUSED_KEYS = Object.freeze({
     project: 'a landing link names a registry rung, never a saved project; link ?walkthrough=<rung id>',
 });
 
-const registry = await import(distUrl(exportFile('./registry')));
-if (typeof registry.walkthroughById !== 'function' || !Array.isArray(registry.WALKTHROUGH)) {
-    throw new Error('[landing-links] the pinned registry export lacks walkthroughById / WALKTHROUGH (FAIL-LOUD).');
-}
+/** The lab roster's id resolver (id → scene row | null), through the package's own reader. */
+const byId = (id) => registry.walkthroughById(roster, id);
 
 /** The value of attribute `name` in a tag's attribute text, as written (undecoded), or null. */
 function attr(attrs, name) {
@@ -92,7 +92,7 @@ export function frqtlLinks(html) {
     return { links, faults };
 }
 
-/** The faults of `html`'s FRQTL links against the registry resolver `byId` (id → rung | null). [] when clean. */
+/** The faults of `html`'s FRQTL links against the roster resolver `byId` (id → rung | null). [] when clean. */
 export function landingLinkFaults(html, byId) {
     const { links, faults } = frqtlLinks(html);
     for (const { href, url, tile } of links) {
@@ -104,7 +104,7 @@ export function landingLinkFaults(html, byId) {
             if (q.getAll(key).length > 1) faults.push(href + ': repeats ?' + key + '= — name it once');
         }
         for (const each of q.getAll('walkthrough')) {
-            if (!byId(each)) faults.push(href + ': walkthrough "' + each + '" is not a rung of the pinned registry');
+            if (!byId(each)) faults.push(href + ': walkthrough "' + each + '" is not a scene of the lab\'s roster');
         }
         const id = q.get('walkthrough');
         if (!tile || !SCENE_KEYS.some((k) => q.has(k))) continue;
@@ -119,7 +119,7 @@ const INDEX = fs.readFileSync(path.join(REPO, 'site', 'index.html'), 'utf8');
 test('the landing page links into FRQTL by walkthrough rung, never by experiment', () => {
     const tiles = frqtlLinks(INDEX).links.filter((l) => l.tile && l.url.searchParams.has('walkthrough'));
     assert.ok(tiles.length > 0, 'no walkthrough tile found in site/index.html: the link parser has gone deaf');
-    assert.deepEqual(landingLinkFaults(INDEX, registry.walkthroughById), []);
+    assert.deepEqual(landingLinkFaults(INDEX, byId), []);
 });
 
 test('planted faults are red', () => {
@@ -131,19 +131,19 @@ test('planted faults are red', () => {
         '<a href="https://www.egpt-frqtl.descix.net/?experiment=x">not the app</a>',
         '<a href="app.html">relative, not the app</a>',
     ].join('\n');
-    assert.deepEqual(landingLinkFaults(ok, registry.walkthroughById), []);
+    assert.deepEqual(landingLinkFaults(ok, byId), []);
     const EXP = /refuses \?experiment=<id> by name/;
     const plants = [
         ['<a class="tile" href="' + F + '?preset=author&experiment=blackbody">x</a>', EXP],
         ['<a href="' + F + '?experiment=blackbody">footer</a>', EXP],
-        ['<a class="tile" href="' + F + '?preset=author&amp;walkthrough=no-such-rung">x</a>', /"no-such-rung" is not a rung/],
+        ['<a class="tile" href="' + F + '?preset=author&amp;walkthrough=no-such-rung">x</a>', /"no-such-rung" is not a scene of the lab.s roster/],
         ['<a class="tile" href="' + F + '?preset=ide&walkthrough=blackbody">x</a>', /opens with preset=author/],
         ['<a class="tile" href="' + F + '?walkthrough=blackbody">x</a>', /opens with preset=author/],
         ['<a class="tile" href="' + F + '?preset=author&project=blackbody">x</a>', /never a saved project/],
         ['<a class="tile" href="' + F + '?preset=author&expe%72iment=blackbody">x</a>', EXP],
         ['<a class="tile" href="https://EGPT-FRQTL.descix.net/?preset=author&experiment=blackbody">x</a>', EXP],
         ['<a class="tile" href="https://egpt-frqtl.descix.net./?preset=author&experiment=blackbody">x</a>', EXP],
-        ['<a class="tile" href="' + F + '?preset=author&walkthrough=">x</a>', /walkthrough "" is not a rung/],
+        ['<a class="tile" href="' + F + '?preset=author&walkthrough=">x</a>', /walkthrough "" is not a scene of the lab.s roster/],
         // decoded references
         ['<a class="tile" href="' + F + '?preset=author&#38;experiment=blackbody">x</a>', EXP],
         ['<a class="tile" href="' + F + '?preset=author&#x26;experiment=blackbody">x</a>', EXP],
@@ -160,14 +160,14 @@ test('planted faults are red', () => {
         ['<A CLASS="tile" HREF="' + F + '?preset=ide&walkthrough=blackbody">x</A>', /opens with preset=author/],
         ["<a class = 'tile' href=\"" + F + '?preset=ide&walkthrough=blackbody">x</a>', /opens with preset=author/],
         // every FRQTL link, repeated keys, the app addressed by path
-        ['<a href="' + F + '?preset=author&walkthrough=bogus">footer</a>', /"bogus" is not a rung/],
+        ['<a href="' + F + '?preset=author&walkthrough=bogus">footer</a>', /"bogus" is not a scene of the lab.s roster/],
         ['<a class="tile" href="' + F + '?preset=author&walkthrough=blackbody&walkthrough=bogus">x</a>', /repeats \?walkthrough=/],
         ['<a class="tile" href="' + F + '?preset=ide&preset=author&walkthrough=blackbody">x</a>', /repeats \?preset=/],
         ['<a class="tile" href="https://descix.net/prod/egpt-frqtl/site/app.html?preset=author&experiment=blackbody">x</a>', EXP],
-        ['<a href="https://egpt-frqtl.descix.net/prod/egpt-frqtl/site/app.html?walkthrough=bogus">x</a>', /"bogus" is not a rung/],
+        ['<a href="https://egpt-frqtl.descix.net/prod/egpt-frqtl/site/app.html?walkthrough=bogus">x</a>', /"bogus" is not a scene of the lab.s roster/],
     ];
     for (const [html, re] of plants) {
-        const f = landingLinkFaults(html, registry.walkthroughById);
+        const f = landingLinkFaults(html, byId);
         assert.ok(f.some((s) => re.test(s)), 'plant not red: ' + html + ' -> ' + JSON.stringify(f));
     }
 });

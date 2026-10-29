@@ -4,7 +4,7 @@
 /**
  * body.mjs — MiniMaxi's BODY: Maxi's lab page, driven from node.
  *
- *   node minimaxi/body.mjs --port <n> --scene <registry id> [--mode <m>] --brain none|platform [--stills 8] [--out minimaxi/out]
+ *   node minimaxi/body.mjs --port <n> --scene <roster id> [--mode <m>] --brain none|platform [--stills 8] [--out minimaxi/out]
  *
  * ONE origin on 127.0.0.1:<port> (strict: a forbidden or busy port exits 2, nothing drifts):
  *   /bridge/hand  POST {hand, args?, thread?, knowledgebase_names?, stills?, ask?} → {result} | {error, changes}
@@ -27,10 +27,12 @@
  * package's empty experiment page (the site's vendored copy, on this ONE origin: eyesPageUrl) and their handle
  * exposes no page, so the LAB page is a second page of that browser, in standalone host mode, with
  * window.MaxiHostDoor exposed (ask-door.mjs). The lab boots first and its inventory names the world; the
- * eyes then boot their REFERENCE eye — the same rung as the project folder it boots (projectOf) + its renderState
+ * eyes then boot their REFERENCE eye — the same roster scene as the project folder it boots (projectOf) + its renderState
  * (the GYM look) — check those bounds against their own boot, and the body saves one composite still.
  * Maxi's clips are the lab's own FrqtlVision.record (mediabunny MP4) in the scene frame. The body runs no
- * sketch in node: the registry it reads is the site's vendored copy (the rows the lab's picker shows).
+ * sketch in node. The roster it reads is the lab's own (scripts/lab-roster.mjs: site/scenes/roster.json by its file: URL,
+ * through the vendored registry); the page loads the SAME file from this origin (maxi-roster.js writes its link off the
+ * page's URL, /site/app.html → /site/scenes/roster.json), and the body refuses a page whose roster is any other.
  *
  * stdout line 1: {"bridge","port","scene","mode","brain","reference"} (reference = the eyes' composite still at tick 150) — then nothing else on stdout
  * (logs go to stderr). Stays up until SIGTERM/SIGINT; tears down the browser and server itself.
@@ -45,10 +47,11 @@ import { fileURLToPath } from 'node:url';
 
 import { siteHandler } from '../scripts/serve-site.mjs';
 import { HANDS } from '../site/app-assets/maxi-hands.js';
-import { DIST_REL, distUrl, distFile, exportFile } from '../scripts/frqtl-web-pin.mjs';
+import { DIST_REL, distFile } from '../scripts/frqtl-web-pin.mjs';
+import { registry, roster, ROSTER_REL } from '../scripts/lab-roster.mjs';
 import { BRAINS, DEFAULT_STILLS, createAskDoor, askThread, mainCheckoutOf } from './ask-door.mjs';
 
-const { walkthroughById, defaultWalkthroughModeId, projectOf } = await import(distUrl(exportFile('./registry')));
+const { walkthroughById, defaultWalkthroughModeId, projectOf } = registry;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO = path.resolve(HERE, '..');
@@ -224,10 +227,10 @@ function log(line) { process.stderr.write('[minimaxi body] ' + line + '\n'); }
 async function main(argv) {
     const port = await assertPortFree(Number(argOf(argv, '--port')));
     const sceneId = argOf(argv, '--scene');
-    const row = walkthroughById(sceneId);
-    if (!row) { throw new Error('--scene ' + JSON.stringify(sceneId) + ' is not a registry scene id (kb/GodsWorld/memories/roster.json lists them).'); }
+    const row = walkthroughById(roster, sceneId);
+    if (!row) { throw new Error('--scene ' + JSON.stringify(sceneId) + ' is not a scene id of the lab\'s roster (' + ROSTER_REL + '): [' + roster.rows.map((r) => r.id).join(', ') + '].'); }
     const mode = argOf(argv, '--mode') === undefined ? defaultWalkthroughModeId(row) : argOf(argv, '--mode');
-    const project = await projectOf(row, { mode: mode });   // the rung as the folder it boots, its renderState beside it; refuses an undeclared mode by name
+    const project = await projectOf(roster, row.id, { mode: mode });   // the scene as the folder it boots, its renderState beside it; refuses an undeclared mode by name
     const brain = argOf(argv, '--brain');
     if (BRAINS.indexOf(brain) === -1) { throw new Error('--brain must be one of [' + BRAINS.join(', ') + '], got ' + JSON.stringify(brain) + '.'); }
     const stills = argOf(argv, '--stills') === undefined ? DEFAULT_STILLS : Number(argOf(argv, '--stills'));
@@ -285,6 +288,8 @@ async function main(argv) {
         });
         if (opened.error) { throw new Error('the lab did not open ' + row.id + ': ' + opened.error); }
         if (opened.host !== 'standalone') { throw new Error('the lab settled host ' + JSON.stringify(opened.host) + ', not standalone — the node door is for a lab with no shell above it.'); }
+        const pageRoster = await page.evaluate(() => window.MaxiLab.rosterHref);
+        if (pageRoster !== origin + '/' + ROSTER_REL) { throw new Error('the lab page loaded the roster ' + JSON.stringify(pageRoster) + ', not this body\'s ' + origin + '/' + ROSTER_REL + ' (the file node read).'); }
 
         const world = await page.evaluate(async () => (await window.MaxiLab.inventory()).canvas);
         eyes = await openHostedEyes({

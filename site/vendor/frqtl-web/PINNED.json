@@ -1,28 +1,28 @@
 {
   "_purpose": "The ONE pin of the FRQTL packages this repo consumes. The site serves site/vendor/frqtl-web/<version>/dist, the published @descix/frqtl-web tarball's dist/ copied unchanged; MiniMaxi (minimaxi/package.json) installs @descix/frqtl-web and @descix/frqtl-node at this same version. Each package's dist/dist-manifest.json lists every other dist file with its sha256; this pin records each TARBALL's sha256 and npm integrity and its manifest's own sha256, taken from the packed tarball, never from a copy, so a copy cannot vouch for itself. Every field below is read by a gate (scripts/test/sdk-copy.test.mjs PINNED_FIELDS_VERIFIED fails on one that is not): sdk-copy.test serves the site and hashes every served file against the web manifest, and checks both registry tarballs (npm's cache copy, addressed by the integrity) against their sha256, shasum, integrity and byte count, the vendored tree against the unpacked web tarball, and the node manifest; minimaxi.test holds MiniMaxi's lock and installed packages to these values. Re-vendor: unpack the pinned tarball into an empty scratch dir, copy package/dist and package/package.json (the site's import maps are the package's own pageImportMapFor, scripts/gen-import-maps.mjs), re-record the hashes here, delete the old version directory in the same change.",
   "name": "@descix/frqtl-web",
-  "version": "0.6.1-p3.2",
+  "version": "0.7.0-p1",
   "npm": {
-    "tarball": "https://registry.npmjs.org/@descix/frqtl-web/-/frqtl-web-0.6.1-p3.2.tgz",
-    "shasum": "0a7cd743a0ee8b1d8b857c9b54e9dc84f0b1ab99",
-    "integrity": "sha512-C+bUpk/EUCw9EvtMNNLFmgmnsf42u2CHJKWlCp1Tp+veNd3ryskyJoYOtOU8JKycVo0OoB8ev9scr8RCTdehAw=="
+    "tarball": "https://registry.npmjs.org/@descix/frqtl-web/-/frqtl-web-0.7.0-p1.tgz",
+    "shasum": "1f2a1a4797f899ac034cc6b6cc56dd6916fb27ec",
+    "integrity": "sha512-S81Sy8KWeARvVyBByTkUps/2rL0RSi2X9wtJNphZ1Op/tLzoXGP4HiRTFrnWQsoIKQzDC6+vYmO+cAbSUvtDog=="
   },
-  "tarballSha256": "9c6ef9d05a521830a330b3969e69e78e4f78f89dd9c7c35a7acc13db37915144",
-  "tarballBytes": 8556418,
+  "tarballSha256": "c420a5f88690d5d8f29b7a6e57d90b0e72a8da2d32a960c2fb5f14677c64d40e",
+  "tarballBytes": 5796891,
   "copied": "dist",
   "distManifest": "dist-manifest.json",
-  "distManifestSha256": "8482c0f902c244e54dbdf3f50a19f3766edf2a868ebc80ffa6adaba954ed92d2",
+  "distManifestSha256": "9b1092bb3ac951bace18bba1a62ecf28a1073f64b8aa5f88a8827d376f796948",
   "packageJson": "package.json",
-  "packageJsonSha256": "247705c4651962d9b0d4ba0fb3365abaeebdd764d8fa0bc46944c2f52e699150",
+  "packageJsonSha256": "6957148a3755f7bef6fb8bd7d9ce9e283ee669743d13abe9871d9e1121ec15a0",
   "node": {
     "name": "@descix/frqtl-node",
     "npm": {
-      "tarball": "https://registry.npmjs.org/@descix/frqtl-node/-/frqtl-node-0.6.1-p3.2.tgz",
-      "shasum": "b986300d6363f6198a2df4caae48feed6a158228",
-      "integrity": "sha512-JnFV0Wdq4HUx0UVe7d9+oxRAnh/hnj86bN2QL+pOPHUYI49T2z6o5MoG9SX+yC3c0fl/wu8sscwodveheDfsnA=="
+      "tarball": "https://registry.npmjs.org/@descix/frqtl-node/-/frqtl-node-0.7.0-p1.tgz",
+      "shasum": "c72e0f1c2250dff53e1ece398746a44cf6b8a86c",
+      "integrity": "sha512-Y1JURhrBwtNUXvQ6/DuJjHBFNstoqqo/K0cH9/lz7CCElU49uhfpiuHNpNhaVqkUe8hMK/X/S18LMOntMF3mIA=="
     },
-    "tarballSha256": "cc00418dc74b5787e40b05cc4924852bb14f586291b80a6bce3e59257f2743f0",
-    "tarballBytes": 1389026,
-    "distManifestSha256": "a551e02c15e7d5d8861e6c4af6938fe3e766253680d83287683438919d61380b"
+    "tarballSha256": "52ef4b3da5c87b387a88c07f8ec659c0397c18392f8d6f0bf1e81c2cf8213643",
+    "tarballBytes": 1330333,
+    "distManifestSha256": "caf94105aaf83fd8123e3ff16170bde8e8e43c8f64fc501d0a698b37a5ebf057"
   }
 }

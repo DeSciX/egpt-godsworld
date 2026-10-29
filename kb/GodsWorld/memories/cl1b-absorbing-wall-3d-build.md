@@ -1,7 +1,7 @@
 # Memory: 1B · Absorbing Wall (3D) — build
 
-load: GYM scene id `cl1b-absorbing-wall-3d` · 3D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/absorbing-wall-3d.js
-source sha256 335fbaa8be167eff5507010ae062d21b2343237165e6e63e250ef2ed4d4222a8 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/absorbing-wall-3d.js
+load: GYM scene id `cl1b-absorbing-wall-3d` · 3D · source site/scenes/722bb433/absorbing-wall-3d.js
+source sha256 335fbaa8be167eff5507010ae062d21b2343237165e6e63e250ef2ed4d4222a8 · every code line below is byte-identical to the scene source; lines beginning `// memo:` are added notes — strip them to diff against site/scenes/722bb433/absorbing-wall-3d.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: cl1b's absorbing wall as a slab with a 3D spray. predict: capacity 8 fills fast and radiates sooner; depth 400 catches more of the ball (the slab spans more z); is2D true on the emitter flattens the spray to the z 0 plane, where the slab catches the part of the disk aimed at it (not all of it: most directions of a disk miss the slab). The clip (memories/cl1b-absorbing-wall-3d/clip.mp4, default camera) showed only a faint dark-red haze right of the purple slab: a ball of 24 a tick spread through 600 px of depth is thin on any one plane.

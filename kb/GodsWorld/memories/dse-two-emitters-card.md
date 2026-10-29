@@ -1,6 +1,6 @@
 # Memory: Two Emitters at the Canonical Leg — card
 
-load: GYM scene id `dse-two-emitters` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/dse-two-emitters.js
+load: GYM scene id `dse-two-emitters` · 2D · source site/scenes/74cf1d4b/dse-two-emitters.js
 
 group: DSE
 

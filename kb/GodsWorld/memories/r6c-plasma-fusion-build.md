@@ -1,7 +1,7 @@
 # Memory: 6C · Plasma Fusion — build
 
-load: GYM scene id `r6c-plasma-fusion` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/two-source.js
-source sha256 3bffe76607939c69ed56a01c82f2caa79a14631ad6cb1762ee2436a5a10ea997 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/two-source.js
+load: GYM scene id `r6c-plasma-fusion` · 2D · source site/scenes/1444a0e5/two-source.js
+source sha256 3bffe76607939c69ed56a01c82f2caa79a14631ad6cb1762ee2436a5a10ea997 · every code line below is byte-identical to the scene source; lines beginning `// memo:` are added notes — strip them to diff against site/scenes/1444a0e5/two-source.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: the SAME sketch as r6a-two-source lit as plasma (GYM render rows: particles on, water, additive bloom). The core is the lattice between the two sources; move them apart (±64) and predict the core dimming or splitting. The tester's clip (memories/r6c-plasma-fusion/clip.mp4) is the r6a particle picture (no bloom carried).

@@ -1,7 +1,7 @@
 # Memory: 4B · Laser Build-Up — build
 
-load: GYM scene id `r4b-laser-buildup` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/laser-buildup.js
-source sha256 508d6fe7fc2756f0511caf8d7be7c7a75d2665e7892ceafe7540c1f692b1778f · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/laser-buildup.js
+load: GYM scene id `r4b-laser-buildup` · 2D · source site/scenes/f4b29b2e/laser-buildup.js
+source sha256 508d6fe7fc2756f0511caf8d7be7c7a75d2665e7892ceafe7540c1f692b1778f · every code line below is byte-identical to the scene source; lines beginning `// memo:` are added notes — strip them to diff against site/scenes/f4b29b2e/laser-buildup.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: a gain source in a bore with an output coupler. The experiment the rung names: exitPhaseReset true (coherence on) — predict bands appearing in the fan at the mouth; wavelengthScale 32 (λ 512 px) makes the mouth nearly in phase on its own, so bands may appear even with phase reset off; tunnelLength 120 is a shorter bore (predict the fan starts nearer the source). exitRecenter false leaves the mouth an extended aperture instead of a point. The clip (memories/r4b-laser-buildup/clip.mp4) showed the bore (x≈48–288, y≈175–225) packed red by ≈400 ticks, a bright knot at the mouth x≈290, and a red scatter fanning over the right half with no visible banding (phase reset was off).

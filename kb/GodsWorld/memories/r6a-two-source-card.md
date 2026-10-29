@@ -1,6 +1,6 @@
 # Memory: 6A · Two Sources — card
 
-load: GYM scene id `r6a-two-source` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/two-source.js
+load: GYM scene id `r6a-two-source` · 2D · source site/scenes/1444a0e5/two-source.js
 
 group: Light Lab
 

@@ -1,0 +1,144 @@
+{
+  "_purpose": "The scene files of the lab's roster (roster.json beside this file), each forked once, byte for byte, from the @descix/frqtl-web 0.6.1 showcase scenes at their source commit ece80858 (lib/frqtl/scenes/<name>.js there), when 0.7.0 moved the scenes out of the package. A file sits at <sha8>/<name>.js, sha8 the first 8 hex of its own sha256, so a changed scene is a new URL (the edge caches some names for a year). Each entry records the bytes' sha256 and their git blob id at that commit; scripts/test/scenes-fork.test.mjs holds every file to both, every roster source to an entry and every entry to a source. A scene file changes only by a new fork: new bytes, a new entry, the old file deleted.",
+  "forkedFrom": {
+    "commit": "ece80858",
+    "path": "lib/frqtl/scenes/"
+  },
+  "files": [
+    {
+      "file": "0a47ca64/absorbing-wall.js",
+      "sha256": "0a47ca64e56481841339cd5882cf0e54ec7c14d87a4306d016ead1ff26591197",
+      "gitBlob": "506203323846f40b2426c7c517720e21c887b23b"
+    },
+    {
+      "file": "1407dd7a/mirror-route.js",
+      "sha256": "1407dd7a39c0efcd5ea0f028d67299c1ca4153c1c0cab2bb36d10416f1129931",
+      "gitBlob": "eae11ff2729d1bf4bcabd8bc4c395f380848f539"
+    },
+    {
+      "file": "1444a0e5/two-source.js",
+      "sha256": "1444a0e503f4a5e349d4364e31e698bc67d723a4b2864f262603e75ba5f9f088",
+      "gitBlob": "cf27e39b609a85196f8f9edaa7641b748bca86bd"
+    },
+    {
+      "file": "1b484ba3/atomic-model.js",
+      "sha256": "1b484ba37d90af9c06d9bf6a114b8867c914d12cc0a0dbeec27dd96230829fac",
+      "gitBlob": "2eeb5fad7f0e64a3120eaf607374486fb80c3571"
+    },
+    {
+      "file": "1d08e60d/counting-wall-3d.js",
+      "sha256": "1d08e60d58faeed4315400a2d0fbc10460d7869babc72a8dd7f906b5dff6ba54",
+      "gitBlob": "7f4a27b883d7bb5655c7370b27bf4c9221d5aca7"
+    },
+    {
+      "file": "35b617a2/counting-wall.js",
+      "sha256": "35b617a20c154f89c63d4a60a205f5d67ba8bb3342730e269528f884a522f131",
+      "gitBlob": "cb30f3eca5d7d985c26e7fcb7670cd3dc9e8a4bd"
+    },
+    {
+      "file": "4f9aaa0e/omni-source.js",
+      "sha256": "4f9aaa0e0ccbf4d18908d1628688dbeae376b535318f0cf969d61d8ea8f90b83",
+      "gitBlob": "d1fa5034aa86994a6c897925f3b3d4a31ff7ac08"
+    },
+    {
+      "file": "5ffa272d/self-interference.js",
+      "sha256": "5ffa272d806a0af2b136f6ce6258b2d71f3a662de005a8941381a317120a47e4",
+      "gitBlob": "bf8781842d997e2a41c73fe6df30b20f29d6e597"
+    },
+    {
+      "file": "61989266/dse-one-emitter.js",
+      "sha256": "619892663838e0f018b9ade83c9994fb0709b9ed9904c92e41470a7b7fdd396f",
+      "gitBlob": "3b21dfcc44c84569507cd8abf786a8eb898c3a51"
+    },
+    {
+      "file": "722bb433/absorbing-wall-3d.js",
+      "sha256": "722bb433142833f03150052b95039686aba0d9db510a5ff13fad95b5f17e0cf8",
+      "gitBlob": "732985db47226f974414392acdc063ea987c024e"
+    },
+    {
+      "file": "74cf1d4b/dse-two-emitters.js",
+      "sha256": "74cf1d4b226b0ce4e337697a0327de9b95190159b2554f53e629d89525321877",
+      "gitBlob": "b78f2462d5aac6202bb16df2588da03270df95e6"
+    },
+    {
+      "file": "79ac794d/mirror-3d.js",
+      "sha256": "79ac794dfbc608037936908a9fe58ca34be93be6263d5940bb38129d55bb7943",
+      "gitBlob": "4fcf51e11ab4f86bd2b29293e7dae6e0e013d40c"
+    },
+    {
+      "file": "7bf299e3/dse-one-slit.js",
+      "sha256": "7bf299e3cc64dd3d1f8df805eec63d98d36b8592d55e3ef478d46c38bf674812",
+      "gitBlob": "accaefe9e64f08f1acb3a4370dc17cb7901a2480"
+    },
+    {
+      "file": "8a0c1189/collision-matrix-3d.js",
+      "sha256": "8a0c1189d5e2f23092b216515608319643bc010ff837aadffdf84b2078c96793",
+      "gitBlob": "ddab59df250c4fbe94cb9e248e4ae42ab4403626"
+    },
+    {
+      "file": "bb4f5a9f/straight-walk.js",
+      "sha256": "bb4f5a9fc05dacfad8531843ca02c6dc2c6217f940529d47d0f5aacfcb03a125",
+      "gitBlob": "22124f1ae85df75e3c588cd77b6e7a0b2ca726f9"
+    },
+    {
+      "file": "bdd6ee3c/blackbody.js",
+      "sha256": "bdd6ee3c628f0cf1161eeb855a4a582902ab56174da937bf0d5180d930ef8278",
+      "gitBlob": "821c61588e1d94bb3a057154d8d84a457124238b"
+    },
+    {
+      "file": "c2721b44/dse-tunnel-rebuild.js",
+      "sha256": "c2721b4460dbe2f38e7e3bcff6f8498fd798c3404b807931b288ae2ccd43eec5",
+      "gitBlob": "6832221a12bbfa3538a32705051f3299bba76df4"
+    },
+    {
+      "file": "c7bcd440/mirror.js",
+      "sha256": "c7bcd440e9a78e333fd81d906b3788a62342910f46cf98de860098fcc1e0ba91",
+      "gitBlob": "f7077eb2d7b16de8ca600856e33ea7248493795a"
+    },
+    {
+      "file": "cabbece8/wave.js",
+      "sha256": "cabbece84daceca9199bbea22be610281bdf3137c8c5724bc601758e711f111f",
+      "gitBlob": "fd64c2cf2f6d8dddbfcfd7b048c532507c599c62"
+    },
+    {
+      "file": "d130fdcb/smoking-gun.js",
+      "sha256": "d130fdcb49f8c8ea201245195ab4a84108ef59218908bd373f5f69a5b73dc2a4",
+      "gitBlob": "c02509ab31cf275e866091610ada19133bc36547"
+    },
+    {
+      "file": "d420a7aa/omni-3d.js",
+      "sha256": "d420a7aae9fdfd394b9288ce1f0256416e1b07f70bc570a928a4592c32a47c27",
+      "gitBlob": "e20b78c1a75413d1235cc76aebed0dc63d143506"
+    },
+    {
+      "file": "db694683/circuit-sat.js",
+      "sha256": "db69468352e955b4ff9c36e8d3cf03cc3e88d368b6d3cc485d664bb5cb085d57",
+      "gitBlob": "c0c5e5c71772f70c060da5db18524511f71cad66"
+    },
+    {
+      "file": "e0402c45/dse-photoelectric.js",
+      "sha256": "e0402c4508a4d97d3d9461f889b10a49da82ef5f232d81455c5e482db8b0bda6",
+      "gitBlob": "f1eef9433c4e29f98fba7b4d9d21e4192c6d9b2e"
+    },
+    {
+      "file": "e0807d81/big-bang.js",
+      "sha256": "e0807d81f4bcc6626080f81d472c6ead9c8d8f7d97bd67c6da76a476868b25f4",
+      "gitBlob": "89b9c7f5f6c2fae03e99fbeb3eaeb7ac8ff73a0d"
+    },
+    {
+      "file": "f303a848/dse-two-slits.js",
+      "sha256": "f303a848d9c463a5a9443c380b257795b19127b122bdd2fcb28855841b219939",
+      "gitBlob": "d6057c659167185b50c6349c3feecef550ff3b3d"
+    },
+    {
+      "file": "f4b29b2e/laser-buildup.js",
+      "sha256": "f4b29b2eeeca730642f5adf2f499f6594b73f6e51ba6aa9a237f4ee643c5cf23",
+      "gitBlob": "eab95ed6ccaf8e8b31fc01e79322e3b3a737743f"
+    },
+    {
+      "file": "fa06cac4/sun.js",
+      "sha256": "fa06cac429af5a2ad4fe846969a7bf763f2a76d9d9b169328cd1f45bad6bda8f",
+      "gitBlob": "c87bd3f8894b17162f9d82206850ddcade4b6ccb"
+    }
+  ]
+}

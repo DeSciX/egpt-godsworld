@@ -1,6 +1,6 @@
 # Memory: Big Bang — card
 
-load: GYM scene id `big-bang` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/big-bang.js
+load: GYM scene id `big-bang` · 2D · source site/scenes/e0807d81/big-bang.js
 
 tile: A uniform field. Filaments and voids form. No gravity law, no constant.
 
