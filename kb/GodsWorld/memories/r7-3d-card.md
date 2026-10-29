@@ -1,6 +1,6 @@
 # Memory: 7 · 3D — card
 
-load: GYM scene id `r7-3d` · 3D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/omni-3d.js
+load: GYM scene id `r7-3d` · 3D · source site/scenes/d420a7aa/omni-3d.js
 
 group: Light Lab
 

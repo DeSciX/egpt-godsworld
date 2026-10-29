@@ -41,9 +41,9 @@ Each of the 9 GYM tiles carries a why: what makes its scene impossible, or thoug
 
 | scene | title | group | modes | card | why, first sentence |
 |---|---|---|---|---|---|
+| cl1d-mirror-route | Infinite mirror | Collision Lab | 3d, 2d; the tile opens in 3d | cl1d-mirror-route-card.md | Conventional renderers cut every light path off after a set number of bounces and treat shadows, reflections and indirect light as separate effects. |
 | dse-tunnel-rebuild | Double slit | DSE | 3d, 2d; the tile opens in 3d | dse-tunnel-rebuild-card.md | Feynman called it "impossible, absolutely impossible, to explain in any classical way". |
 | r8-sun | A sun | Light Lab | 3d | r8-sun-card.md | Games paint glow and god rays onto the finished picture as a separate screen effect, aimed from where the sun is on the screen rather than from any light in the scene. |
-| cl1d-mirror-route | Infinite mirror | Collision Lab | 3d, 2d; the tile opens in 3d | cl1d-mirror-route-card.md | Conventional renderers cut every light path off after a set number of bounces and treat shadows, reflections and indirect light as separate effects. |
 | r5-fountain-pool | A pool | Light Lab | 2d | r5-fountain-pool-card.md | A ray is a straight line with no wave in it, so ray tracing cannot make interference rings at any cost, and solving the waves directly runs into the costs in the intro. |
 | blackbody | Blackbody | Impossible things | 2d | blackbody-card.md | Classical physics, the Rayleigh–Jeans law, predicts infinite energy at high frequencies, the "ultraviolet catastrophe". |
 | circuit-sat | Circuit SAT | Impossible things | 2d | circuit-sat-card.md | Circuit satisfiability, the canonical P vs NP problem of computer science, is also a physical question about real circuits. |

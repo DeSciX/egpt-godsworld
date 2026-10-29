@@ -1,6 +1,6 @@
 # Memory: Double slit — card
 
-load: GYM scene id `dse-tunnel-rebuild` (mode `2d`, also `3d`; the GYM tile opens in `3d`) · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/dse-tunnel-rebuild.js
+load: GYM scene id `dse-tunnel-rebuild` (mode `2d`, also `3d`; the GYM tile opens in `3d`) · 2D · source site/scenes/c2721b44/dse-tunnel-rebuild.js
 
 tile: Two slits, one particle at a time. Feynman's “only mystery,” with no amplitudes to add.
 
@@ -18,7 +18,7 @@ How FRQTL gets it: A sphere emitter, walls, two tunnels for the slits and a dete
 
 ## The tile still
 
-Tile still (tick 7200): Three red blocks with blue slit walls between them inside a dark glass box; a cloud of yellow dots hangs above the slits, and below them a flat heat-map plate of blue squares glows yellow-green along a central band.
+Tile still (tick 7200): Three red blocks with blue slit walls between them, seen at a tilt from behind the source; a fan of yellow rays spreads from a point at lower left into the slits, and beyond them, at upper right, a heat-map plate of blue and green squares shows light and dark bands with a red hot spot at its centre.
 
 ## The rung
 

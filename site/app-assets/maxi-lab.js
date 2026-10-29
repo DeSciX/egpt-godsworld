@@ -4,9 +4,11 @@
  * maxi-lab.js — Maxi's Lab (app.html): the whole frame in the DeSciX shell, with Maxi's conversation in its own panel (#talk).
  *
  * Built on the PUBLISHED @descix/frqtl-web (vendored byte-identically; app.html's import map, scripts/gen-import-maps.mjs):
- *   - scenes come from the package's registries (WALKTHROUGH rungs, the EXHIBITS roster) — this file
- *     holds no id → file table; a rung is read as the project folder it boots by the package's own projectOf;
- *   - ONE boot door: every scene — registry rung or a sketch Maxi wrote — boots through `bootProject`
+ *   - scenes come from the lab's own roster (site/scenes/roster.json: its rows, firstContact and showcase cards),
+ *     linked and loaded once at load (maxi-roster.js writes the link; the package's loadRoster reads it) and read only
+ *     through the package's registry functions — this file holds no id → file table; a roster scene is read as the
+ *     project folder it boots by the package's own projectOf(roster, id, { mode });
+ *   - ONE boot door: every scene — roster scene or a sketch Maxi wrote — boots through `bootProject`
  *     in its own scene document (scene.html, replaced per load; see maxi-scene.js for why); a restart
  *     is the runner's own `restart()` in that same document;
  *   - ONE Record per booted world: the package's exp.startRecord() as the world boots (THE WORLD'S RECORD below);
@@ -38,9 +40,10 @@ import { ASK, createThread, footageUserInput, plainWords } from './maxi-ask.js';
 import { loadPageIcons, iconButton } from './maxi-icons.js';
 import { MOBILE_QUERY, hostView } from './maxi-host-view.js';
 import { sceneCard, cardLines } from './maxi-card.js';
+import { linkRoster } from './maxi-roster.js';
 import {
-    WALKTHROUGH, walkthroughById, walkthroughGroup, walkthroughModes, defaultWalkthroughModeId,
-    EXHIBITS, projectOf, scenePath
+    ROSTER_LINK_REL, rosterHrefOf, loadRoster, walkthroughById, walkthroughModes, defaultWalkthroughModeId,
+    firstContactOf, sceneGroups, sceneUrlOf, projectOf
 } from '@descix/frqtl-web/registry';
 import { FRQTL_WEB_HOST_SPECIFIERS, MANIFEST_FILE, SKETCH_ENTRY, manifestFor, serializeManifest } from '@descix/frqtl-web/project';
 
@@ -70,11 +73,36 @@ const SDK_MANIFEST = (async function () {
     return manifest;
 })();
 
+/**
+ * The lab's scene roster: the link written off the page's own URL (maxi-roster.js), then the package's one loader over it.
+ * Read at load WITHOUT holding the module, like the manifest; main() awaits it before anything names a scene, so a roster
+ * that is not served or breaks the package's contract fails the boot by name.
+ */
+const roster = { bag: null };
+const ROSTER = (async function () {
+    linkRoster(document, ROSTER_LINK_REL);
+    roster.bag = await loadRoster(rosterHrefOf(document));
+    return roster.bag;
+})();
+/** The loaded roster bag; THROWS by name before it has loaded (MaxiLab.ready awaits it). */
+function labRoster() {
+    if (roster.bag === null) { throw new Error('[maxi-lab] the lab\'s scene roster has not loaded yet (MaxiLab.ready awaits it). (FAIL-LOUD.)'); }
+    return roster.bag;
+}
+const sceneIds = (lr) => lr.rows.map(function (r) { return r.id; }).join(', ');
+/** A roster scene's file as the page sees it, relative to the site root (the code pane's title, sceneSource's path). */
+function scenePathOf(lr, row) {
+    const url = sceneUrlOf(lr, row);
+    const site = new URL('.', document.baseURI).href;
+    if (url.indexOf(site) !== 0) { throw new Error('[maxi-lab] scene "' + row.id + '" resolves to ' + url + ', outside this site (' + site + '). (FAIL-LOUD.)'); }
+    return url.slice(site.length);
+}
+
 /** The header's icons (maxi-icons.js): read at load like the manifest, awaited in main() before the header is painted. */
 const ICONS = loadPageIcons();
 let icons = null;
-/** The registry rows a scene's card is read from (maxi-card.js sceneCard): the vendored registry's own exports. */
-const CARD_REGISTRY = Object.freeze({ EXHIBITS: EXHIBITS, walkthroughById: walkthroughById, walkthroughGroup: walkthroughGroup });
+/** The package reader a scene's card is read through (maxi-card.js sceneCard), over the lab's roster. */
+const CARD_READER = Object.freeze({ walkthroughById: walkthroughById });
 
 const SCENE_PAGE = 'scene.html';   // relative on purpose: the shell serves this site under a path prefix
 
@@ -458,23 +486,25 @@ function loadScene(a) {
 }
 
 async function loadSceneUnguarded(a) {
-    const row = walkthroughById(a.id);
+    const lr = await ROSTER;
+    const row = walkthroughById(lr, a.id);
     if (!row) {
-        throw new Error('loadScene: no scene "' + a.id + '" in the registry. Scenes: [' + WALKTHROUGH.map(function (r) { return r.id; }).join(', ') + '].');
+        throw new Error('loadScene: no scene "' + a.id + '" in the lab\'s roster. Scenes: [' + sceneIds(lr) + '].');
     }
     const modeId = (a.mode === undefined || a.mode === null) ? defaultWalkthroughModeId(row) : a.mode;
-    const p = await projectOf(row, { mode: modeId });   // the rung as the project folder it boots (frqtl.json names its entry); refuses an undeclared mode by name
-    return mountScene({ label: row.title, kind: 'registry', id: row.id, mode: modeId, modes: walkthroughModes(row).map(function (m) { return m.id; }), path: scenePath(row),
+    const p = await projectOf(lr, row.id, { mode: modeId });   // the scene as the project folder it boots (frqtl.json names its entry); refuses an undeclared mode by name
+    return mountScene({ label: row.title, kind: 'registry', id: row.id, mode: modeId, modes: walkthroughModes(row).map(function (m) { return m.id; }), path: scenePathOf(lr, row),
         files: p.files, entry: p.manifest.entry, renderState: p.renderState });
 }
 
 async function sceneSource(a) {
-    const row = walkthroughById(a.id);
+    const lr = await ROSTER;
+    const row = walkthroughById(lr, a.id);
     if (!row) {
-        throw new Error('sceneSource: no scene "' + a.id + '" in the registry. Scenes: [' + WALKTHROUGH.map(function (r) { return r.id; }).join(', ') + '].');
+        throw new Error('sceneSource: no scene "' + a.id + '" in the lab\'s roster. Scenes: [' + sceneIds(lr) + '].');
     }
-    const p = await projectOf(row);
-    return { id: row.id, path: scenePath(row), source: p.files[p.manifest.entry] };
+    const p = await projectOf(lr, row.id);
+    return { id: row.id, path: scenePathOf(lr, row), source: p.files[p.manifest.entry] };
 }
 
 function derivedRenderer(source) {
@@ -736,7 +766,7 @@ async function renderMemories() {
 
 /**
  * RELOAD: the memory's scene opens as the Record left it — its hand-back Record's project/ (the sketch at stop), booted through
- * the one mount path with the registry rung's own render state (projectOf) — and is checked against parts.after.json; its clip
+ * the one mount path with the roster scene's own render state (projectOf) — and is checked against parts.after.json; its clip
  * plays on the demonstration card. Refused by name while Maxi works, while a demonstration waits on the card, for a corrupt
  * entry (the store's gate), and when the booted scene does not hold parts.after.
  */
@@ -755,10 +785,11 @@ async function reloadMemory(key) {
         const sc = p.lab.scene;
         let spec;
         if (sc.id) {
-            const row = walkthroughById(sc.id);
-            if (!row) { throw new Error('memories: ' + key + ' was recorded in scene "' + sc.id + '", which this lab\'s registry no longer has. Scenes: [' + WALKTHROUGH.map(function (r) { return r.id; }).join(', ') + '].'); }
-            const rung = await projectOf(row, sc.mode ? { mode: sc.mode } : {});
-            spec = { label: row.title, kind: 'registry', id: row.id, mode: sc.mode, modes: walkthroughModes(row).map(function (x) { return x.id; }), path: scenePath(row), files: files, entry: pe.entry, renderState: rung.renderState };
+            const lr = await ROSTER;
+            const row = walkthroughById(lr, sc.id);
+            if (!row) { throw new Error('memories: ' + key + ' was recorded in scene "' + sc.id + '", which this lab\'s roster no longer has. Scenes: [' + sceneIds(lr) + '].'); }
+            const rung = await projectOf(lr, row.id, sc.mode ? { mode: sc.mode } : {});
+            spec = { label: row.title, kind: 'registry', id: row.id, mode: sc.mode, modes: walkthroughModes(row).map(function (x) { return x.id; }), path: scenePathOf(lr, row), files: files, entry: pe.entry, renderState: rung.renderState };
         } else {
             spec = { label: sc.label, kind: 'sketch', id: null, mode: null, modes: [], path: null, files: files, entry: pe.entry, renderState: { renderer: sc.renderer } };
         }
@@ -1281,29 +1312,31 @@ function option(label, id, mode) {
     return o;
 }
 
+// The picker is the package's scene list (sceneGroups: the showcase group first, its cards in order, then every scene row
+// under its group), with one option per declared mode of a scene and a card's option at the card's own mode.
 function buildPicker() {
+    const lr = labRoster();
     el.picker.innerHTML = '';
-    const ex = document.createElement('optgroup');
-    ex.label = 'Impossible things, running';
-    EXHIBITS.forEach(function (row) { ex.appendChild(option(row.title, row.id, row.mode)); });
-    el.picker.appendChild(ex);
-    const groups = [];
-    WALKTHROUGH.forEach(function (rung) {
-        const g = walkthroughGroup(rung);
-        if (groups.indexOf(g) === -1) { groups.push(g); }
-    });
-    groups.forEach(function (g) {
+    const groups = sceneGroups(lr);
+    const lead = lr.showcase === null ? 0 : 1;
+    if (lead) {
+        const ex = document.createElement('optgroup');
+        ex.label = groups[0].label;
+        lr.showcase.rows.forEach(function (card) { ex.appendChild(option(card.title, card.id, card.mode)); });
+        el.picker.appendChild(ex);
+    }
+    groups.slice(lead).forEach(function (g) {
         const og = document.createElement('optgroup');
-        og.label = g;
-        WALKTHROUGH.filter(function (r) { return walkthroughGroup(r) === g; })
-            .forEach(function (r) {
-                const modes = walkthroughModes(r);
-                if (modes.length > 1) {   // one option per declared mode, so the picker can name exactly what runs
-                    modes.forEach(function (m) { og.appendChild(option(r.title + ' · ' + m.label, r.id, m.id)); });
-                } else {
-                    og.appendChild(option(r.title, r.id, null));
-                }
-            });
+        og.label = g.label;
+        g.rows.forEach(function (item) {
+            const r = walkthroughById(lr, item.id);
+            const modes = walkthroughModes(r);
+            if (modes.length > 1) {   // one option per declared mode, so the picker can name exactly what runs
+                modes.forEach(function (m) { og.appendChild(option(r.title + ' · ' + m.label, r.id, m.id)); });
+            } else {
+                og.appendChild(option(r.title, r.id, null));
+            }
+        });
         el.picker.appendChild(og);
     });
 }
@@ -1324,12 +1357,12 @@ function renderCode() {
     el.codeText.textContent = sc.source;
 }
 
-// The scene's card (the Info button's panel): every word from the registry through maxi-card.js, painted textContent only.
+// The scene's card (the Info button's panel): every word from the lab's roster through maxi-card.js, painted textContent only.
 function renderInfo() {
     const sc = state.scene;
     el.infoBody.textContent = '';
     if (!sc) { el.infoTitle.textContent = ''; return; }
-    const lines = cardLines(sc.kind === 'registry' ? sceneCard(CARD_REGISTRY, sc.id) : null);
+    const lines = cardLines(sc.kind === 'registry' ? sceneCard(CARD_READER, labRoster(), sc.id) : null);
     el.infoTitle.textContent = lines[0].kind === 'title' ? lines[0].text : sc.label;
     lines.forEach(function (l) {
         if (l.kind === 'title') { return; }
@@ -1524,17 +1557,15 @@ async function settleHost() {
     renderStatus();
 }
 
-// The lab OPENS on the double slit in 3D. WHICH scene Maxi starts on is the lab's own product choice: it does not follow
-// FRQTL's first-contact rung (the registry's FIRST_CONTACT_WALKTHROUGH_ID), so the id is typed here. Only the MODE is read
-// off the registry: the rung's declared default (defaultWalkthroughModeId), never spelled here. `?scene=<id>&mode=<m>`
-// overrides both.
-const OPENING_SCENE_ID = 'dse-tunnel-rebuild';
+// WHICH scene Maxi starts on is the lab's own product choice, and the lab's roster says it once: its firstContact
+// (site/scenes/roster.json). The MODE is that scene's declared default (defaultWalkthroughModeId), never spelled here.
+// `?scene=<id>&mode=<m>` overrides both.
 
-/** The opening scene {id, mode}: THROWS by name when the id is not a registry rung. Exported so a test gates it (scripts/test/lab-opening.test.mjs). */
-export function openingScene() {
-    const row = walkthroughById(OPENING_SCENE_ID);
+/** The opening scene {id, mode} of roster `lr`: THROWS by name when the roster names no first contact. Exported so a test gates it (scripts/test/lab-opening.test.mjs). */
+export function openingScene(lr) {
+    const row = firstContactOf(lr);
     if (!row) {
-        throw new Error('[maxi-lab] the opening scene "' + OPENING_SCENE_ID + '" is not a registry rung. Scenes: [' + WALKTHROUGH.map(function (r) { return r.id; }).join(', ') + '].');
+        throw new Error('[maxi-lab] the lab\'s roster names no firstContact (null is the Empty Universe, which the lab does not open on); scenes: [' + sceneIds(lr) + ']. (FAIL-LOUD.)');
     }
     return { id: row.id, mode: defaultWalkthroughModeId(row) };
 }
@@ -1542,11 +1573,11 @@ export function openingScene() {
 function firstScene() {
     const q = new URLSearchParams(window.location.search);
     if (q.get('scene')) { return { id: q.get('scene'), mode: q.get('mode') || undefined }; }
-    return openingScene();
+    return openingScene(labRoster());
 }
 
 const ready = (async function main() {
-    await SDK_MANIFEST;
+    await Promise.all([SDK_MANIFEST, ROSTER]);   // both handled from the first tick: a failure of either fails the boot by name
     icons = await ICONS;
     buildPicker();
     wireUi();
@@ -1567,8 +1598,10 @@ window.MaxiLab = Object.freeze({
     state: state,
     ready: ready,
     get sdkVersion() { return sdk.version; },
-    exhibits: function () { return EXHIBITS.map(function (e) { return { id: e.id, mode: e.mode, title: e.title }; }); },
-    rungs: function () { return WALKTHROUGH.map(function (r) { return { id: r.id, title: r.title, group: walkthroughGroup(r) }; }); },
+    /** The roster's href (absolute, written off this page's URL by maxi-roster.js); null before it has loaded. */
+    get rosterHref() { return roster.bag === null ? null : roster.bag.href; },
+    exhibits: function () { const lr = labRoster(); return lr.showcase === null ? [] : lr.showcase.rows.map(function (e) { return { id: e.id, mode: e.mode, title: e.title }; }); },
+    rungs: function () { return labRoster().rows.map(function (r) { return { id: r.id, title: r.title, group: r.group }; }); },
     loadScene: loadScene, sceneSource: sceneSource, openSketch: openSketch, restart: restart,
     /** THE inventory hand (maxi-hands.js HANDS.inventory, the loop's stage): INVENTORY_KEYS plus the sketch's SKETCH_KEYS (parts, project). A Promise. */
     inventory: function () { return HANDS.inventory.run(lab); },

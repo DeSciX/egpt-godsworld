@@ -1,6 +1,6 @@
 # Memory: Blackbody — card
 
-load: GYM scene id `blackbody` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/blackbody.js
+load: GYM scene id `blackbody` · 2D · source site/scenes/bdd6ee3c/blackbody.js
 
 tile: Particles in a box. The Planck curve appears; no quanta assumed.
 

@@ -1,6 +1,6 @@
 # Memory: A sun — card
 
-load: GYM scene id `r8-sun` · 3D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/sun.js
+load: GYM scene id `r8-sun` · 3D · source site/scenes/fa06cac4/sun.js
 
 tile: Put light in the scene and let light do what light does. No Standard Model; god-rays from particle density.
 

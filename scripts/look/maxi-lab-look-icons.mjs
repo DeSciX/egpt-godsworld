@@ -9,8 +9,8 @@
  *
  * A. desktop 1232x720 (the shell frame's size): every header button draws its icon (an inline <svg> with one shape) beside
  *    its visible words, its aria-label naming it; Pause turns to Resume (the play icon) and back; Record turns to a red Stop
- *    and back; Info opens the card for the 3D double slit, and the panel's text IS the registry's tile and rung fields (read
- *    in the page from '@descix/frqtl-web/registry'); a scene with no tile row says so and shows its rung prose; Info closes it.
+ *    and back; Info opens the card for the 3D double slit, and the panel's text IS the lab roster's card and row fields (read
+ *    again in the page through '@descix/frqtl-web/registry' off its roster link); a scene with no card says so and shows its row prose; Info closes it.
  * B. 390x844: icons only (the words hidden, every aria-label kept), the header's buttons inside the screen; Info opens the
  *    card over the stage.
  * A video of A is kept (Playwright's recording; --ffmpeg converts it to MP4 and samples a still from it).
@@ -72,12 +72,13 @@ const readHeader = (page) => page.evaluate(() => Array.from(document.querySelect
 /** Every shown header button on one row: their tops within 2 px. */
 const oneRow = (h) => h.length > 0 && Math.max(...h.map((b) => b.top)) - Math.min(...h.map((b) => b.top)) <= 2;
 
-/** The panel's lines, and the lines the registry gives for the loaded scene (read in the page, through its import map). */
+/** The panel's lines, and the lines the lab's roster gives for the loaded scene (read again in the page, off its roster link, through its import map). */
 const readCard = (page) => page.evaluate(async () => {
     const reg = await import('@descix/frqtl-web/registry');
+    const roster = await reg.loadRoster(reg.rosterHrefOf(document));
     const sc = window.MaxiLab.state.scene;
-    const rung = reg.walkthroughById(sc.id);
-    const tile = reg.EXHIBITS.find((e) => e.id === sc.id) || null;
+    const rung = reg.walkthroughById(roster, sc.id);
+    const tile = (roster.showcase ? roster.showcase.rows : []).find((e) => e.id === sc.id) || null;
     const want = [tile ? tile.title : rung.title];
     if (tile) { want.push(tile.tile); for (const k of ['what', 'why', 'how', 'controls']) { if (tile[k]) { want.push(tile[k]); } } }
     want.push(rung.prose);
@@ -141,7 +142,7 @@ try {
         const card = await readCard(page);
         note('card (3D double slit)', card);
         check(!card.hidden && card.width > 300 && (await page.getAttribute('#btn-info', 'aria-pressed')) === 'true', 'A: Info opens the panel beside the stage, aria-pressed true');
-        check(card.id === 'dse-tunnel-rebuild' && card.tile && JSON.stringify(card.got) === JSON.stringify(card.want), 'A: the panel\'s text IS the registry\'s tile and rung fields for the loaded scene');
+        check(card.id === 'dse-tunnel-rebuild' && card.tile && JSON.stringify(card.got) === JSON.stringify(card.want), 'A: the panel\'s text IS the lab roster\'s card and row fields for the loaded scene');
         check(card.labels.slice(0, 3).join('|') === 'What you are seeing|Why it is impossible the usual way|How FRQTL gets it' && /^Rung /.test(card.labels[card.labels.length - 1]), 'A: the card memory\'s labels', card.labels);
         await page.waitForTimeout(600);
         await shot(page, 'A3-desktop-info-double-slit.png');
@@ -174,7 +175,7 @@ try {
         await shot(page, 'B2-390-lab.png');
         await page.click('#btn-info');
         const card = await readCard(page);
-        check(!card.hidden && JSON.stringify(card.got) === JSON.stringify(card.want), 'B: Info opens the card at 390 px, the registry\'s text');
+        check(!card.hidden && JSON.stringify(card.got) === JSON.stringify(card.want), 'B: Info opens the card at 390 px, the roster\'s text');
         const reach = await page.evaluate(() => { const b = document.getElementById('btn-info').getBoundingClientRect(); const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return { top: document.getElementById('info').getBoundingClientRect().top, header: document.querySelector('header').getBoundingClientRect().bottom, hit: hit && hit.closest('button') ? hit.closest('button').id : null }; });
         check(reach.top >= reach.header - 1 && reach.hit === 'btn-info', 'B: the open card sits below the header, so Info stays reachable to close it', reach);
         await page.click('#btn-info');

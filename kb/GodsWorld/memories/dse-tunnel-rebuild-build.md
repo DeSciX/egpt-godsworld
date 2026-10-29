@@ -1,7 +1,7 @@
 # Memory: Double slit — build
 
-load: GYM scene id `dse-tunnel-rebuild` (mode `2d`, also `3d`; the GYM tile opens in `3d`) · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/dse-tunnel-rebuild.js
-source sha256 840216cb12ee9899b112a4a9357c275d33b9802b211bfc02bb974a73c0b719c5 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/dse-tunnel-rebuild.js
+load: GYM scene id `dse-tunnel-rebuild` (mode `2d`, also `3d`; the GYM tile opens in `3d`) · 2D · source site/scenes/c2721b44/dse-tunnel-rebuild.js
+source sha256 72bf37a822a7bb336979808671e828f02795c6e94462224e4f290617c6791513 · every code line below is byte-identical to the scene source; lines beginning `// memo:` are added notes — strip them to diff against site/scenes/c2721b44/dse-tunnel-rebuild.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: THE double slit, one file for both 2D and 3D: IS3D is true when the booted display is 'three', picks createScene (3D) or createCanvas (2D), and picks parts (3D) or flat2D(parts) (2D), which drops every z-slab. The geometry hangs off wl (64 px: slit height and gap 51, the wall 64 thick at x 96) and the beam's transverse λ hangs off lamPx (128) separately, so retuning the beam never moves the aperture. The leg D (155 px) is derived from the ring ladder so ring m = 2 of both slits meets on the axis. A third slit: a third Tunnel with its own aperture, re-deriving halfSep. A wider slit: sh = wl. A longer leg: legFrac-style change of D. Switch the slits to mode 'mirror' and expect two beams, not a pattern. The 2D clip (memories/dse-tunnel-rebuild/clip.mp4) showed the spray at (20,200) hitting the barrier, dots through both slots and past the green screen with no banding by 1502 ticks; the GYM tile still (tile.png, tick 7200, 3D) shows the plate glowing along a central band.
@@ -53,7 +53,6 @@ How to extrapolate: THE double slit, one file for both 2D and 3D: IS3D is true w
 import { CameraControls, FrqtlControlOverlay, FrqtlControlsPanel, GraphingDetectorWall, SphereEmitter, Tunnel, Wall } from '@descix/frqtl-web/parts';
 import * as ControlRegistry from '@descix/frqtl-web/shim/controls/registry.js';
 import * as FrqtlDisplay from '@descix/frqtl-web/compat/renderer/display-slot.js';
-import * as SunLook from '@descix/frqtl-web/shim/render/sun-look.js';
 
   // memo: Width, height, and the depth used only in 3D.
 const CW = 600, H = 400, WORLD_D = 600;   // THE WORLD this scene states (its co-init call below)
@@ -272,34 +271,46 @@ export default function buildExperiment(exp) {
     // memo: Its twin on the near side (z −117..−77).
     exp.addObject('Wall', { rect: [0, 0, CW, H], z: -zHalf - 40, depth: 40,
       collisionBehavior: 'destroy', name: 'zClipNear', visible: false });
-    // THE SWITCH: god-rays computed from the light particles only (godraySource
-    // 'leaf'), at the sun's settings — the ONE owner of those numbers is lib/shim/render/sun-look.js
-    // (SunLook); this file types none of them. Default OFF (the first-contact picture is
-    // unchanged). OFF restores EXACTLY what was live before the last ON (a host row, a STUDIO
-    // slider), through the same declared door; a value the renderer does not declare THROWS there.
-    // The knob shows its last written value (a render write has no read-back). The picture changes
-    // at the next drawn tick, so in a paused (Design) view it shows once the scene runs.
-    // memo: 3D, page-only: a 'god rays' toggle that writes the sun's god-ray render rows (owned elsewhere) and restores the prior values when switched off. Render only.
-    var RAYS_ON = Object.assign({}, SunLook.SUN_GODRAYS, { godraySource: 'leaf' });
-    var raysPrior = null;   // the three live values captured at ON; written back at OFF
+    // PACING (wall-clock only, never the ticks): 240 ticks/s, four times the 1:1 lock on a
+    // 60 Hz display, so the interference bands build up four times sooner in real time.
+    exp.runner.setRateLimits({ tpsLimit: 240 });
+    // THE SWITCH: this scene's god-ray look, computed from the light particles only (godraySource
+    // 'leaf') with the 'field' pass (each pixel marches along the local direction of travel), and the
+    // per-layer glow under it. The numbers are this scene's own, set by eye against a reference
+    // STUDIO picture (godrays 2.2 of [0, 3], godrayDensity 1.5 = the top of [0.2, 1.5],
+    // glowIntensity 0.66 of [0, 3]); the renderer declares the keys and their ranges and refuses any
+    // other. Default ON: the scene writes ON once at build, through the same function the knob calls.
+    // OFF restores EXACTLY what was live before the last ON (a host row, a STUDIO slider), through
+    // the same declared door. The knob shows its last written value (a render write has no
+    // read-back). The picture changes at the next drawn tick, so in a paused (Design) view it shows
+    // once the scene runs.
+    // memo: 3D, page-only: a 'god rays' toggle, on at load, that writes this scene's own render values (RAYS_ON: godrays 2.2, godrayDensity 1.5, the 'field' pass from the light particles only, glowIntensity 0.66) and restores the values live before it when switched off. Render only.
+    var RAYS_ON = { godrays: 2.2, godrayDensity: 1.5, godrayMode: 'field', godraySource: 'leaf', glowIntensity: 0.66 };
+    var RAYS_DEFAULT = 1;
+    var raysPrior = null;   // the live values of RAYS_ON's keys captured at ON; written back at OFF
+    function setRays(v) {
+      if (v) {
+        // Capture only on the OFF -> ON edge: an ON pressed while already ON keeps the pre-ON state.
+        if (!raysPrior) {
+          raysPrior = {};
+          Object.keys(RAYS_ON).forEach(function (k) { raysPrior[k] = exp.runner.getRenderOption(k); });
+        }
+        exp.runner.setRenderOptions(RAYS_ON);
+      } else if (raysPrior) {
+        exp.runner.setRenderOptions(raysPrior);
+        raysPrior = null;
+      }
+      // OFF with nothing captured: nothing was written by this switch — no write.
+    }
     var knobs = ControlRegistry.makeControlRegistry();
     knobs.registerControls('dse-tunnel-rebuild', [
       { kind: 'scalar', id: 'godrays', label: 'god rays', channel: 'render', widget: 'toggle',
-        min: 0, max: 1, step: 1, value: 0,
+        min: 0, max: 1, step: 1, value: RAYS_DEFAULT,
         fmt: function (v) { return v ? 'on' : 'off'; },
-        onChange: function (v) {
-          if (v) {
-            raysPrior = {};
-            Object.keys(RAYS_ON).forEach(function (k) { raysPrior[k] = exp.runner.getRenderOption(k); });
-            exp.runner.setRenderOptions(RAYS_ON);
-          } else if (raysPrior) {
-            exp.runner.setRenderOptions(raysPrior);
-            raysPrior = null;
-          }
-          // OFF with nothing captured: the control is at its initial OFF and has written nothing — no write.
-        },
+        onChange: setRays,
         place: { x: 0.02, y: 0.04 } }
     ]);
+    setRays(RAYS_DEFAULT);
     // Chrome (a page only): expose the knob to a host frame, and mount the overlay through the
     // runner's ONE door (runner.controlHost) — before a canvas is mounted (a notebook pane) there is
     // none, so the knob stays in the exposed registry only.

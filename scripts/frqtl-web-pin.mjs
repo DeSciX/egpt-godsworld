@@ -19,9 +19,8 @@
  *   cachedTarball(rec) a pinned registry tarball's bytes (PINNED or PINNED.node), read from npm's content-addressed cache
  *                     by its pinned integrity (`npm ci --prefix minimaxi` fills it), after its sha256, sha1 shasum,
  *                     sha512 integrity and byte count all equal the pin; THROWS naming the field that differs
- *   sceneFile(rel)    a registry row's `source` ('scenes/<file>.js') → its vendored file, repo-relative, resolved by the
- *                     package's own path authority (the engine router its `projectOf` reads through; the package
- *                     exports no public reader of that path, so this is the one place that imports the router)
+ *
+ * The package ships no scenes: the lab's scene files and their roster are the lab's own (scripts/lab-roster.mjs).
  */
 
 import fs from 'node:fs';
@@ -79,17 +78,6 @@ export function exportFile(sub) {
     const rel = target.slice(prefix.length);
     distFile(rel);
     return rel;
-}
-
-const { engineRouter } = await import(distUrl('shim/engine/router.js'));
-const SCENE_ROUTER = engineRouter({ mode: 'cdn', base: new URL('.', distUrl(PINNED.distManifest)).href.replace(/\/$/, '') });
-
-export function sceneFile(rel) {
-    const abs = fileURLToPath(SCENE_ROUTER.resolve(rel));
-    if (!fs.existsSync(abs)) {
-        throw new Error('[frqtl-web-pin] scene ' + JSON.stringify(rel) + ' resolves to ' + abs + ', which the vendored ' + PINNED.name + '@' + PINNED.version + ' does not ship. (FAIL-LOUD.)');
-    }
-    return path.relative(REPO, abs).split(path.sep).join('/');
 }
 
 export function cachedTarball(rec) {

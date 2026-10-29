@@ -10,7 +10,7 @@
  * eyesPageUrl). Gates:
  *   1. body.mjs makes exactly ONE server and hands the eyes eyesPageUrl(origin) of that server — no origin of the dist's own;
  *   2. the eyes, opened at eyesPageUrl(origin) on a server built as the body builds its own (scripts/serve-site.mjs over the
- *      repo root), boot cl1a-mirror from the package's one-file project and take a composite still that is the world's size
+ *      repo root), boot cl1a-mirror (the lab roster's scene file) as the package's one-file project and take a composite still that is the world's size
  *      and not one flat colour.
  * Browsers: the eyes package's own pinned chromium, disposed by its handle; the server on an OS-assigned loopback port.
  */
@@ -24,7 +24,8 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
 import { siteHandler } from '../serve-site.mjs';
-import { REPO, distUrl, exportFile, sceneFile } from '../frqtl-web-pin.mjs';
+import { REPO, distUrl, exportFile } from '../frqtl-web-pin.mjs';
+import { registry, roster, sceneFileOf } from '../lab-roster.mjs';
 import { eyesPageUrl } from '../../minimaxi/body.mjs';
 
 const BODY = path.join(REPO, 'minimaxi', 'body.mjs');
@@ -70,7 +71,7 @@ test('body.mjs: one server, and the eyes\' pageUrl is eyesPageUrl(origin) of it 
 test('hosted eyes boot under the site\'s sub-path on the body\'s one origin and take a composite still of the world', async (t) => {
     const { openHostedEyes } = await eyesModule();
     const { sketchProject } = await import(distUrl(exportFile('./project')));
-    const source = fs.readFileSync(path.join(REPO, sceneFile('scenes/mirror.js')), 'utf8');
+    const source = fs.readFileSync(path.join(REPO, sceneFileOf(registry.walkthroughById(roster, 'cl1a-mirror'))), 'utf8');
     const one = await serveLikeTheBody();
     const pageUrl = eyesPageUrl(one.origin);
     assert.ok(new URL(pageUrl).pathname.startsWith('/site/vendor/'), 'the eyes\' page is not under the site\'s sub-path: ' + pageUrl);

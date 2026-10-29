@@ -11,7 +11,7 @@
  *   3. the pages import the vendored @descix/frqtl-web by specifier only: app.html and scene.html carry the import map
  *      scripts/gen-import-maps.mjs renders from the pin, and no site module spells a vendored path;
  *   4. the adapter returns JSON text and relays a hand's throw verbatim;
- *   5. the package's registry barrel is importable here (node), through the site's own map;
+ *   5. the package's registry barrel is importable here (node), through the site's own map, and reads the lab's roster;
  *   6. the declared scene graph is read off the runner (declared + kindOf + positionAuthorityOf +
  *      centerOf + envelopeOf), never re-derived; the one write routes a centre through
  *      placeDeclaredAt and a rect through updateObjectProperty.
@@ -210,17 +210,21 @@ test('writePosition: a centre goes through placeDeclaredAt, a rect through updat
     assert.equal(runner.calls.update.length, 2, 'a refused write writes nothing');
 });
 
-test('the package registry barrel imports in node through the site map, at the pinned version', async (t) => {
+test('the package registry barrel imports in node through the site map, at the pinned version, as the one instance the lab roster was normalized by', async (t) => {
     const reg = await import('@descix/frqtl-web/registry');
+    const lab = await import('../lab-roster.mjs');
     const manifest = JSON.parse(read('site/' + SITE_ROOT + 'dist-manifest.json'));   // no manifest row: read from the map's root, as maxi-lab.js does
     assert.equal(manifest.version, PINNED.version, 'the dist-manifest at the map\'s root names ' + manifest.version + ', the pin ' + PINNED.version);
-    assert.ok(Array.isArray(reg.WALKTHROUGH) && reg.WALKTHROUGH.length > 0);
-    assert.equal(reg.EXHIBITS.length, 9, 'EXHIBITS has ' + reg.EXHIBITS.length + ' rows');
-    assert.equal(reg.loadSceneSource, undefined, 'loadSceneSource is gone: projectOf reads a rung as its project folder');
-    const p = await reg.projectOf('dse-tunnel-rebuild');
+    assert.equal(reg, lab.registry, 'the site map\'s ./registry and scripts/lab-roster.mjs\'s are one module instance (a roster bag is checked by identity)');
+    for (const gone of ['WALKTHROUGH', 'EXHIBITS', 'scenePath', 'walkthroughGroup', 'FIRST_CONTACT_WALKTHROUGH_ID']) {
+        assert.equal(reg[gone], undefined, gone + ' is gone: the package ships no scene rows; the lab\'s roster names its scenes');
+    }
+    assert.ok(reg.walkthroughById(lab.roster, 'dse-tunnel-rebuild'), 'the lab roster declares the opening scene');
+    const p = await reg.projectOf(lab.roster, 'dse-tunnel-rebuild');
     assert.deepEqual(Object.keys(p.files).sort(), ['frqtl.json', p.manifest.entry].sort(), 'the folder a host boots: its frqtl.json and its entry');
     assert.ok(SKETCH_FORM.test(p.files[p.manifest.entry]), 'projectOf read no sketch module');
-    t.diagnostic('node import OK: ' + reg.WALKTHROUGH.length + ' rungs, ' + reg.EXHIBITS.length + ' exhibits, dse-tunnel-rebuild ' + p.files[p.manifest.entry].length + ' chars');
+    await assert.rejects(reg.projectOf('dse-tunnel-rebuild'), /takes a roster bag first/, 'the old call shape names its replacement');
+    t.diagnostic('node import OK: ' + lab.roster.rows.length + ' scenes, ' + lab.roster.showcase.rows.length + ' cards, dse-tunnel-rebuild ' + p.files[p.manifest.entry].length + ' chars');
 });
 
 // ── the PUBLISHED global ──────────────────────────────────────────────────────────────────────
@@ -600,8 +604,8 @@ const P4_SWAP = Object.freeze({
         { item: 'the world clock (the open Record\'s tick is THE clock)', file: 'site/app-assets/maxi-scene.js', gone: 'function clockAt(', at: 'site/app-assets/maxi-lab.js', uses: "tick: function () { return recordOf(sc, 'the tick').tick; }" },
         { item: 'the close on restart (one Record spans a restart)', file: 'site/app-assets/maxi-lab.js', gone: 'a restart boots a new world at tick 0: its Record closes too' },
         { item: 'lab.json project.entry (project/frqtl.json names the entry)', file: RF, gone: 'project: { entry: pr.entry },', at: RF, uses: 'return { entry: parseManifest(textOf(files[at])).entry };' },
-        { item: 'loadSceneSource (the registry\'s projectOf reads a rung as its project folder)', file: 'site/app-assets/maxi-lab.js', gone: 'loadSceneSource', at: 'site/app-assets/maxi-lab.js', uses: 'await projectOf(row, { mode: modeId })' },
-        { item: 'the node body\'s loadSceneSource', file: 'minimaxi/body.mjs', gone: 'loadSceneSource', at: 'minimaxi/body.mjs', uses: 'await projectOf(row, { mode: mode })' }
+        { item: 'loadSceneSource (the registry\'s projectOf reads a roster scene as its project folder)', file: 'site/app-assets/maxi-lab.js', gone: 'loadSceneSource', at: 'site/app-assets/maxi-lab.js', uses: 'await projectOf(lr, row.id, { mode: modeId })' },
+        { item: 'the node body\'s loadSceneSource', file: 'minimaxi/body.mjs', gone: 'loadSceneSource', at: 'minimaxi/body.mjs', uses: 'await projectOf(roster, row.id, { mode: mode })' }
     ]),
     stays: Object.freeze([
         { item: 'recordChain', file: RF, mark: 'export function recordChain(' },

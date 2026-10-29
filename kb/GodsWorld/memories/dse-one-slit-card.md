@@ -1,6 +1,6 @@
 # Memory: One Slit at the Canonical Leg — card
 
-load: GYM scene id `dse-one-slit` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/dse-one-slit.js
+load: GYM scene id `dse-one-slit` · 2D · source site/scenes/7bf299e3/dse-one-slit.js
 
 group: DSE
 

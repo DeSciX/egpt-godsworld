@@ -1,7 +1,7 @@
 # Memory: 1B · Absorbing Wall — build
 
-load: GYM scene id `cl1b-absorbing-wall` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/absorbing-wall.js
-source sha256 9585424fd83ebeb45e23d27bd53cb37eba5ada77a998f2b3f12208efa1e49cdb · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/absorbing-wall.js
+load: GYM scene id `cl1b-absorbing-wall` · 2D · source site/scenes/0a47ca64/absorbing-wall.js
+source sha256 9585424fd83ebeb45e23d27bd53cb37eba5ada77a998f2b3f12208efa1e49cdb · every code line below is byte-identical to the scene source; lines beginning `// memo:` are added notes — strip them to diff against site/scenes/0a47ca64/absorbing-wall.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: a spray and a wall that stores it. capacity 64 is how much mass the wall can hold before it stops absorbing and starts radiating; predict: capacity 8 fills within a few ticks and radiates sooner (more cyan specks behind it, earlier); 1024 swallows for a long time with nothing behind it. 'destroy' instead of 'absorb' makes a sink that never radiates. Move the wall nearer (rect left 200) and predict it fills sooner. The clip (memories/cl1b-absorbing-wall/clip.mp4) showed the red spray reaching the purple wall by ≈400 ticks, red dots on its face, and only a handful of cyan specks (the radiated leaves) behind it by 795.

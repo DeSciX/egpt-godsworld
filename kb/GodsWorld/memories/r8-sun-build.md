@@ -1,7 +1,7 @@
 # Memory: A sun — build
 
-load: GYM scene id `r8-sun` · 3D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/sun.js
-source sha256 4fb5f837c79b5702fdd8c80dca86865c1712d3629ba57dc4d52d4d8f9f03dc41 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/sun.js
+load: GYM scene id `r8-sun` · 3D · source site/scenes/fa06cac4/sun.js
+source sha256 4fb5f837c79b5702fdd8c80dca86865c1712d3629ba57dc4d52d4d8f9f03dc41 · every code line below is byte-identical to the scene source; lines beginning `// memo:` are added notes — strip them to diff against site/scenes/fa06cac4/sun.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: the same sphere emitter as the pool and the omni source, tuned dense: wavelength 1 → mass 16 of capacity 16 (fullness 1), λ 16 px. A cooler, redder, dimmer star: wavelength 4 (fullness 1/4, λ 64) — expect a red core and fewer quanta. A candle: burstSize small and emitEveryTicks 4. Two suns: two addObject calls with their own center. The glow, god rays, heat and sphere shape are NOT in this file: the GYM applies them as render rows on top. The tester's clip (memories/r8-sun/clip.mp4) has none of them: a warm speck cloud growing from a 60 px ball to ≈340 x 240 px on screen by tick 602; the tile still (tile.png) shows the dressed sun.

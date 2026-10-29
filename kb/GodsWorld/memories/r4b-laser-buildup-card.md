@@ -1,6 +1,6 @@
 # Memory: 4B · Laser Build-Up — card
 
-load: GYM scene id `r4b-laser-buildup` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/laser-buildup.js
+load: GYM scene id `r4b-laser-buildup` · 2D · source site/scenes/f4b29b2e/laser-buildup.js
 
 group: Light Lab
 

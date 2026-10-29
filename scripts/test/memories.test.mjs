@@ -393,7 +393,7 @@ test('the first-sentence rule: a closing quote, a decimal point and a one-senten
 // kept byte for byte by gen-memories-build.mjs, which checks only the code lines; so a memo's text change passed every
 // other rule. These pins are the count and sha256 of those texts in order (file name, tab, text; files sorted), and
 // they move ONLY in a maxi-memory-curator commit that says why, with the carry evidence (before/after hashes).
-export const MEMO_PIN = Object.freeze({ count: 486, sha256: 'd64095678dd05d39dc866009d4d1809bd58850909fd5c9da150c59a86c31a580' });
+export const MEMO_PIN = Object.freeze({ count: 486, sha256: '666aa9353bd1978d8db51cbf5f4492a41e5d6899bff45d59c132c723bb1eebe6' });
 export const NOTE_PIN = Object.freeze({ count: 30, sha256: '647a7569ec703cec2ede97c27e9dffce5abb2f2070596eb0ee7f83093e0a1064' });
 /** The ordered memo lines and note slices of the build memories under `dir`. */
 export function memoTexts(dir) {

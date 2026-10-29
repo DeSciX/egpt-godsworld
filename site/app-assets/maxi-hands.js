@@ -49,7 +49,7 @@
  *                                 re-runs), recordTickOf(t) a frame's runner tick placed on it; readyToFilm refuses a
  *                                 clip the Record cannot hold (MAX_SEGMENTS) and noteFilmed names the hand that filmed a
  *                                 clip (lab.json `filmed`); win.MaxiScene.entry() / partsOf(project) read the sketch (sketchOf)
- *   loadScene / sceneSource / openSketch (async) — the registry + the one boot door (a frame per load)
+ *   loadScene / sceneSource / openSketch (async) — the lab's roster + the one boot door (a frame per load)
  *   current()                   → the loaded scene, or null when none is (the adapter writes the sketch after a hand on it)
  *   restart (async)             — the runner's own restart(), in the same frame
  *   inventory()                 → the declared scene graph: inventoryOf(scene) below (INVENTORY_KEYS)
@@ -248,8 +248,8 @@ export function worldShape(sc) {
 }
 
 /**
- * The registry modes the loaded scene DECLARES (lab.scene().modes, ids from the walkthrough registry): a
- * registry row's own variants, usually none. A sketch Maxi booted declares none. Never 2D/3D: that is
+ * The registry modes the loaded scene DECLARES (lab.scene().modes, ids from the lab's roster row): a
+ * roster row's own variants, usually none. A sketch Maxi booted declares none. Never 2D/3D: that is
  * worldShape's.
  */
 export function declaredModesOf(sc) {

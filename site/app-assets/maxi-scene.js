@@ -46,7 +46,7 @@ function mount() {
 
 /**
  * Boot one project folder into this document through the package's project door. `files` is the folder a host boots:
- * its frqtl.json names the entry (a registry rung: the registry's projectOf; Maxi's sketch: the lab's one-file folder),
+ * its frqtl.json names the entry (a roster scene: the package's projectOf over the lab's roster; Maxi's sketch: the lab's one-file folder),
  * so the facade holds a project a Record can snapshot (exp.startRecord refuses a held project with no frqtl.json).
  * @param {{label:string, files:object, renderState:object, seed?:number}} spec
  * @returns {Promise<{renderer:string, retainedRenderRows:Array}>}

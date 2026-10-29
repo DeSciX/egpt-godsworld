@@ -1,7 +1,7 @@
 # Memory: Infinite mirror — build
 
-load: GYM scene id `cl1d-mirror-route` (mode `2d`, also `3d`; the GYM tile opens in `3d`) · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/mirror-route.js
-source sha256 916fb8c36663cb91d9688579a541ff9375093acb0e7dc146b6c91204b04bf88f · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/mirror-route.js
+load: GYM scene id `cl1d-mirror-route` (mode `2d`, also `3d`; the GYM tile opens in `3d`) · 2D · source site/scenes/1407dd7a/mirror-route.js
+source sha256 074dc8612d742672979d7d8a07fe3218059abaf6a8359e002026ffbc8bf56add · every code line below is byte-identical to the scene source; lines beginning `// memo:` are added notes — strip them to diff against site/scenes/1407dd7a/mirror-route.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: ten mirrors on a decagon, a laser looping forever. Fewer mirrors: a {5/2} star needs order with 5 vertices (angles 72° apart) and the same tilt solve; the solve below works for any closed star where in/out chords are known. A dimmer loop: burstSize 2, CAP 1600. A smaller ring: R = 180·f instead of the source's R = round(225·f). At f = min(600,400)/600 = 2/3 that is R 120 px instead of 150; adjacent vertices then sit 2R·sin 18° ≈ 74 px apart against slabs SH = max(70, round(110·f)) = 73 px tall, so predict the slabs nearly touch; keep R + 55·f inside min(W,H)/2. Predict one mirror dragged 20 px outward breaks the loop; watch it in the -seen file's drag 1. The 2D clip (memories/cl1d-mirror-route/clip.mp4) showed the thin yellow beam leaving near m10 for m1 by ≈120 ticks and, by 1202, streams along every chord coloured yellow → orange → green → red in hit order, with some quanta leaking out past m1 and at lower left; the GYM tile still (tile.png, 3D table-top with god rays) shows the full band circling a dark centre.
@@ -41,10 +41,10 @@ How to extrapolate: ten mirrors on a decagon, a laser looping forever. Fewer mir
 //   (d) the population counter carries a z-slab covering the WHOLE universe z-band (the emitter's
 //       gateCounter names it, so it stays a code declaration);
 //   (e) MOVE/LOOK camera joysticks (the OMNI_3D pattern).
-// The 3D mode's render intent — god-rays at the sun's settings, computed from the light
-// particles only (godraySource 'leaf'), and the 'table-top' camera — rides the registry mode's
-// renderState (lib/shim/registry/walkthrough.js), whose god-ray VALUES are the sun's, owned by
-// lib/shim/render/sun-look.js.
+// The 3D mode's render intent — the particles hidden so the light field alone shows, strong
+// 'field' god-rays computed from the light particles only (godraySource 'leaf'), a soft glow, and
+// a face-on camera close enough that the ring spans the canvas height — rides the registry mode's
+// renderState (lib/shim/registry/walkthrough.js), its one home.
 
 import { CameraControls, SphereEmitter, Wall } from '@descix/frqtl-web/parts';
 import * as FrqtlDisplay from '@descix/frqtl-web/compat/renderer/display-slot.js';
@@ -82,6 +82,9 @@ const vpos = function (v) { var a = (v * 36 + ROT) * D2R; return [CX + R * Math.
 const pos = order.map(vpos);
 const deg = function (a) { return ((a * 180 / Math.PI) % 360 + 360) % 360; };
 const angOf = function (p, q) { return deg(Math.atan2(q[1] - p[1], q[0] - p[0])); };
+// Where each mirror belongs: m1..m10 by name, at its star vertex (the centre of the slot in the ring). m4 and m6
+// are declared off theirs below; STUDIO's "try it" reads this to know when a dragged mirror is home.
+export const starPoints = Object.freeze(Object.fromEntries(pos.map(function (p, i) { return ['m' + (i + 1), Object.freeze(p.slice())]; })));
 // Per-mirror IN-PLANE orientation from the in/out chords: ori = (in+out−180)/2, branch chosen
 // so the engine reflect law out = 180 + 2·ori − in reproduces the outgoing chord exactly.
 // Orientation is z-axis rotation, so the 3D slab depth adds NO new angle.
@@ -125,15 +128,16 @@ export const parts = {
     // memo: The emission GATE as data: pause emitting when the wall named 'population' counts CAP alive, resume below it. The loop has no sink, so this is what keeps the population on a plateau (and the frame rate healthy).
   source: [SphereEmitter, { preset: 'particle-walk', is2D: false, center: emit, orientationDeg: angOf(pS, p0), emissionBoxSide: 2, burstSize: 8, emissionCap: CAP, gateCounter: 'population' }],
   // memo: The ten mirrors, m1..m10 in hit order.
-      // memo: Each rect is centred on its vertex: left = x − 5, top = y − 36, 10 x 73 px.
+      // memo: Each rect is 10 x 73 px. Eight are centred on their vertex (left = x − 5, top = y − 36); m4 and m6 are written as fixed rects off theirs, so the ring opens broken: m4 at (437,103), 5 px right and 1 px down; m6 at (215,142), 67 px right and 10 px down, toward the ring centre.
       // memo: The mirror law at the solved tilt.
         // memo: Named m1..m10, its own colour, and it recolours what it reflects.
   m1: [Wall, { rect: [Math.round(pos[0][0] - SW / 2), Math.round(pos[0][1] - SH / 2), SW, SH], z: -Math.round(SD / 2), depth: SD, collisionBehavior: 'bounce', bounceDirection: 'reflect', orientationDeg: ORI[0], color: PAL[0], hooks: ['recolor'] }],
   m2: [Wall, { rect: [Math.round(pos[1][0] - SW / 2), Math.round(pos[1][1] - SH / 2), SW, SH], z: -Math.round(SD / 2), depth: SD, collisionBehavior: 'bounce', bounceDirection: 'reflect', orientationDeg: ORI[1], color: PAL[1], hooks: ['recolor'] }],
   m3: [Wall, { rect: [Math.round(pos[2][0] - SW / 2), Math.round(pos[2][1] - SH / 2), SW, SH], z: -Math.round(SD / 2), depth: SD, collisionBehavior: 'bounce', bounceDirection: 'reflect', orientationDeg: ORI[2], color: PAL[2], hooks: ['recolor'] }],
-  m4: [Wall, { rect: [Math.round(pos[3][0] - SW / 2), Math.round(pos[3][1] - SH / 2), SW, SH], z: -Math.round(SD / 2), depth: SD, collisionBehavior: 'bounce', bounceDirection: 'reflect', orientationDeg: ORI[3], color: PAL[3], hooks: ['recolor'] }],
+  // m4 and m6 stand OFF their star vertices (m4 5 px right, m6 67 px toward the centre): the ring opens broken, so dragging one home is the thing to try.
+  m4: [Wall, { rect: [437, 103, SW, SH], z: -Math.round(SD / 2), depth: SD, collisionBehavior: 'bounce', bounceDirection: 'reflect', orientationDeg: ORI[3], color: PAL[3], hooks: ['recolor'] }],
   m5: [Wall, { rect: [Math.round(pos[4][0] - SW / 2), Math.round(pos[4][1] - SH / 2), SW, SH], z: -Math.round(SD / 2), depth: SD, collisionBehavior: 'bounce', bounceDirection: 'reflect', orientationDeg: ORI[4], color: PAL[4], hooks: ['recolor'] }],
-  m6: [Wall, { rect: [Math.round(pos[5][0] - SW / 2), Math.round(pos[5][1] - SH / 2), SW, SH], z: -Math.round(SD / 2), depth: SD, collisionBehavior: 'bounce', bounceDirection: 'reflect', orientationDeg: ORI[5], color: PAL[5], hooks: ['recolor'] }],
+  m6: [Wall, { rect: [215, 142, SW, SH], z: -Math.round(SD / 2), depth: SD, collisionBehavior: 'bounce', bounceDirection: 'reflect', orientationDeg: ORI[5], color: PAL[5], hooks: ['recolor'] }],
   m7: [Wall, { rect: [Math.round(pos[6][0] - SW / 2), Math.round(pos[6][1] - SH / 2), SW, SH], z: -Math.round(SD / 2), depth: SD, collisionBehavior: 'bounce', bounceDirection: 'reflect', orientationDeg: ORI[6], color: PAL[6], hooks: ['recolor'] }],
   m8: [Wall, { rect: [Math.round(pos[7][0] - SW / 2), Math.round(pos[7][1] - SH / 2), SW, SH], z: -Math.round(SD / 2), depth: SD, collisionBehavior: 'bounce', bounceDirection: 'reflect', orientationDeg: ORI[7], color: PAL[7], hooks: ['recolor'] }],
   m9: [Wall, { rect: [Math.round(pos[8][0] - SW / 2), Math.round(pos[8][1] - SH / 2), SW, SH], z: -Math.round(SD / 2), depth: SD, collisionBehavior: 'bounce', bounceDirection: 'reflect', orientationDeg: ORI[8], color: PAL[8], hooks: ['recolor'] }],

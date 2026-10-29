@@ -1,6 +1,6 @@
 # Memory: Photoelectric — card
 
-load: GYM scene id `dse-photoelectric` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/dse-photoelectric.js
+load: GYM scene id `dse-photoelectric` · 2D · source site/scenes/e0402c45/dse-photoelectric.js
 
 group: DSE
 

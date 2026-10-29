@@ -3,21 +3,20 @@
 //
 //   node scripts/gen-memories-build.mjs
 //
-// Reads the sketches from the VENDORED package this site pins (scripts/frqtl-web-pin.mjs, from
-// site/vendor/frqtl-web/PINNED.json): a registry row's `source` (scenes/<file>.js) is resolved to its file
-// by scripts/frqtl-web-pin.mjs sceneFile (the package's own path authority), so the repo is self-contained and
-// this file restates no dist layout.
+// Reads the sketches from the lab's own scene files: a memories row's scene is looked up in the lab's roster
+// (scripts/lab-roster.mjs, site/scenes/roster.json) and its file resolved there (sceneFileOf: the package's sceneUrlOf
+// against the roster), so the repo is self-contained and this file restates no path.
 // For every scene in kb/GodsWorld/memories/roster.json:
-//   <id>-card.md   the tile's title / what / why / how (verbatim from the registry) or the rung's
+//   <id>-card.md   the tile's title / what / why / how (verbatim from the roster's showcase card) or the row's
 //                  title / prose, plus the load id and mode, under headings a retriever hits (the why under
 //                  WHY_HEADING), ending with where what Maxi learned in the scene lives. Always rewritten.
-//   <id>-build.md  the WHOLE sketch, the row's vendored scene file, in ONE js fence. Created as a
+//   <id>-build.md  the WHOLE sketch, the row's scene file, in ONE js fence. Created as a
 //                  bare skeleton when missing; when present it is VERIFIED and left alone: every
-//                  code line must be byte-identical to the registry source once the added
+//                  code line must be byte-identical to the scene source once the added
 //                  `// memo:` lines (Maxi's notes, hand-written) are stripped — a drifted file
 //                  FAILS LOUD here, naming itself, so the notes are re-made against the new source,
 //                  never silently overwritten. The header records the source's sha256 for the
-//                  gate (scripts/test/memories.test.mjs), which has no registry to read.
+//                  gate (scripts/test/memories.test.mjs), which reads no scene file.
 //   INDEX.md       one row per scene; "Why these are thought impossible" (each tile's why, first sentence); the rule
 //                  for how a scene's learning grows; then the Record memories (recordIndexSection,
 //                  gen-memories-seen.mjs). Always rewritten. card() and indexText() are exported for the gate,
@@ -29,13 +28,21 @@ import { createHash } from 'node:crypto';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isPlaceholder, recordIndexSection } from './gen-memories-seen.mjs';
-import { REPO, sceneFile } from './frqtl-web-pin.mjs';
+import { REPO } from './frqtl-web-pin.mjs';
+import { registry, roster as lab, sceneFileOf } from './lab-roster.mjs';
 
 export const MEMO = /^\s*\/\/ memo:/;   // an added note line; everything else in the fence is source
 
 const here = dirname(fileURLToPath(import.meta.url));
-/** The row's vendored scene file, repo-relative — how a memory cites where its sketch is. */
-const sourceRel = (s) => sceneFile(s.source);
+/** The row's scene file, repo-relative — how a memory cites where its sketch is. THROWS when the memories roster is not the lab's. */
+function sourceRel(s) {
+  const row = registry.walkthroughById(lab, s.id);
+  if (!row || row.source !== s.source) {
+    throw new Error('kb/GodsWorld/memories/roster.json scene "' + s.id + '" (source ' + s.source + ') is not the lab roster\'s' +
+      (row ? ' (its source is ' + row.source + ')' : '') + ' — run node scripts/gen-memories-roster.mjs first. (FAIL-LOUD.)');
+  }
+  return sceneFileOf(row);
+}
 const memDir = resolve(here, '..', 'kb', 'GodsWorld', 'memories');
 const siteDir = resolve(here, '..', 'site');
 const sha256 = (t) => createHash('sha256').update(t).digest('hex');
@@ -52,13 +59,13 @@ export const LEARNED_HEADING = '## What Maxi has learned since';
 export const WHY_INDEX_HEADING = '## Why these are thought impossible';
 export const GROWS_INDEX_HEADING = '## How a scene\'s learning grows';
 
-/** The first sentence of a registry text: up to the first . ! or ? (a closing quote kept) that a space and a capital or quote follow. */
+/** The first sentence of a roster text: up to the first . ! or ? (a closing quote kept) that a space and a capital or quote follow. */
 export function firstSentence(text) {
   const m = String(text).match(/^[\s\S]*?[.!?]["”’]?(?=\s+["“A-Z]|\s*$)/);
   return (m ? m[0] : String(text)).trim();
 }
 
-/** A scene's card: the registry's copy (tile what / why / how, the rung prose), under headings a retriever can hit. */
+/** A scene's card: the roster's copy (card what / why / how, the rung prose), under headings a retriever can hit. */
 export function card(s) {
   const t = s.tile;
   const lines = ['# Memory: ' + titleOf(s) + ' — card', '', loadLine(s), ''];
@@ -125,12 +132,12 @@ export function fenceOf(text, where) {
 export const stripMemos = (fence) => fence.split('\n').filter((l) => !MEMO.test(l)).join('\n');
 
 const buildHeader = (s, sha) => '# Memory: ' + titleOf(s) + ' — build\n\n' + loadLine(s) + '\n' +
-  'source sha256 ' + sha + ' · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against ' + sourceRel(s) + '\n' +
+  'source sha256 ' + sha + ' · every code line below is byte-identical to the scene source; lines beginning `// memo:` are added notes — strip them to diff against ' + sourceRel(s) + '\n' +
   'how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.\n';
 
 function main() {
-  if (process.argv.length > 2) { console.error('usage: gen-memories-build.mjs (no arguments — it reads the pinned vendored SDK)'); process.exit(2); }
-  const roster = JSON.parse(readFileSync(join(memDir, 'roster.json'), 'utf8'));
+  if (process.argv.length > 2) { console.error('usage: gen-memories-build.mjs (no arguments — it reads the lab\'s scene roster and files)'); process.exit(2); }
+  const roster = JSON.parse(readFileSync(resolve(here, '..', 'kb/GodsWorld/memories/roster.json'), 'utf8'));
   // Stale split files from the old one-chunk rule.
   for (const f of readdirSync(memDir)) if (/-(build|card|seen)-\d+\.md$/.test(f)) unlinkSync(join(memDir, f));
 
@@ -144,7 +151,7 @@ function main() {
       const code = stripMemos(fenceOf(text, s.id + '-build.md'));
       if (code !== src) {
         throw new Error(s.id + '-build.md: its code lines (memo lines stripped) no longer equal ' + sourceRel(s) +
-          ' — the registry source moved, or a code line was edited. Re-make the notes against the new source (delete the file and re-run to get a bare skeleton). (FAIL-LOUD.)');
+          ' — the scene source moved, or a code line was edited. Re-make the notes against the new source (delete the file and re-run to get a bare skeleton). (FAIL-LOUD.)');
       }
       if (!text.includes('source sha256 ' + sha)) {
         throw new Error(s.id + '-build.md: header sha256 does not match its own code lines (FAIL-LOUD).');

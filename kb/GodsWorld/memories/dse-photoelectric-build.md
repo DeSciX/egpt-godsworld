@@ -1,7 +1,7 @@
 # Memory: Photoelectric — build
 
-load: GYM scene id `dse-photoelectric` · 2D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/dse-photoelectric.js
-source sha256 f3315771f50324b3d252047f697488f584c13cc99aab37b747b763d08c9ecd21 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/dse-photoelectric.js
+load: GYM scene id `dse-photoelectric` · 2D · source site/scenes/e0402c45/dse-photoelectric.js
+source sha256 f3315771f50324b3d252047f697488f584c13cc99aab37b747b763d08c9ecd21 · every code line below is byte-identical to the scene source; lines beginning `// memo:` are added notes — strip them to diff against site/scenes/e0402c45/dse-photoelectric.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: light charging a wall that then radiates. predict: capacity 16 on the absorber fills within a few hundred ticks at one quantum every two ticks, the cyan specks (radiated leaves) appear sooner and the stored bar plateaus early [predict]. emitEveryTicks 1 and burstSize 4 is a brighter light: more charge, more radiated. Move the photodetector nearer (rect left 320) to catch more of what the wall radiates. The clip (memories/dse-photoelectric/clip.mp4) showed sparse red dots in crossing diagonals (predict: the zig-zag the r5-fountain-pool card names, every particle zig-zags as it travels, drawn by few quanta) between emitter and wall, a few red dots on the purple wall, two or three cyan specks behind it, and both chart panels empty (no bars drawn in that recording).

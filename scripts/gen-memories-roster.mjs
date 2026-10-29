@@ -3,49 +3,40 @@
 //
 //   node scripts/gen-memories-roster.mjs
 //
-// Reads the registry from the VENDORED package this site pins (its `./registry` export, located by
-// scripts/frqtl-web-pin.mjs from site/vendor/frqtl-web/PINNED.json — the same
-// rungs and tiles the lab's picker shows), and writes kb/GodsWorld/memories/roster.json: the nine EXHIBITS rows first,
-// in front-page order, then every other WALKTHROUGH rung in registry order. Each row carries
-// the scene id, its default mode, the sketch file path (relative to the vendored dist) and the card copy
-// (title / tile / what / why / how / controls / still alt for a tile; title / prose / group for
-// every rung). The output is deterministic: a re-run against a newer registry shows drift as a
-// diff of this one file. The memory gate (scripts/test/memories.test.mjs) reads this roster.
+// Reads the lab's own scene roster (site/scenes/roster.json, through scripts/lab-roster.mjs and the vendored
+// package's registry functions — the same rows, first contact and showcase cards the lab's picker shows), and writes
+// kb/GodsWorld/memories/roster.json: every roster scene row in roster order, 2D ones first, then 3D; `tiles` lists the
+// showcase cards in front-page order. Each row carries the scene id, its default mode, the scene file path (relative
+// to the roster) and the card copy (title / tile / what / why / how / controls / still alt for a showcase card;
+// title / prose / group for every row). The output is deterministic: a re-run against a changed roster shows drift as
+// a diff of this one file. The memory gate (scripts/test/memories.test.mjs) reads this roster.
 import { writeFileSync, mkdirSync } from 'node:fs';
-import { PINNED as pinned, DIST_REL, distUrl, exportFile } from './frqtl-web-pin.mjs';
+import { PINNED as pinned } from './frqtl-web-pin.mjs';
+import { registry as reg, roster as lab, ROSTER_REL } from './lab-roster.mjs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 if (process.argv.length > 2) {
-  console.error('usage: gen-memories-roster.mjs (no arguments — it reads the pinned vendored SDK registry)');
+  console.error('usage: gen-memories-roster.mjs (no arguments — it reads the lab\'s scene roster, ' + ROSTER_REL + ')');
   process.exit(2);
 }
 const here = dirname(fileURLToPath(import.meta.url));
-const out = resolve(here, '..', 'kb', 'GodsWorld', 'memories', 'roster.json');
-const registryRel = DIST_REL + '/' + exportFile('./registry');
+const out = resolve(here, '..', 'kb/GodsWorld/memories/roster.json');
 
-const reg = await import(distUrl(exportFile('./registry')));
-const ex = reg;
-const wt = reg;
-if (!Array.isArray(ex.EXHIBITS) || !Array.isArray(wt.WALKTHROUGH)) {
-  throw new Error('registry shape: EXHIBITS and WALKTHROUGH must be arrays (FAIL-LOUD).');
-}
-
-const rungById = new Map(wt.WALKTHROUGH.map((r) => [r.id, r]));
-const modesOf = (r) => (Array.isArray(r.modes) ? r.modes.map((m) => m.id) : []);
+const modesOf = (r) => reg.walkthroughModes(r).map((m) => m.id);
 
 function rowFor(rung, tile) {
   const modes = modesOf(rung);
-  const has2D = modes.includes('2d') || !wt.walkthroughIs3D(rung.id, null);
+  const has2D = modes.includes('2d') || !reg.walkthroughIs3D(lab, rung.id, null);
   const mode = modes.includes('2d') ? '2d' : (modes[0] || null);
   const row = {
     id: rung.id,
     kind: 'rung',
     mode,
     modes,
-    is3D: wt.walkthroughIs3D(rung.id, mode),
+    is3D: reg.walkthroughIs3D(lab, rung.id, mode),
     has2D,
-    group: wt.walkthroughGroup(rung),
+    group: rung.group,
     rungTitle: rung.title,
     prose: rung.prose,
     source: rung.source,
@@ -53,29 +44,29 @@ function rowFor(rung, tile) {
   };
   if (tile) {
     row.tile = {
-      mode: tile.mode || null,
+      mode: tile.mode,
       title: tile.title, tile: tile.tile, what: tile.what, why: tile.why, how: tile.how,
-      controls: tile.controls || null,
-      still: tile.still ? { tick: tile.still.tick, alt: tile.still.alt, pose: tile.still.pose || null } : null,
+      controls: tile.controls,
+      still: tile.still ? { tick: tile.still.tick, alt: tile.still.alt, pose: tile.still.pose } : null,
     };
   }
   return row;
 }
 
+const cards = lab.showcase === null ? [] : lab.showcase.rows;
 const tileById = new Map();
-for (const t of ex.EXHIBITS) {
-  if (t.kind !== 'rung') throw new Error('exhibit "' + t.id + '" is kind ' + t.kind + ': only rungs are memories tonight (FAIL-LOUD).');
-  if (!rungById.get(t.id)) throw new Error('exhibit "' + t.id + '" is not a WALKTHROUGH rung (FAIL-LOUD).');
+for (const t of cards) {
+  if (tileById.has(t.id)) throw new Error('scene "' + t.id + '" has two showcase cards: a memory card holds one (FAIL-LOUD).');
   tileById.set(t.id, t);
 }
-const all = wt.WALKTHROUGH.map((rung) => rowFor(rung, tileById.get(rung.id) || null));
+const all = lab.rows.map((rung) => rowFor(rung, tileById.get(rung.id) || null));
 const rows = all.filter((r) => r.has2D).concat(all.filter((r) => !r.has2D));
 
 const roster = {
-  _purpose: 'Maxi\'s scene roster: every walk-through rung, 2D first then 3D; `tiles` lists the nine GYM tiles in front-page order. Generated by scripts/gen-memories-roster.mjs from the pinned vendored SDK registry; regenerate to see drift. Every id here has <id>-build*.md, <id>-card.md and <id>-seen.md beside this file.',
-  registry: { sdk: pinned.name + '@' + pinned.version, barrel: registryRel },
-  firstContact: wt.FIRST_CONTACT_WALKTHROUGH_ID,
-  tiles: ex.EXHIBITS.map((t) => t.id),
+  _purpose: 'Maxi\'s scene roster: every scene of the lab\'s roster, 2D first then 3D; `tiles` lists the showcase cards in front-page order. Generated by scripts/gen-memories-roster.mjs from the lab\'s scene roster (' + ROSTER_REL + '); regenerate to see drift. Every id here has <id>-build*.md, <id>-card.md and <id>-seen.md beside this file.',
+  registry: { sdk: pinned.name + '@' + pinned.version, roster: ROSTER_REL },
+  firstContact: lab.firstContact,
+  tiles: cards.map((t) => t.id),
   scenes: rows,
 };
 mkdirSync(dirname(out), { recursive: true });

@@ -191,8 +191,8 @@ const STORE_DOORS = ['save', 'list', 'load', 'remove'];
 const MODULE_LITERAL = /(['"`])[^'"`\n]*maxi-local-memory[^'"`\n]*\1/;
 /** A dynamic import, however its specifier is built (a literal, a template, a concatenation, a variable). */
 const DYNAMIC_IMPORT = /(^|[^.\w$])import\s*\(/gm;
-/** The one dynamic import in the published page and body files, by file and exact text: the body's registry import. */
-const DYNAMIC_IMPORTS_ALLOWED = { 'minimaxi/body.mjs': "await import(distUrl(exportFile('./registry')))" };
+/** The dynamic imports allowed in the published page and body files, by file and exact text: none (the body reads the lab's roster through scripts/lab-roster.mjs's static import). */
+const DYNAMIC_IMPORTS_ALLOWED = {};
 
 /**
  * The store's second writers in published page and body files, by REFERENCE, over these spellings: any file but the owner
@@ -219,7 +219,7 @@ export function writerFaults(sources) {
         if (/(^|[^.\w$])[\w$]+\s*=\s*(self|window|globalThis)\s*($|[;,)}])/m.test(src)) { faults.push(f + ' binds a name to self|window|globalThis — an alias a computed read could follow'); }
         const dyn = (src.match(DYNAMIC_IMPORT) || []).length;
         const allowed = DYNAMIC_IMPORTS_ALLOWED[f];
-        if (dyn !== (allowed ? 1 : 0) || (allowed && !src.includes(allowed))) { faults.push(f + ' has ' + dyn + ' dynamic import( — the only one in site/ and minimaxi/ is minimaxi/body.mjs\'s ' + DYNAMIC_IMPORTS_ALLOWED['minimaxi/body.mjs']); }
+        if (dyn !== (allowed ? 1 : 0) || (allowed && !src.includes(allowed))) { faults.push(f + ' has ' + dyn + ' dynamic import( — site/ and minimaxi/ hold ' + (Object.keys(DYNAMIC_IMPORTS_ALLOWED).length ? 'only ' + JSON.stringify(DYNAMIC_IMPORTS_ALLOWED) : 'none')); }
     }
     for (const f of Object.keys(DYNAMIC_IMPORTS_ALLOWED)) { if (!(f in sources)) { faults.push('the allowed dynamic import\'s file ' + f + ' is not in the walk'); } }
     const lab = sources[STORE_CALLER] || '';
@@ -270,8 +270,7 @@ test('the owner is the only writer of local memories, by reference: one importer
         ['the verifier\'s r2: Reflect.get(globalThis, …)', add(STORE_CALLER, "\nconst db = Reflect.get(globalThis, 'indexed' + 'DB');\n"), /maxi-lab\.js uses Reflect/],
         ['the verifier\'s r2: window?.[…]', add(STORE_CALLER, "\nconst db = window?.['indexed'+'DB'];\n"), /maxi-lab\.js reads a global by a computed name/],
         ['the verifier\'s r2: a second save through state[\'memories\']', add(STORE_CALLER, "\nfunction alsoKeep(r) { return state['memories'].save(r); }\n"), /maxi-lab\.js reads state by a computed name/],
-        ['a second dynamic import in the body', add('minimaxi/body.mjs', "\nconst x = await import('./hand.mjs');\n"), /minimaxi\/body\.mjs has 2 dynamic import\(/],
-        ['the body\'s registry import respelled', Object.assign({}, src, { 'minimaxi/body.mjs': src['minimaxi/body.mjs'].replace("await import(distUrl(exportFile('./registry')))", "await import(distUrl(exportFile('./registr' + 'y')))") }), /minimaxi\/body\.mjs has 1 dynamic import\(/],
+        ['a dynamic import in the body', add('minimaxi/body.mjs', "\nconst x = await import('./hand.mjs');\n"), /minimaxi\/body\.mjs has 1 dynamic import\(/],
         ['state?.memories', add(STORE_CALLER, "\nfunction alsoKeep(r) { return state?.memories.save(r); }\n"), /maxi-lab\.js reads state through \?\./]
     ]) {
         assert.match(writerFaults(planted).join('\n'), re, label + ' is RED');
@@ -412,7 +411,7 @@ async function reloadHarness(over) {
         state: { recorder: { recording: false, state: () => ({ waiting: false }) }, memories: m, scene: {} },
         guardBusy: () => {}, parseRecordFolder: folder.parseRecordFolder, projectEntryOf: folder.projectEntryOf, FILES, CARRIED_KEY: folder.CARRIED_KEY,
         TEACHING_KEY, partsEqual: folder.partsEqual, changesAsText: folder.changesAsText, base64OfBytes: folder.base64OfBytes,
-        walkthroughById: (id) => ({ id, title: 'Circuit SAT' }), WALKTHROUGH: [], projectOf: async () => ({ renderState: {} }), walkthroughModes: () => [], scenePath: () => 'scenes/circuit-sat.js',
+        ROSTER: Promise.resolve({ rows: [] }), walkthroughById: (r, id) => ({ id, title: 'Circuit SAT' }), sceneIds: () => '', projectOf: async () => ({ renderState: {} }), walkthroughModes: () => [], scenePathOf: () => 'scenes/db694683/circuit-sat.js',
         el: { demo: { hidden: true }, demoClip: { play: () => Promise.resolve() } }, mountScene: async (spec) => { mounted.push(spec); },
         HANDS: { inventory: { run: async () => ({ parts: (over && over.parts) || AFTER }) } }, lab: {}, paintCard: (c, d) => painted.push(d), demoCard: {},
         showError: () => {}, clearError: () => {}, memoriesSay: () => {}, labFact: () => {}, summary: () => ({}), memoriesFailed: (err) => { throw err; }

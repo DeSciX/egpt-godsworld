@@ -1,7 +1,7 @@
 # Memory: 7 · 3D — build
 
-load: GYM scene id `r7-3d` · 3D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/omni-3d.js
-source sha256 a0fd081b32d146b59a6b5c95cf7c55cb81ea0b447ee2b397e0a666231b6d0774 · every code line below is byte-identical to the registry source; lines beginning `// memo:` are added notes — strip them to diff against site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/omni-3d.js
+load: GYM scene id `r7-3d` · 3D · source site/scenes/d420a7aa/omni-3d.js
+source sha256 a0fd081b32d146b59a6b5c95cf7c55cb81ea0b447ee2b397e0a666231b6d0774 · every code line below is byte-identical to the scene source; lines beginning `// memo:` are added notes — strip them to diff against site/scenes/d420a7aa/omni-3d.js
 how: load the id, read this sketch, rebuild it by calling buildExperiment(exp); the world is the one createCanvas/createScene call (the first statement, the one place the size is written), parts are the `export const parts` entries (name: [Part, {…}]) that exp.declare(parts) adds, or exp.addObject(kind, {name, …}) or constructors, behaviour is tick functions pushed.
 
 How to extrapolate: the omni source with a z axis. The sun (r8) is this emitter made dense (wavelength 1 → fullness 1) and dressed by the GYM's render rows (sphere shape, glow, god rays). A wider world: createScene(900, 600, 900, ...). A hemisphere in 3D: preset 'hemisphere' with is2D false — a half-ball of directions (dse-tunnel-rebuild's 3D mode uses it). The clip (memories/r7-3d/clip.mp4, default camera) showed a cloud of specks growing from a 50 px ball to about 330 x 230 px on screen, densest at the centre.

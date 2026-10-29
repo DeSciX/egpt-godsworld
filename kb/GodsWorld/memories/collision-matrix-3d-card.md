@@ -1,6 +1,6 @@
 # Memory: 3D Collisions Lab — card
 
-load: GYM scene id `collision-matrix-3d` · 3D · source site/vendor/frqtl-web/0.6.1-p3.2/dist/frqtl/scenes/collision-matrix-3d.js
+load: GYM scene id `collision-matrix-3d` · 3D · source site/scenes/8a0c1189/collision-matrix-3d.js
 
 tile: Balls in a box. Contact, momentum, settling. The same engine that makes light makes mechanics; no second physics.
 
