@@ -15,7 +15,8 @@
         "app-assets/**",
         "scene.html",
         "vendor/**",
-        "memories/**"
+        "memories/**",
+        "scenes/**"
       ],
       "exclude": [
         ".descix",
