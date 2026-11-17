@@ -3,7 +3,7 @@
 // Run: node --test "scripts/**/*.test.mjs"
 
 /**
- * lab-opening.test.mjs — the lab opens on the 3D double slit (CEO 2026-10-18: the default starting scene is the 3D DSE).
+ * lab-opening.test.mjs — the lab opens on the 3D double slit (the default starting scene is the 3D DSE).
  *
  * The lab's roster (site/scenes/roster.json) says which scene the lab opens on, once: its firstContact. maxi-lab.js
  * openingScene(roster) is the one reader of it: the package's firstContactOf, in that scene's DECLARED default mode

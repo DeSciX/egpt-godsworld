@@ -3,7 +3,7 @@
 // Run: node --test "scripts/**/*.test.mjs"
 
 /**
- * lab-mobile.test.mjs — the lab on a phone (CEO 2026-10-18: a Send button on the dialog, since the user can't hit return;
+ * lab-mobile.test.mjs — the lab on a phone (a Send button on the dialog, since the user can't hit return;
  * full screen on mobile so no DeSciX chrome takes the real estate).
  *
  *   1. app.html's conversation form carries a Send button (#imagine-send, type=submit) beside the Imagine box.
