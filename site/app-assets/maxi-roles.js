@@ -291,7 +291,7 @@ const BUILDER_PREFACE = [
 ].join('\n');
 
 /**
- * THE OWL'S TWO QUESTIONS, in order: the voice of its judgement (CEO walk 2, 2026-10-23). The part-by-part check against
+ * THE OWL'S TWO QUESTIONS, in order: the voice of its judgement. The part-by-part check against
  * the account (SEEN_ACCOUNT) is the means of answering the second, never the voice. One owner: OWL_PREFACE asks them
  * from here, and roles.test.mjs fails on a preface without them.
  */
