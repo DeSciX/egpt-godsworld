@@ -9,7 +9,7 @@ This doc covers how Maxi's lab reads, rewrites, records and remembers a scene on
 - Scenes are memories.
 - Paths are pixels relative to an object's left, top.
 
-Sam has confirmed these names: `parts`, `exp.declare`, `exp.setDeclared` and `frqtl.json`. Each package door below is named for the pre-release that publishes it (P0b, P0c, P1, P2, P4; §7). Where the package has not fixed a spelling yet, this doc marks the name *(illus.)*. Examples are `toSketch`'s result shape, the `inParts`/`module` field names, `projectOf`, `projectIdentity` and FrqtlVision's subpath. The lab never hard-codes such a name: it reads it from the vendored package. Each open item is a numbered row in `.scratch/verdicts/maxi-sketch-projects-gaps.md` (G1…), cited here as (G n).
+The decider has confirmed these names: `parts`, `exp.declare`, `exp.setDeclared` and `frqtl.json`. Each package door below is named for the pre-release that publishes it (P0b, P0c, P1, P2, P4; §7). Where the package has not fixed a spelling yet, this doc marks the name *(illus.)*. Examples are `toSketch`'s result shape, the `inParts`/`module` field names, `projectOf`, `projectIdentity` and FrqtlVision's subpath. The lab never hard-codes such a name: it reads it from the vendored package. Each open item is a numbered row in `.scratch/verdicts/maxi-sketch-projects-gaps.md` (G1…), cited here as (G n).
 
 ## 0. The one rule
 
@@ -42,7 +42,7 @@ A memory stays three Markdown files in `kb/GodsWorld/memories/`, because the God
 - Each fence parses as an ES module: written to a scratch `.mjs` and passed through `node --check`, which parses `import`/`export` without resolving them. This replaces `new Function(code)`.
 - `sketch.js` has `export default function buildExperiment(` in place of today's `/function buildExperiment\s*\(/`.
 
-The engine-tell rule (`TELL`/`CITE`) is unchanged. Whether a memo line may cite a package part file, and with which marker, waits on Sam's persona ruling (G19).
+The engine-tell rule (`TELL`/`CITE`) is unchanged. Whether a memo line may cite a package part file, and with which marker, waits on the decider's persona ruling (G19).
 
 ### 1.2 The roster
 
@@ -90,7 +90,7 @@ Both facts come from the runner, never from re-deriving the text:
 
 ### 2.1 One region, two doors
 
-Maxi rewrites only `parts`. Every rewrite goes through the package's one writer, `exp.toSketch()` → `{files}` *(shape illus.)* (P1; G7). The writer is a host call the lab makes at the END of an act; it never runs per placement. The writer regenerates `parts` from the live declared graph. Whether a rewrite keeps the untouched entries' expressions and comments (`Math.round(W * 0.6)`, loops, comments) waits on Sam (G10). Until he rules, a rewritten `parts` carries literal values.
+Maxi rewrites only `parts`. Every rewrite goes through the package's one writer, `exp.toSketch()` → `{files}` *(shape illus.)* (P1; G7). The writer is a host call the lab makes at the END of an act; it never runs per placement. The writer regenerates `parts` from the live declared graph. Whether a rewrite keeps the untouched entries' expressions and comments (`Math.round(W * 0.6)`, loops, comments) waits on the decider (G10). Until the decider rules, a rewritten `parts` carries literal values.
 
 Outside `parts`, the writer adds exactly one kind of line. When a kind is newly in `parts` and `sketch.js` does not import it, the writer adds ONE import line after the last import statement: the barrel's specifier for a package part, `./parts/<Name>.js` for a fork. If the kind has no importable module, the writer refuses it by name. An added key goes LAST in `parts`, so every existing entry seeds as before. Every pre-existing line stays byte-identical (P1; G8, G9).
 
@@ -132,7 +132,7 @@ Maxi makes a fork in four steps:
 3. He declares it in `parts`.
 4. He boots with `openSketch{source, forks: {"parts/<Name>.js": text}}`.
 
-Forking by copying a PACKAGE part file means reading that file first, which waits on Sam's persona ruling (G19).
+Forking by copying a PACKAGE part file means reading that file first, which waits on the decider's persona ruling (G19).
 
 A fork is cited:
 - in the change list, as `op: "fork"` with `from` the source kind name and `to: {"kind": "<new kind name>", "file": "parts/<Name>.js"}` (the design §6);
@@ -210,7 +210,7 @@ Served files go under `site/`:
 
 For a Maxi-made memory, `kb/GodsWorld/memories/<id>-build.md` is generated from `project/` (§1.1), with the extrapolate note left to be written. It is a DRAFT until the id joins the roster, as today's `mm-` drafts are.
 
-The browser cannot write to this repo. A Record made in the PROD page reaches Maxi's knowledge only through a node run (MiniMaxi). A DeSciX-side save waits on Sam's call D (G18).
+The browser cannot write to this repo. A Record made in the PROD page reaches Maxi's knowledge only through a node run (MiniMaxi). A DeSciX-side save waits on the decider's call D (G18).
 
 ### 3.5 What the Owl never sees
 
@@ -220,7 +220,7 @@ maxi-roles.js::owlTurn stays the one owner of the Owl's turn: the outline, the p
 - the snapshot;
 - the change list.
 
-A code verifier is a lab test that runs the design §10 round-trip checks on a Record folder. The Owl's KB stays `General`, so the ingested memories never reach it. Changing this is Sam's call.
+A code verifier is a lab test that runs the design §10 round-trip checks on a Record folder. The Owl's KB stays `General`, so the ingested memories never reach it. Changing this is the decider's call.
 
 ## 4. Prompts (maxi-roles.js)
 
@@ -281,7 +281,7 @@ The block between `<!-- HANDS:BEGIN … -->` and `<!-- HANDS:END -->` in `assets
   - a Record carries the `parts` before and after.
 - **`RECT_CONVENTION`:** "Only what the scene DECLARED (exp.addObject)" becomes "Only what the scene declared (in `parts`, or by exp.addObject in its code)". "A thing a scene built with `new` … has no handle" is kept.
 
-Sam's own text outside the markers is not edited. Where it disagrees with the generated block waits on his word (G20).
+The decider's own text outside the markers is not edited. Where it disagrees with the generated block waits on the decider's word (G20).
 
 ## 6. MiniMaxi and node
 
@@ -294,20 +294,20 @@ Sam's own text outside the markers is not edited. Where it disagrees with the ge
 - **minimaxi/loop.mjs:**
   - On approve, it writes a Record folder (§3.3) and the memory (§3.4) through `scripts/gen-memories-seen.mjs` `writeSeenMemory` (published only from a complete Record; a draft under `minimaxi/out/<run>/memory/` otherwise).
   - The run report under `minimaxi/out/runs/` gains the round's `parts.before/after`.
-- **Node imports of a project:** only a code verifier needs them: a node test that links a Record's `project/` and checks it against `parts.after.json`. The door is `import { bootNode } from '@descix/frqtl-node'` plus `import(pathToFileURL(entry))` (P0c; G24). How node resolves the sketch's package specifiers waits on Sam (O1).
+- **Node imports of a project:** only a code verifier needs them: a node test that links a Record's `project/` and checks it against `parts.after.json`. The door is `import { bootNode } from '@descix/frqtl-node'` plus `import(pathToFileURL(entry))` (P0c; G24). How node resolves the sketch's package specifiers waits on the decider (O1).
 
 ## 7. Rollout
 
-The lab consumes only published, vendored package bytes: `site/vendor/frqtl-web/PINNED.json` and `scripts/test/sdk-copy.test.mjs` hash against the npm tarball. Nothing below can start in the lab before a package carrying it is published. Each pre-release is vendored and measured on a branch. The PROD site moves to a pre-release on Sam's word.
+The lab consumes only published, vendored package bytes: `site/vendor/frqtl-web/PINNED.json` and `scripts/test/sdk-copy.test.mjs` hash against the npm tarball. Nothing below can start in the lab before a package carrying it is published. Each pre-release is vendored and measured on a branch. The PROD site moves to a pre-release on the decider's word.
 
 | Step | Lands in the lab | Gate (measured, red-first) |
 |---|---|---|
 | **P0b**: the game layer as ESM, built in FRAQTL's tree. Publishes nothing | Nothing vendorable. P0b fixes four facts the P0c changes stand on: the kind name is the class name (G26); one display fact, the slot (G6b); `SphereEmitter.worldCfg`, `Tunnel.pointExitSpec` and `CameraControls` in the parts barrel (G2a); `importMapFor(libRootUrl)`'s signature (G3b) | Red-first gate fixtures only |
 | **P0c**: the pre-release on `next`, `0.6.0-p0.N` | `app.html` and `scene.html` carry the import map `scripts/gen-import-maps.mjs` renders from the package's `importMapFor` and its exports map, so the pages import the package by specifier (G3b). maxi-scene.js boots through `bootProject` (G4), with a one-file project until P2, and imports `CameraControls` from the barrel (G2a). maxi-scene.js also imports FrqtlVision inside the scene frame and hands it to the lab on `window.MaxiScene`; maxi-hands.js and maxi-record.js `visionOf` read it there (G2b). The lab reads `display` from the boot result (G6b). `addObject` passes the kind string through `recipeContext.addObject` (G1a). The `openSketch` arg text and example are in the ESM sketch form; `HANDS_PREAMBLE` names no sketch form. All 30 builds are regenerated: the generator fails loud ×30 and the memo lines are re-placed. The memories gate parses modules with `node --check` (G23). body.mjs passes the project form to the eyes (G5) | The memories gate is green on the 30 regenerated builds, and red on one planted drifted line. The hands test passes: the example parses and its specifiers are in the package's table; it goes red on a planted unknown specifier. A body run of one 2D scene (cl1a-mirror) and one 3D scene (cl1a-mirror-3d): `see` returns a 5–10 s clip, and `dragTo` moves the mirror inside its clip (LOOK at both) |
-| **P1**: `exp.declare(parts)`, the writer, `toSketch`, `setDeclared`. Its pre-release waits on Sam (G21) | maxi-lab.js::derivedRenderer is deleted (G6b). Build headers carry `projectIdentity` (G22). The `setDeclared` hand (G12). Position hands write through the writer at the end of each act (G7). The writer adds import lines and appends last keys, seen in the code pane (G8, G9). `exp.declare` refuses a string kind in `parts`, verbatim (G1b). The new `restart` promise. The plan's `changes[].patch`. Both prefaces. The stage line's `module`/`inParts`, read from `runner.declared` (G11). `parts.before/after` read from the declared block in place of their `{unavailable}` marker. The 30 builds regenerated against the migrated block | The memories gate is red on one planted wrong identity. On cl1a-mirror, `setDeclared{name:"mirror", patch:{orientationDeg:30}}` changes exactly one `parts` entry and leaves the author's code byte-identical; red on a planted second edit. Its result names the seed and camera pose as kept. Its clip shows the exit steered (the build memory predicts 240°), judged by the Owl from footage. `dragTo` writes `parts` once per act. `addObject` of an unimported kind adds exactly one import line. `json:done` is refused after a trailing `setDeclared` |
-| **P2**: the project container. Its pre-release waits on Sam (G21) | `loadScene`/`sceneSource` read projects through the registry's project read (G6a). `frqtl.json` becomes `entry`'s source. Roster rows carry `project` + `files`. Build memories have one fence per file. Identities change once, because `frqtl.json` joins each project's content. `openSketch{forks}` | The memories gate goes red on a missing fence, an extra fence, and a drifted `parts/` file. A fork (Maxi's own part file, its class renamed) boots, declares, and is cited in its build memory. A fork keeping the original class name is refused naming both files |
+| **P1**: `exp.declare(parts)`, the writer, `toSketch`, `setDeclared`. Its pre-release waits on the decider (G21) | maxi-lab.js::derivedRenderer is deleted (G6b). Build headers carry `projectIdentity` (G22). The `setDeclared` hand (G12). Position hands write through the writer at the end of each act (G7). The writer adds import lines and appends last keys, seen in the code pane (G8, G9). `exp.declare` refuses a string kind in `parts`, verbatim (G1b). The new `restart` promise. The plan's `changes[].patch`. Both prefaces. The stage line's `module`/`inParts`, read from `runner.declared` (G11). `parts.before/after` read from the declared block in place of their `{unavailable}` marker. The 30 builds regenerated against the migrated block | The memories gate is red on one planted wrong identity. On cl1a-mirror, `setDeclared{name:"mirror", patch:{orientationDeg:30}}` changes exactly one `parts` entry and leaves the author's code byte-identical; red on a planted second edit. Its result names the seed and camera pose as kept. Its clip shows the exit steered (the build memory predicts 240°), judged by the Owl from footage. `dragTo` writes `parts` once per act. `addObject` of an unimported kind adds exactly one import line. `json:done` is refused after a trailing `setDeclared` |
+| **P2**: the project container. Its pre-release waits on the decider (G21) | `loadScene`/`sceneSource` read projects through the registry's project read (G6a). `frqtl.json` becomes `entry`'s source. Roster rows carry `project` + `files`. Build memories have one fence per file. Identities change once, because `frqtl.json` joins each project's content. `openSketch{forks}` | The memories gate goes red on a missing fence, an extra fence, and a drifted `parts/` file. A fork (Maxi's own part file, its class renamed) boots, declares, and is cited in its build memory. A fork keeping the original class name is refused naming both files |
 | **P3**: the multi-file editor | The code pane lists the project files (read-only) | The pane shows the `parts/` files of a forked project |
-| **P4**: the Record. Its pre-release waits on Sam (G21) | From both producers: `record.json` with `clips[]` and no record-level who (G14, G25), the change list's `from`/`to` shapes (G13), `lab.json` with `producer`, the segments, `parts.*.json` with kinds by registered name (G16), and `project/` inside the Record folder (G15). The seen generator reads a Record folder. `showMemory` sends the segments | A human Record and a loop approve each produce a folder that the code verifier replays: `project/` links, and its `parts` equal `parts.after.json`. The Owl's turn text contains no `parts` key; red on a planted one |
+| **P4**: the Record. Its pre-release waits on the decider (G21) | From both producers: `record.json` with `clips[]` and no record-level who (G14, G25), the change list's `from`/`to` shapes (G13), `lab.json` with `producer`, the segments, `parts.*.json` with kinds by registered name (G16), and `project/` inside the Record folder (G15). The seen generator reads a Record folder. `showMemory` sends the segments | A human Record and a loop approve each produce a folder that the code verifier replays: `project/` links, and its `parts` equal `parts.after.json`. The Owl's turn text contains no `parts` key; red on a planted one |
 | **P5**: notebooks | Nothing | None |
 
 Before P0c publishes, only red-first gate fixtures can be written. Nothing that ships changes.
