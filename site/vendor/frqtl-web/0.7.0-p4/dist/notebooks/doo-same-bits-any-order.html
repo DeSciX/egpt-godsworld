@@ -1,0 +1,488 @@
+<frqtl-notebook version="1" title="Deterministic and out of order: the same bits in any order">
+
+<cell type="markdown">
+# Deterministic and out of order: the same bits in any order
+
+**DOO** is a property of integer arithmetic: a transform returns the same bits whatever the order of its operations and whatever device runs them. This notebook measures it in your browser on the EGPT math SDK (`caps.math`, the compiled WASM engine) and fingerprints every answer with SHA-256, so "the same" means the same bytes, not "close enough".
+
+One integer matrix product, `C = A · B`, on two seeded 32×32 matrices of small integers (−127 to 127, the range an 8-bit weight takes), is computed five ways:
+
+| Way | How the work is ordered |
+|---|---|
+| (a) naive | the triple loop, row by row, `k` from 0 up |
+| (b) Strassen | seven block products instead of eight, with extra additions and subtractions |
+| (c) eight orders and a tree | the `k` sum split across eight workers, each worker shuffling its own share, the eight partial results added in eight different orders, then once more as a pairwise tree |
+| (d) server and client | the `k` sum cut in two: one half on the "server", one half on the "client", the partial result sent as text over the wire and added |
+| (e) columns first | the output filled column by column, `k` counted down |
+
+Every digest must be equal. Then each fact runs again in float64 (and float32 where it matters) as the **negative control**: the same shapes, the same orders, and the digests disagree. A gate that cannot fail is not a gate; the float rows are this notebook's proof that it can.
+
+The cells reproduce the cases of the EGPT exact-GEMM test suite (Strassen = naive; AllReduce order independence; Kahan summation unnecessary; gradient swamping; 1000 steps of descent with zero drift) with the SDK's shipped arithmetic, and add nothing to the math. Click **Run All**; the summary at the end collects every row.
+</cell>
+
+<cell type="markdown">
+## Setup: the matrices, the digest, and the shared loops
+
+The matrices come from a seeded generator, so every reader gets the same `A` and `B`. Integer results are fingerprinted from their exact decimal strings; float results from the raw 64 bits of every entry. The helpers take `math` as an argument, so every cell builds its own EGPT values.
+</cell>
+
+<cell type="js" lane="math" id="doo-setup" out="kit">
+const { math } = caps;
+
+// mulberry32: a small seeded generator, so the matrices are the same for every reader.
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const N = 32;
+const rnd = mulberry32(20261103);
+const randInt = () => Math.floor(rnd() * 255) - 127;          // -127 .. 127
+const A = Array.from({ length: N }, () => Array.from({ length: N }, randInt));
+const B = Array.from({ length: N }, () => Array.from({ length: N }, randInt));
+
+async function sha256Hex(text) {
+  const bytes = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+// An exact result: every entry's decimal string, rows joined. breakSymbolicToString is the
+// SDK's explicit boundary verb from an EGPT value to text.
+const digestExact = (C) => sha256Hex(C.map((row) => row.map((v) => v.breakSymbolicToString()).join(',')).join(';'));
+// A float result: the raw 64 bits of every entry.
+const f64 = new Float64Array(1), u8 = new Uint8Array(f64.buffer);
+const bitsHex = (x) => { f64[0] = x; return Array.from(u8, (b) => b.toString(16).padStart(2, '0')).join(''); };
+const digestFloat = (C) => sha256Hex(C.map((row) => row.map(bitsHex).join(',')).join(';'));
+
+// EGPT values from plain integers (each cell calls this with its own math).
+const toReal = (m, M) => M.map((row) => row.map((v) => m.EGPTReal.fromBigInt(BigInt(v))));
+const zeros = (m, r, c) => Array.from({ length: r }, () => Array.from({ length: c }, () => m.EGPTReal.fromBigInt(0n)));
+// The suite's matAdd / matSub, on the SDK's EGPTMath.
+const matAdd = (m, X, Y) => X.map((row, i) => row.map((v, j) => m.EGPTMath.add(v, Y[i][j])));
+const matSub = (m, X, Y) => X.map((row, i) => row.map((v, j) => m.EGPTMath.subtract(v, Y[i][j])));
+// The float control's operands: the same integers as decimal weights (A/10, B/10).
+const Af = A.map((row) => row.map((v) => v / 10));
+const Bf = B.map((row) => row.map((v) => v / 10));
+
+// The suite's eight orderings of eight workers (AllReduce order independence).
+const ORDERINGS = [
+  [0, 1, 2, 3, 4, 5, 6, 7], [7, 6, 5, 4, 3, 2, 1, 0], [0, 2, 4, 6, 1, 3, 5, 7], [3, 7, 1, 5, 0, 4, 2, 6],
+  [6, 0, 3, 5, 7, 2, 4, 1], [1, 0, 3, 2, 5, 4, 7, 6], [4, 5, 6, 7, 0, 1, 2, 3], [7, 0, 6, 1, 5, 2, 4, 3],
+];
+const short = (h) => h.slice(0, 16);
+
+// The table look the three summary cells share (DOM is touched only when they call it).
+const GREEN = 'background:#0f2417;color:#7ee2a8;', RED = 'background:#2a0c0c;color:#ff8a8a;';
+const cellCss = 'padding:2px 8px;border-bottom:1px solid #2a2a2a;vertical-align:top;';
+function table(head, rows) {
+  const t = document.createElement('table');
+  t.style.cssText = 'border-collapse:collapse;font:0.76rem/1.3 ui-monospace,monospace;margin:4px 0;width:100%;';
+  const tr0 = document.createElement('tr');
+  for (const h of head) { const th = document.createElement('th'); th.textContent = h; th.style.cssText = cellCss + 'text-align:left;color:#ccc;font-weight:600;'; tr0.appendChild(th); }
+  t.appendChild(tr0);
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    r.cells.forEach((c, i) => { const td = document.createElement('td'); td.textContent = c; td.style.cssText = cellCss + (r.css[i] || 'color:#ddd;'); tr.appendChild(td); });
+    t.appendChild(tr);
+  }
+  return t;
+}
+function banner(ok, text) {
+  const b = document.createElement('div');
+  b.style.cssText = 'font:600 0.9rem/1.4 system-ui,sans-serif;padding:6px 10px;border-radius:6px;margin:2px 0 6px;' + (ok ? GREEN + 'border:1px solid #1f5a36;' : RED + 'border:1px solid #5a1f1f;');
+  b.textContent = text;
+  return b;
+}
+
+console.log(`A and B: ${N}x${N} integers in [-127, 127], seed 20261103`);
+console.log(`A[0][0..7] = ${A[0].slice(0, 8).join(', ')}`);
+console.log(`B[0][0..7] = ${B[0].slice(0, 8).join(', ')}`);
+return { kit: { N, A, B, Af, Bf, mulberry32, sha256Hex, digestExact, digestFloat, toReal, zeros, matAdd, matSub, ORDERINGS, short, GREEN, RED, table, banner } };
+</cell>
+
+<cell type="markdown">
+## (a) The naive triple loop
+
+Row by row, column by column, `k` from 0 up: one multiply and one add per term, on the SDK's `EGPTMath`. This digest is the reference every other way must match.
+</cell>
+
+<cell type="js" lane="math" id="doo-naive" in="kit" out="rowNaive">
+const { math } = caps;
+const { EGPTMath } = math;
+const k = inputs.kit;
+const A = k.toReal(math, k.A), B = k.toReal(math, k.B);
+const C = k.zeros(math, k.N, k.N);
+for (let i = 0; i < k.N; i++)
+  for (let j = 0; j < k.N; j++) {
+    let dot = C[i][j];
+    for (let p = 0; p < k.N; p++) dot = EGPTMath.add(dot, EGPTMath.multiply(A[i][p], B[p][j]));
+    C[i][j] = dot;
+  }
+const digest = await k.digestExact(C);
+console.log(`C[0][0..3] = ${C[0].slice(0, 4).map((v) => v.breakSymbolicToString()).join(', ')}`);
+console.log(`(a) naive              sha256 ${digest}`);
+return { rowNaive: { way: '(a) naive triple loop, row order', digests: [digest] } };
+</cell>
+
+<cell type="markdown">
+## (b) Fact 1: Strassen equals naive, bit for bit
+
+Strassen's decomposition trades one of eight block products for extra additions and subtractions. In float those extra operations round differently, so Strassen and naive disagree in the last bits; in exact integers they cannot. The cell first runs the suite's own two 2×2 cases (`[[12,37],[89,53]]·[[41,67],[29,71]]` and the large-primes case), then applies the same seven products recursively to the 32×32 blocks, down to single entries. The float control runs the same recursion and the same naive loop on `A/10`, `B/10`.
+</cell>
+
+<cell type="js" lane="math" id="doo-strassen" in="kit" out="rowStrassen">
+const { math } = caps;
+const { EGPTReal, EGPTMath } = math;
+const k = inputs.kit;
+const add = (x, y) => EGPTMath.add(x, y), sub = (x, y) => EGPTMath.subtract(x, y), mul = (x, y) => EGPTMath.multiply(x, y);
+
+// The suite's seven products on one 2x2 (Strassen = Naive, exact).
+function strassen2(Ai, Bi) {
+  const [[a, b], [c, d]] = Ai, [[e, f], [g, h]] = Bi;
+  const M1 = mul(add(a, d), add(e, h)), M2 = mul(add(c, d), e), M3 = mul(a, sub(f, h));
+  const M4 = mul(d, sub(g, e)), M5 = mul(add(a, b), h), M6 = mul(sub(c, a), add(e, f)), M7 = mul(sub(b, d), add(g, h));
+  return [[add(sub(add(M1, M4), M5), M7), add(M3, M5)], [add(M2, M4), add(sub(add(M1, M3), M2), M6)]];
+}
+function naive2(Ai, Bi) {
+  return [0, 1].map((i) => [0, 1].map((j) => add(mul(Ai[i][0], Bi[0][j]), mul(Ai[i][1], Bi[1][j]))));
+}
+const eq2 = (X, Y) => X.every((row, i) => row.every((v, j) => v.equals(Y[i][j])));
+const cases = [
+  [[[12, 37], [89, 53]], [[41, 67], [29, 71]]],
+  [[[997, 853], [641, 479]], [[359, 743], [601, 257]]],
+];
+for (const [Ai, Bi] of cases) {
+  const s = strassen2(k.toReal(math, Ai), k.toReal(math, Bi)), n = naive2(k.toReal(math, Ai), k.toReal(math, Bi));
+  console.log(`suite case ${JSON.stringify(Ai)}·${JSON.stringify(Bi)}: Strassen ${JSON.stringify(s.map((r) => r.map((v) => v.breakSymbolicToString())))} = naive: ${eq2(s, n)}`);
+  if (!eq2(s, n)) throw new Error('Strassen != naive on a suite case');
+}
+
+// The same seven products, applied recursively to the blocks of an n x n matrix (n a power of two).
+// ops = { add, sub, mul } on entries: EGPT for the exact run, plain float64 for the control.
+function strassen(X, Y, ops) {
+  const n = X.length;
+  if (n === 1) return [[ops.mul(X[0][0], Y[0][0])]];
+  const h = n / 2;
+  const q = (M, r, c) => M.slice(r * h, r * h + h).map((row) => row.slice(c * h, c * h + h));
+  const madd = (P, Q) => P.map((row, i) => row.map((v, j) => ops.add(v, Q[i][j])));
+  const msub = (P, Q) => P.map((row, i) => row.map((v, j) => ops.sub(v, Q[i][j])));
+  const [a, b, c, d] = [q(X, 0, 0), q(X, 0, 1), q(X, 1, 0), q(X, 1, 1)];
+  const [e, f, g, hh] = [q(Y, 0, 0), q(Y, 0, 1), q(Y, 1, 0), q(Y, 1, 1)];
+  const M1 = strassen(madd(a, d), madd(e, hh), ops), M2 = strassen(madd(c, d), e, ops), M3 = strassen(a, msub(f, hh), ops);
+  const M4 = strassen(d, msub(g, e), ops), M5 = strassen(madd(a, b), hh, ops), M6 = strassen(msub(c, a), madd(e, f), ops);
+  const M7 = strassen(msub(b, d), madd(g, hh), ops);
+  const C11 = madd(msub(madd(M1, M4), M5), M7), C12 = madd(M3, M5), C21 = madd(M2, M4), C22 = madd(msub(madd(M1, M3), M2), M6);
+  return [...C11.map((row, i) => [...row, ...C12[i]]), ...C21.map((row, i) => [...row, ...C22[i]])];
+}
+const C = strassen(k.toReal(math, k.A), k.toReal(math, k.B), { add, sub, mul });
+const digest = await k.digestExact(C);
+console.log(`(b) Strassen 32x32     sha256 ${digest}`);
+
+// Float control: the same recursion and the naive loop on A/10, B/10.
+const fops = { add: (x, y) => x + y, sub: (x, y) => x - y, mul: (x, y) => x * y };
+const Fs = strassen(k.Af, k.Bf, fops);
+const Fn = k.Af.map((row, i) => k.Bf[0].map((_, j) => { let s = 0; for (let p = 0; p < k.N; p++) s += row[p] * k.Bf[p][j]; return s; }));
+const fStrassen = await k.digestFloat(Fs), fNaive = await k.digestFloat(Fn);
+let differ = 0;
+for (let i = 0; i < k.N; i++) for (let j = 0; j < k.N; j++) if (Fs[i][j] !== Fn[i][j]) differ++;
+console.log(`float64 control: naive    sha256 ${fNaive}`);
+console.log(`float64 control: Strassen sha256 ${fStrassen}  (${differ} of ${k.N * k.N} entries differ)`);
+if (fStrassen === fNaive) throw new Error('negative control did not fail: float Strassen matched float naive');
+return { rowStrassen: {
+  way: '(b) Strassen, seven block products',
+  digests: [digest],
+  fact: 'Strassen = naive, bit for bit',
+  exact: `2 suite cases equal; 32x32 digest ${k.short(digest)}`,
+  float: `float64 Strassen ≠ naive: ${differ} of ${k.N * k.N} entries differ`,
+} };
+</cell>
+
+<cell type="markdown">
+## (c) Fact 2: eight reduction orders and a tree, all equal
+
+A data center splits a sum across workers and adds the partial results in whatever order they arrive. The suite's AllReduce test adds eight workers' results in eight orders and once as a pairwise tree, the shape a GPU reduction takes. This cell runs the suite's own case (eight 2×2 gradients), then does the same with the matrix product: the `k` sum is split across eight workers of four terms each, every worker shuffles its own four terms (a different shuffle for each ordering), and the eight partial matrices are added in the suite's eight orders and as a tree. The float control repeats every step on `A/10`, `B/10`.
+</cell>
+
+<cell type="js" lane="math" id="doo-orders" in="kit" out="rowOrders">
+const { math } = caps;
+const { EGPTReal, EGPTMath } = math;
+const k = inputs.kit;
+const eqM = (X, Y) => X.every((row, i) => row.every((v, j) => v.equals(Y[i][j])));
+
+// The suite's own case: worker w holds [[4w+1, 4w+2], [4w+3, 4w+4]].
+{
+  const workers = Array.from({ length: 8 }, (_, w) => k.toReal(math, [[4 * w + 1, 4 * w + 2], [4 * w + 3, 4 * w + 4]]));
+  const sums = k.ORDERINGS.map((ord) => ord.reduce((acc, idx) => k.matAdd(math, acc, workers[idx]), k.zeros(math, 2, 2)));
+  let tree = [...workers];
+  while (tree.length > 1) { const next = []; for (let i = 0; i < tree.length; i += 2) next.push(i + 1 < tree.length ? k.matAdd(math, tree[i], tree[i + 1]) : tree[i]); tree = next; }
+  const all = [...sums, tree[0]].every((S) => eqM(S, sums[0]));
+  console.log(`suite case: 8 orders + tree all equal ${JSON.stringify(sums[0].map((r) => r.map((v) => v.breakSymbolicToString())))}: ${all}`);
+  if (!all) throw new Error('AllReduce suite case disagreed');
+}
+
+// The matrix product: K split across 8 workers of 4 terms; each worker shuffles its own terms.
+const W = 8, share = k.N / W;
+function partials(A, B, ord, ops, zero) {
+  const rnd = k.mulberry32(1000 + ord);                       // one shuffle per ordering
+  return Array.from({ length: W }, (_, w) => {
+    const terms = Array.from({ length: share }, (_, t) => w * share + t);
+    for (let t = terms.length - 1; t > 0; t--) { const s = Math.floor(rnd() * (t + 1)); [terms[t], terms[s]] = [terms[s], terms[t]]; }
+    return A.map((row) => B[0].map((_, j) => terms.reduce((acc, p) => ops.add(acc, ops.mul(row[p], B[p][j])), zero())));
+  });
+}
+function reduceAll(A, B, ops, zero) {
+  const madd = (P, Q) => P.map((row, i) => row.map((v, j) => ops.add(v, Q[i][j])));
+  const results = k.ORDERINGS.map((order, o) => {
+    const parts = partials(A, B, o, ops, zero);
+    return order.reduce((acc, idx) => (acc ? madd(acc, parts[idx]) : parts[idx]), null);
+  });
+  let tree = partials(A, B, 8, ops, zero);
+  while (tree.length > 1) { const next = []; for (let i = 0; i < tree.length; i += 2) next.push(i + 1 < tree.length ? madd(tree[i], tree[i + 1]) : tree[i]); tree = next; }
+  return [...results, tree[0]];
+}
+const exactOps = { add: (x, y) => EGPTMath.add(x, y), mul: (x, y) => EGPTMath.multiply(x, y) };
+const exact = reduceAll(k.toReal(math, k.A), k.toReal(math, k.B), exactOps, () => EGPTReal.fromBigInt(0n));
+const digests = [];
+for (let i = 0; i < exact.length; i++) {
+  digests.push(await k.digestExact(exact[i]));
+  console.log(`${i < 8 ? 'order ' + i : 'tree   '}  sha256 ${digests[i]}`);
+}
+const floatRes = reduceAll(k.Af, k.Bf, { add: (x, y) => x + y, mul: (x, y) => x * y }, () => 0);
+const fdigests = [];
+for (let i = 0; i < floatRes.length; i++) {
+  fdigests.push(await k.digestFloat(floatRes[i]));
+  console.log(`float64 control ${i < 8 ? 'order ' + i : 'tree   '}  sha256 ${fdigests[i]}`);
+}
+const distinct = new Set(digests).size, fdistinct = new Set(fdigests).size;
+console.log(`exact: ${digests.length} results, ${distinct} distinct digest(s); float64: ${fdigests.length} results, ${fdistinct} distinct`);
+if (fdistinct < 2) throw new Error('negative control did not fail: every float order agreed');
+return { rowOrders: {
+  way: '(c) eight orders across eight workers, and a tree',
+  digests,
+  fact: 'eight orders and a tree, all equal',
+  exact: `suite case equal; 32x32: 9 results, ${distinct} distinct digest`,
+  float: `float64: 9 results, ${fdistinct} distinct digests`,
+  floatDigests: fdigests,
+} };
+</cell>
+
+<cell type="markdown">
+## (d) Server and client
+
+The `k` sum is cut in two. The "server" computes the first half, the "client" the second; the client's partial result crosses the wire as plain text (decimal strings, the way it would travel over a network) and the server adds it to its own. Nothing about the answer depends on which machine did which half, so the work can go wherever there is room for it.
+</cell>
+
+<cell type="js" lane="math" id="doo-split" in="kit" out="rowSplit">
+const { math } = caps;
+const { EGPTReal, EGPTMath } = math;
+const k = inputs.kit;
+const half = k.N / 2;
+function partial(A, B, from, to) {
+  return A.map((row) => B[0].map((_, j) => {
+    let s = EGPTReal.fromBigInt(0n);
+    for (let p = from; p < to; p++) s = EGPTMath.add(s, EGPTMath.multiply(row[p], B[p][j]));
+    return s;
+  }));
+}
+// The client: its own EGPT values, its half of k, and a text message back.
+const clientWire = partial(k.toReal(math, k.A), k.toReal(math, k.B), half, k.N).map((row) => row.map((v) => v.breakSymbolicToString()));
+// The server: its half of k, then the client's text parsed and added.
+const serverPart = partial(k.toReal(math, k.A), k.toReal(math, k.B), 0, half);
+const fromWire = clientWire.map((row) => row.map((s) => EGPTReal.fromBigInt(BigInt(s))));
+const C = k.matAdd(math, serverPart, fromWire);
+const digest = await k.digestExact(C);
+console.log(`client sent ${clientWire.length * clientWire[0].length} partial sums as text; first: ${clientWire[0][0]}`);
+console.log(`(d) server + client    sha256 ${digest}`);
+return { rowSplit: { way: '(d) k cut in two: server half + client half over the wire', digests: [digest] } };
+</cell>
+
+<cell type="markdown">
+## (e) A different device order: columns first
+
+The same product, filled column by column with `k` counted down: the order a device that streams the second matrix by columns would take.
+</cell>
+
+<cell type="js" lane="math" id="doo-columns" in="kit" out="rowColumns">
+const { math } = caps;
+const { EGPTReal, EGPTMath } = math;
+const k = inputs.kit;
+const A = k.toReal(math, k.A), B = k.toReal(math, k.B);
+const C = k.zeros(math, k.N, k.N);
+for (let j = 0; j < k.N; j++)
+  for (let i = 0; i < k.N; i++) {
+    let s = EGPTReal.fromBigInt(0n);
+    for (let p = k.N - 1; p >= 0; p--) s = EGPTMath.add(s, EGPTMath.multiply(A[i][p], B[p][j]));
+    C[i][j] = s;
+  }
+const digest = await k.digestExact(C);
+console.log(`(e) columns first      sha256 ${digest}`);
+return { rowColumns: { way: '(e) columns first, k counted down', digests: [digest] } };
+</cell>
+
+<cell type="markdown">
+## Fact 3: Kahan compensation is exactly zero
+
+Float code carries a correction term (Kahan summation) to win back the low bits each addition drops. The suite's case is deliberately adversarial: 256 products alternating near 1 and near 10⁻¹², summed three ways (left to right, pairwise tree, Kahan). In exact arithmetic all three agree and the compensation term is exactly 0: nothing was dropped, so there is nothing to win back. In float64 the left-to-right sum and the tree disagree, and the compensation term is not zero.
+</cell>
+
+<cell type="js" lane="math" id="doo-kahan" in="kit" out="rowKahan">
+const { math } = caps;
+const { EGPTReal, EGPTMath } = math;
+const K = 256;
+// The suite's case: a[i] = 1000000+i or 1/(1000000+i), b[i] = 1/(999999+i) or 999999+i, alternating.
+const a = Array.from({ length: K }, (_, i) => i % 2 === 0 ? EGPTReal.fromBigInt(BigInt(1000000 + i)) : EGPTReal.fromRational(1n, BigInt(1000000 + i)));
+const b = Array.from({ length: K }, (_, i) => i % 2 === 0 ? EGPTReal.fromRational(1n, BigInt(999999 + i)) : EGPTReal.fromBigInt(BigInt(999999 + i)));
+const products = a.map((x, i) => EGPTMath.multiply(x, b[i]));
+let naive = EGPTReal.fromBigInt(0n);
+for (const p of products) naive = EGPTMath.add(naive, p);
+let tree = [...products];
+while (tree.length > 1) { const next = []; for (let i = 0; i < tree.length; i += 2) next.push(i + 1 < tree.length ? EGPTMath.add(tree[i], tree[i + 1]) : tree[i]); tree = next; }
+let sum = EGPTReal.fromBigInt(0n), comp = EGPTReal.fromBigInt(0n);
+for (const p of products) {
+  const y = EGPTMath.subtract(p, comp);
+  const t = EGPTMath.add(sum, y);
+  comp = EGPTMath.subtract(EGPTMath.subtract(t, sum), y);
+  sum = t;
+}
+const compZero = comp.equals(EGPTReal.fromBigInt(0n));
+const allEqual = naive.equals(tree[0]) && naive.equals(sum);
+console.log(`exact: left-to-right = tree = Kahan: ${allEqual}; compensation term = ${comp.breakSymbolicToString()}`);
+if (!allEqual || !compZero) throw new Error('exact Kahan case disagreed');
+
+// Float64 control: the same 256 products, the same three sums.
+const af = Array.from({ length: K }, (_, i) => i % 2 === 0 ? 1000000 + i : 1 / (1000000 + i));
+const bf = Array.from({ length: K }, (_, i) => i % 2 === 0 ? 1 / (999999 + i) : 999999 + i);
+const pf = af.map((x, i) => x * bf[i]);
+let fn = 0; for (const p of pf) fn += p;
+let ft = [...pf];
+while (ft.length > 1) { const next = []; for (let i = 0; i < ft.length; i += 2) next.push(i + 1 < ft.length ? ft[i] + ft[i + 1] : ft[i]); ft = next; }
+let fs = 0, fc = 0;
+for (const p of pf) { const y = p - fc; const t = fs + y; fc = (t - fs) - y; fs = t; }
+console.log(`float64: left-to-right ${fn}, tree ${ft[0]}, Kahan ${fs}; compensation term ${fc}`);
+if (fn === ft[0] && fc === 0) throw new Error('negative control did not fail: float sums agreed with zero compensation');
+return { rowKahan: {
+  fact: 'Kahan compensation exactly zero (K=256)',
+  exact: `3 sums equal; compensation = ${comp.breakSymbolicToString()}`,
+  float: `float64: left-to-right ≠ tree; compensation = ${fc.toExponential(3)}`,
+} };
+</cell>
+
+<cell type="markdown">
+## Fact 4: gradient swamping, and 1000 steps with zero drift
+
+Training updates a large weight by a tiny step. The suite's case is `10⁸ − 10⁻⁸`. As exact rationals the update keeps every digit: `9999999999999999/100000000`, and subtracting the old weight gives back exactly `−1/100000000`. The same holds at `10¹⁵ − 10⁻¹⁵`. Float tells the precision story honestly: float32 drops `10⁻⁸` against `10⁸` outright; float64 keeps it, but inexactly (about `1.49 × 10⁻⁸`, not `10⁻⁸`), and drops `10⁻¹⁵` against `10¹⁵` outright.
+
+The suite then runs 1000 steps of descent on a 2×2 weight: `W ← W − (1/7)·dW` from 1000 with `dW` all ones, and `W ← W − (3/1000)·dW` from `[[100,200],[300,400]]` with `dW = [[1,2],[3,4]]`. The exact runs land on the closed form, `6000/7` and `[[97,194],[291,388]]`; float64 and float32 drift.
+</cell>
+
+<cell type="js" lane="math" id="doo-swamping" in="kit" out="rowSwamping">
+const { math } = caps;
+const { EGPTReal, EGPTMath } = math;
+const k = inputs.kit;
+const R = (n, d) => EGPTReal.fromRational(BigInt(n), BigInt(d));
+const I = (n) => EGPTReal.fromBigInt(BigInt(n));
+const s = (v) => v.breakSymbolicToString();
+
+// 10^8 - 10^-8 and 10^15 - 10^-15, exact.
+const w8 = I(100000000n), g8 = R(1n, 100000000n);
+const u8 = EGPTMath.subtract(w8, g8), d8 = EGPTMath.subtract(u8, w8);
+const w15 = I(1000000000000000n), g15 = R(1n, 1000000000000000n);
+const d15 = EGPTMath.subtract(EGPTMath.subtract(w15, g15), w15);
+console.log(`exact: 10^8 - 10^-8 = ${s(u8)}; minus 10^8 = ${s(d8)}`);
+console.log(`exact: (10^15 - 10^-15) - 10^15 = ${s(d15)}`);
+const ok8 = u8.equals(R(9999999999999999n, 100000000n)) && d8.equals(R(-1n, 100000000n)) && d15.equals(R(-1n, 1000000000000000n));
+
+// 1000 steps of descent, the suite's two 2x2 cases.
+function descend(W0, dW, lr) {
+  let W = k.toReal(math, W0); const D = k.toReal(math, dW);
+  for (let step = 0; step < 1000; step++) W = k.matSub(math, W, D.map((row) => row.map((v) => EGPTMath.multiply(lr, v))));
+  return W;
+}
+const W7 = descend([[1000, 1000], [1000, 1000]], [[1, 1], [1, 1]], R(1, 7));
+const W3 = descend([[100, 200], [300, 400]], [[1, 2], [3, 4]], R(3, 1000));
+const ok7 = W7.every((row) => row.every((v) => v.equals(R(6000, 7))));
+const ok3 = [[97, 194], [291, 388]].every((row, i) => row.every((v, j) => W3[i][j].equals(I(v))));
+console.log(`exact: 1000 steps, lr 1/7    → ${JSON.stringify(W7.map((r) => r.map(s)))} (6000/7 everywhere: ${ok7})`);
+console.log(`exact: 1000 steps, lr 3/1000 → ${JSON.stringify(W3.map((r) => r.map(s)))} (closed form: ${ok3})`);
+if (!(ok8 && ok7 && ok3)) throw new Error('exact swamping or descent case disagreed');
+
+// Float control.
+const f32 = Math.fround;
+const f32kept = f32(f32(1e8) - f32(1e-8)) - f32(1e8);
+const f64kept8 = (1e8 - 1e-8) - 1e8;
+const f64kept15 = (1e15 - 1e-15) - 1e15;
+let w64 = 1000; for (let step = 0; step < 1000; step++) w64 -= 1 / 7;
+let w32 = f32(1000); const lr32 = f32(1 / 7); for (let step = 0; step < 1000; step++) w32 = f32(w32 - lr32);
+console.log(`float32: (10^8 - 10^-8) - 10^8 = ${f32kept}  (update dropped)`);
+console.log(`float64: (10^8 - 10^-8) - 10^8 = ${f64kept8}  (kept, inexactly)`);
+console.log(`float64: (10^15 - 10^-15) - 10^15 = ${f64kept15}  (update dropped)`);
+console.log(`float64: 1000 steps, lr 1/7 → ${w64}; nearest float64 to 6000/7 is ${6000 / 7}; drift ${(w64 - 6000 / 7).toExponential(3)}`);
+console.log(`float32: 1000 steps, lr 1/7 → ${w32}; nearest float32 to 6000/7 is ${f32(6000 / 7)}`);
+return { rowSwamping: {
+  fact: 'gradient swamping; 1000 steps, zero drift',
+  exact: `10^8 − 10^-8 = ${s(u8)}; 1000 steps → ${s(W7[0][0])}`,
+  float: `f32 drops 10^-8; f64 keeps ${(-f64kept8).toExponential(3)}, drops 10^-15 at 10^15; 1000 steps drift ${(w64 - 6000 / 7).toExponential(2)}`,
+} };
+</cell>
+
+<cell type="markdown">
+## Summary
+
+Three tables collect every row. The first is the five ways of computing `C = A · B`: every digest must be the one the naive loop produced. The second is the float64 control of fact 2, the eight orders and the tree, each digest against float order 0. The third is the four facts, the exact run beside its float control. Green is the integer arithmetic agreeing with itself; red is the float control failing to, which is what it is there to show.
+</cell>
+
+<cell type="js" lane="math" id="doo-summary" in="kit, rowNaive, rowStrassen, rowOrders, rowSplit, rowColumns">
+const { display } = caps;
+const ref = inputs.rowNaive.digests[0];
+const ways = [inputs.rowNaive, inputs.rowStrassen, inputs.rowOrders, inputs.rowSplit, inputs.rowColumns];
+const sameAll = ways.every((w) => w.digests.every((d) => d === ref));
+const { GREEN, RED, table, banner } = inputs.kit;
+console.log(sameAll ? `ALL FIVE WAYS: THE SAME BITS, sha256 ${ref}` : `MISMATCH: ${ways.filter((w) => !w.digests.every((d) => d === ref)).map((w) => w.way).join('; ')}`);
+
+
+const wrap = document.createElement('div');
+wrap.appendChild(banner(sameAll, sameAll ? '✓ Five ways, one answer: every digest equals the naive loop\'s' : '✗ MISMATCH: a way produced different bits'));
+wrap.appendChild(table(['way', 'sha256 of C', 'equal to (a)'], ways.map((w) => {
+  const eq = w.digests.filter((d) => d === ref).length, ok = eq === w.digests.length;
+  return { cells: [w.way, w.digests[0].slice(0, 24) + '…', (ok ? '✓ ' : '✗ ') + `${eq} of ${w.digests.length}`], css: [null, null, ok ? GREEN : RED] };
+})));
+display(wrap);
+</cell>
+
+<cell type="js" lane="math" id="doo-float-summary" in="kit, rowOrders">
+const { display } = caps;
+const { RED, table, banner } = inputs.kit;
+const fd = inputs.rowOrders.floatDigests;
+const distinct = new Set(fd).size;
+const wrap = document.createElement('div');
+wrap.appendChild(banner(false, `✗ Float64 control: the same eight orders and the tree give ${distinct} different answers out of ${fd.length}`));
+wrap.appendChild(table(['float64 control', 'sha256 of C', 'against float order 0'], fd.map((d, i) => ({
+  cells: [i < 8 ? `order ${i}` : 'tree', d.slice(0, 24) + '…', i === 0 ? '✗ the float reference' : d === fd[0] ? '✗ same' : '✗ differs'],
+  css: [RED, RED, RED],
+}))));
+display(wrap);
+</cell>
+
+<cell type="js" lane="math" id="doo-facts-summary" in="kit, rowStrassen, rowOrders, rowKahan, rowSwamping">
+const { display } = caps;
+const { GREEN, RED, table } = inputs.kit;
+const facts = [inputs.rowStrassen, inputs.rowOrders, inputs.rowKahan, inputs.rowSwamping];
+display(table(['fact', 'exact (integer / rational)', 'float control'],
+  facts.map((f) => ({ cells: [f.fact, '✓ ' + f.exact, '✗ ' + f.float], css: [null, GREEN, RED] }))));
+</cell>
+
+<cell type="markdown">
+## What DOO buys
+
+Every way of ordering the work above returned the same bits, on whatever split of workers, in whatever order the partial results arrived, with half of it done on a second machine. That is the property that lets a hot spot move. Under the AIM model (Address Is the Map: reaching a value and calculating it are the same cost, priced in the same units), a pass is a truck-load of letters, and the time is set by the fullest lane: memory, CPU, GPU, or the client's own device. A pass that is out of balance has idle lanes, and an idle lane is budget spent for nothing. DOO is what makes rebalancing safe: the sum can be cut anywhere and finished anywhere, and the answer does not change. Float cannot offer that; the red rows above are what it does instead.
+
+More of the same arithmetic, in the notebooks this one builds on:
+
+- **EGPTMatrix SDK Parity Tests** (`egpt-matrix-test`): the matrix surface, GEMM with α, β and an accumulator, exact.
+- **EGPTFFT SDK Parity Tests** (`egpt-fft-test`): a forward and inverse transform that round-trips to the last bit.
+</cell>
+
+</frqtl-notebook>

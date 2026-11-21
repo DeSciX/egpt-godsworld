@@ -1,0 +1,253 @@
+<frqtl-notebook version="1" title="Address Is the Map: the mailman on a small tensor">
+
+<cell type="markdown">
+# Address Is the Map: the mailman on a small tensor
+
+**AIM**, Address Is the Map: the cost of reaching an address is the cost of calculating the path to get there. Fetching a value and calculating it are paid in the same currency, so the two can be traded. This notebook walks the AIM accounting on one small tensor you can read whole. It is the accounting of **the AIM model** (the dashboard that prices a full model on a full socket), at notebook scale: the same town, the same road capacities, the same rule that the time of a pass is the time of its fullest lane.
+
+The analogy, used the whole way through:
+
+| Term | What it is |
+|---|---|
+| the post office | one core |
+| the sorting desk | the registers |
+| the rings of the town | the mail room (L1), the building (L2), the block (L3), the city (DRAM) |
+| a letter | one weight position that must be used this token |
+| a house | one distinct value; every letter for that value goes to the same house |
+| the truck | the bytes one trip brings back: a 64-byte crate |
+| gas | calculation cycles |
+| a flyer | one value delivered to many positions |
+| rearranging the town | the one-time sort of the static weights, paid once, never per token |
+
+The objective is **time** on a fixed budget: every lane of the socket costs dollars per second whether or not mail moves, so an idle lane is budget lost. A pass is done when its fullest lane is done.
+</cell>
+
+<cell type="markdown">
+## The tensor: a few frequent values, many rare ones
+
+A 16×16 tensor of integers with a known histogram: 64 possible values (the odd numbers 1, 3, 5, …, 127, each with a sign), drawn so that a few values get most of the positions and most values get few. The generator is the AIM model's own "a few houses get most of the mail" option (a Zipf draw, skew 1.1, seed 7), so the two can be compared input for input.
+</cell>
+
+<cell type="js" lane="math" id="aim-tensor" out="tensor">
+// mulberry32 and the Zipf draw, the same recipe the AIM model uses for its "a few houses" option.
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const ROWS = 16, COLS = 16, N = ROWS * COLS, HOUSES = 64, SKEW = 1.1, SEED = 7;
+const rnd = mulberry32(SEED);
+const w = []; let tot = 0;
+for (let k = 1; k <= HOUSES; k++) { const p = 1 / Math.pow(k, SKEW); w.push(p); tot += p; }
+const cdf = []; let acc = 0;
+for (const p of w) { acc += p / tot; cdf.push(acc); }
+const value = new Int32Array(N);   // the odd part: which house
+const sign = new Uint8Array(N);
+for (let i = 0; i < N; i++) {
+  const u = rnd(); let lo = 0, hi = HOUSES - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < u) lo = mid + 1; else hi = mid; }
+  value[i] = 2 * lo + 1;
+  sign[i] = rnd() < 0.5 ? 1 : 0;
+}
+// The histogram, busiest house first: this order is how the town gets arranged.
+const counts = new Map();
+for (let i = 0; i < N; i++) counts.set(value[i], (counts.get(value[i]) || 0) + 1);
+const book = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([v, n]) => ({ value: v, count: n }));
+
+for (let r = 0; r < ROWS; r++) {
+  const row = [];
+  for (let c = 0; c < COLS; c++) { const i = r * COLS + c; row.push(((sign[i] ? '-' : '+') + value[i]).padStart(4)); }
+  console.log(row.join(''));
+}
+console.log(`${N} letters, ${book.length} distinct houses (values)`);
+let run = 0;
+book.slice(0, 8).forEach((b, i) => { run += b.count; console.log(`  house ${String(b.value).padStart(3)}: ${String(b.count).padStart(3)} letters  (top ${i + 1} cover ${(100 * run / N).toFixed(0)}%)`); });
+console.log(`  … and ${book.filter((b) => b.count <= 2).length} houses with 1 or 2 letters each`);
+return { tensor: { ROWS, COLS, N, value, sign, book } };
+</cell>
+
+<cell type="markdown">
+## The town, and the accounting
+
+Each ring of the town has room (how many bytes fit) and a road (how many bytes per cycle it carries to the desk, per core). These are the AIM model's figures for one core of a 56-core server socket at 2 GHz:
+
+| Ring | Room | Road, bytes per cycle |
+|---|---|---|
+| sorting desk (registers) | 10 KiB | 64 |
+| mail room (L1) | 48 KiB | 128 |
+| the building (L2) | 2 MiB | 64 |
+| the block (L3, this core's share) | 1.875 MiB | 9 |
+| the city (DRAM, this core's share) | unlimited | 2.2 |
+
+The gas lanes are the tiles (1,024 multiply-adds per cycle) and the vector units (128 integer ops per cycle).
+
+**Scale.** A 16×16 tensor fits on the sorting desk, so nothing travels. A real truck-load is millions of letters and sits in the city. As the AIM model does, the scale dial keeps this tensor's histogram and multiplies the letters (0 is the tensor as it is; 100 is eight billion letters).
+
+**Placement.** Items are placed nearest-first by visits per byte: the operands of the handoff (the token's values and the running totals) are pinned to the desk; then every house and every letter in order of how often it is visited, filling each ring before the next one out.
+
+**Two ways to deliver the truck-load.**
+
+1. *Stream every letter* (road time). Each letter carries its full 16-bit value and is read in order, so a 64-byte truck carries 32 letters. One multiply-add per letter on the tiles.
+2. *The mix* (road time plus gas). The `n` most frequent values become flyers: the value is kept on the sorting desk and delivered to its positions; the rest of the letters are streamed as in (1). A flyer delivery reads the value off the desk, takes a shift and an add on the vector units, and burns **gas per delivery**: a number of ops you set, exactly as the AIM model leaves it a dial. Each flyer then takes one multiply per row at the end, on the tiles.
+
+Every lane's time is its load divided by its road (bytes) or its rate (ops). The time of the pass is the time of the **fullest lane**.
+</cell>
+
+<cell type="js" lane="math" id="aim-town" in="tensor" out="town">
+const t = inputs.tensor;
+const CRATE = 64;                                                 // bytes one truck brings back
+const RINGS = [
+  { id: 'desk', name: 'sorting desk', room: 10240, road: 64 },
+  { id: 'l1', name: 'mail room (L1)', room: 49152, road: 128 },
+  { id: 'l2', name: 'the building (L2)', room: 2097152, road: 64 },
+  { id: 'l3', name: 'the block (L3)', room: 1966080, road: 9 },
+  { id: 'dram', name: 'the city (DRAM)', room: Infinity, road: 2.2 },
+];
+const GAS = [
+  { id: 'tiles', name: 'tiles (multiply-adds)', rate: 1024 },
+  { id: 'vec', name: 'vector units', rate: 128 },
+];
+
+// Letters per truck-load at a scale setting 0..100 (the AIM model's scale dial).
+const lettersAt = (scale) => Math.round(t.N * Math.pow(8e9 / t.N, scale / 100));
+
+// Place items nearest-first: pinned items first, then by visits per byte.
+function place(items) {
+  const sorted = items.filter((it) => it.bytes > 0 && it.visits > 0)
+    .map((it) => ({ ...it, density: it.visits / it.bytes }))
+    .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.density - a.density);
+  const left = RINGS.map((r) => r.room);
+  for (const it of sorted) {
+    it.where = RINGS.map(() => 0);
+    let rem = it.bytes;
+    for (let r = 0; r < RINGS.length && rem > 0; r++) { const take = Math.min(rem, left[r]); it.where[r] += take; left[r] -= take; rem -= take; }
+  }
+  return sorted;
+}
+
+// Bytes one visit moves on ring r: a letter read in order moves its own bytes (the truck
+// fills); a lookup brings a whole truck, except on the desk; the operands state their own.
+const bytesPerVisit = (r, it) => it.perVisit != null ? it.perVisit : (it.lookup ? (r === 0 ? it.size : CRATE) : it.size);
+
+// One pass of a truck-load. n = how many of the most frequent values go as flyers.
+function pass({ scale, n, gasPerDelivery }) {
+  const L = lettersAt(scale), sc = L / t.N;
+  const R = Math.max(t.ROWS, Math.round(Math.sqrt(L))), C = Math.max(t.COLS, Math.round(L / R));
+  const flyers = t.book.slice(0, n);
+  const byFlyer = flyers.reduce((a, b) => a + b.count, 0) * sc;   // positions delivered as flyers
+  const streamed = L - byFlyer;                                   // letters over the roads
+  const items = [
+    { name: 'letters (full 16-bit values)', bytes: streamed * 2, visits: streamed, size: 2 },
+    ...flyers.map((b) => ({ name: 'flyer ' + b.value, bytes: 2, visits: 1, size: 2, lookup: true })),
+    // operands of the handoff, pinned: read once per 16 letters in order, once per flyer delivery
+    { name: "the token's values", bytes: C, visits: L, pinned: true, perVisit: (streamed / 16 + byFlyer) / L },
+    { name: 'running totals', bytes: R * 4, visits: L, pinned: true, perVisit: 4 * (streamed / 16 + byFlyer) / L },
+  ];
+  const placed = place(items);
+  const bytes = RINGS.map(() => 0);
+  for (const it of placed) it.where.forEach((b, r) => { if (b > 0) bytes[r] += it.visits * (b / it.bytes) * bytesPerVisit(r, it); });
+  bytes[0] += byFlyer * 2;                                        // each delivery reads its flyer off the desk
+  const tilesOps = streamed + R * n;                              // multiply-add per letter; one multiply per row per flyer
+  const vecOps = byFlyer * gasPerDelivery + byFlyer * 2;          // gas per delivery, plus a shift and an add
+  const lanes = [
+    ...RINGS.map((r, i) => ({ name: r.name, load: bytes[i], unit: 'B', time: bytes[i] / r.road })),
+    { name: GAS[0].name, load: tilesOps, unit: 'ops', time: tilesOps / GAS[0].rate },
+    { name: GAS[1].name, load: vecOps, unit: 'ops', time: vecOps / GAS[1].rate },
+  ];
+  const fullest = lanes.reduce((a, b) => (b.time > a.time ? b : a), lanes[0]);
+  return { letters: L, flyers: n, byFlyer, streamed, lanes, time: fullest.time, fullest };
+}
+const roadOnly = (o) => pass({ ...o, n: 0 });
+
+const fmt = (x) => x >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : x >= 1e3 ? (x / 1e3).toFixed(1) + 'k' : x.toFixed(2);
+for (const n of [0, 8, t.book.length]) {
+  const p = pass({ scale: 60, n, gasPerDelivery: 24 });
+  console.log(`scale 60 (${fmt(p.letters)} letters), ${String(n).padStart(2)} flyers, 24 ops per delivery: ${p.time.toFixed(2)} cycles per truck-load; fullest lane ${p.fullest.name}`);
+}
+return { town: { RINGS, GAS, CRATE, lettersAt, pass, roadOnly } };
+</cell>
+
+<cell type="markdown">
+## The three numbers, and the dial
+
+Move the **frequent values** slider to choose how many of the busiest houses go as flyers, and watch the three numbers: the time to stream every letter, the time of the mix, and which lane is the fullest (the one that sets the mix's time). The gas each delivery burns and the scale are dials too. Every lane is drawn as a share of the fullest one: the lanes short of 100% are budget the pass paid for and did not use.
+</cell>
+
+<cell type="js" lane="math" id="aim-dial" in="tensor, town">
+const { display } = caps;
+const t = inputs.tensor, town = inputs.town;
+const fmt = (x) => x >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : x >= 1e3 ? (x / 1e3).toFixed(1) + 'k' : x.toFixed(2);
+const count = (x) => x >= 1e3 ? fmt(x) : String(Math.round(x));   // letters, bytes, ops: whole numbers
+
+const el = (tag, css, text) => { const e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; };
+const wrap = el('div', 'font:0.82rem/1.35 system-ui,sans-serif;color:#ddd;max-width:900px;margin:2px 0;');
+const dials = el('div', 'display:grid;grid-template-columns:repeat(3,1fr);gap:12px;');
+wrap.appendChild(dials);
+function slider(label, min, max, step, value) {
+  const row = el('label', 'display:grid;grid-template-columns:1fr 34px;gap:2px 6px;align-items:center;');
+  const input = el('input'); input.type = 'range'; input.min = min; input.max = max; input.step = step; input.value = value;
+  const out = el('span', 'font-family:ui-monospace,monospace;color:#fff;text-align:right;');
+  row.append(el('span', 'grid-column:1 / 3;color:#aab;', label), input, out);
+  dials.appendChild(row);
+  return { input, out };
+}
+const sN = slider('frequent values as flyers', 0, t.book.length, 1, 8);
+const sG = slider('gas per delivery (ops)', 1, 200, 1, 24);
+const sS = slider('scale (0 = this tensor)', 0, 100, 1, 60);
+const scaleNote = el('div', 'color:#999;font-size:0.78rem;margin:4px 0 0;');
+wrap.appendChild(scaleNote);
+
+const cards = el('div', 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:6px 0;');
+const card = (label) => { const c = el('div', 'background:#16181c;border:1px solid #2c2f36;border-radius:6px;padding:5px 10px;'); const big = el('div', 'font:600 1.15rem/1.2 ui-monospace,monospace;color:#fff;'); const sub = el('div', 'color:#9aa;font-size:0.75rem;margin-top:2px;'); c.append(el('div', 'color:#9aa;font-size:0.75rem;text-transform:uppercase;letter-spacing:.05em;', label), big, sub); cards.appendChild(c); return { big, sub }; };
+const cRoad = card('road only: stream every letter'), cMix = card('the mix: flyers + stream'), cFull = card('the fullest lane (sets the mix)');
+wrap.appendChild(cards);
+const lanesBox = el('div', 'display:grid;grid-template-columns:1fr 1fr;gap:14px;');
+wrap.appendChild(lanesBox);
+
+function laneChart(title, p) {
+  const box = el('div');
+  box.appendChild(el('div', 'font-weight:600;color:#fff;margin-bottom:2px;', title));
+  for (const l of p.lanes) {
+    const u = p.time > 0 ? l.time / p.time : 0;
+    const row = el('div', 'display:grid;grid-template-columns:140px 1fr 40px;gap:6px;align-items:center;font-size:0.74rem;line-height:1.15;margin:1px 0;');
+    const track = el('div', 'background:#1d1f24;height:9px;border-radius:3px;overflow:hidden;');
+    track.appendChild(el('div', `height:100%;width:${(100 * u).toFixed(1)}%;background:${l === p.fullest ? '#e0a040' : '#4f9fc0'};`));
+    row.append(el('span', null, l.name), track, el('span', 'text-align:right;font-family:ui-monospace,monospace;', (100 * u).toFixed(0) + '%'));
+    box.appendChild(row);
+  }
+  return box;
+}
+function update() {
+  const o = { scale: +sS.input.value, n: +sN.input.value, gasPerDelivery: +sG.input.value };
+  sN.out.textContent = o.n; sG.out.textContent = o.gasPerDelivery; sS.out.textContent = o.scale;
+  const road = town.roadOnly(o), mix = town.pass(o);
+  scaleNote.textContent = `${count(road.letters)} letters per truck-load; the ${o.n} most frequent values cover ${(100 * mix.byFlyer / mix.letters).toFixed(0)}% of them`;
+  cRoad.big.textContent = fmt(road.time) + ' cyc'; cRoad.sub.textContent = `fullest lane: ${road.fullest.name}`;
+  cMix.big.textContent = fmt(mix.time) + ' cyc';
+  const x = road.time / mix.time;
+  cMix.sub.innerHTML = `<span style="color:${x >= 1 ? '#7ee2a8' : '#ff8a8a'}">${x.toFixed(2)}× the road-only speed</span>`;
+  cFull.big.textContent = mix.fullest.name; cFull.sub.textContent = `${count(mix.fullest.load)} ${mix.fullest.unit} = ${fmt(mix.time)} cycles`;
+  lanesBox.innerHTML = '';
+  lanesBox.append(laneChart('Road only', road), laneChart(`The mix (${o.n} flyers)`, mix));
+}
+for (const s of [sN, sG, sS]) s.input.addEventListener('input', update);
+update();
+display(wrap);
+</cell>
+
+<cell type="markdown">
+## What to look for
+
+- At scale 0 the whole tensor sits on the sorting desk; there is no road to save, and flyers only add gas. The road-only plan wins.
+- At scale 60 the letters sit in the city, the city road is the fullest lane, and each frequent value taken off the road as a flyer shortens it. Past some count the vector units become the fullest lane instead, and more flyers make the pass slower: the best mix is where the road and the gas lanes finish closest together.
+- Raise the gas per delivery and that balance point moves toward fewer flyers; lower it and more of the mail goes as flyers.
+
+The flyer is a value kept on the desk and delivered to its positions; this notebook counts the gas of a delivery as a number you set and says nothing about what those ops are. That number, the size of the truck-load, and the budget of the whole socket are where **the AIM model** takes over: it runs this same accounting on measured weight slices, on every lane of a full server socket, with seven delivery plans, the dollar budget of each lane, and the client devices. It remains the model of record; this notebook is its accounting, small enough to read whole.
+
+For the property that makes moving work between lanes safe at all (the same bits in any order, on any device), see **Deterministic and out of order: the same bits in any order** (`doo-same-bits-any-order`).
+</cell>
+
+</frqtl-notebook>
