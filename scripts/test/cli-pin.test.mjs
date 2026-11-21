@@ -8,8 +8,9 @@
  * Every `@descix/cli@<spec>` in a published text file (scripts/publish-paths.mjs publishedFiles, outside site/vendor/
  * and this file) is a RUN PIN, whatever the spec: an exact version, a bare major (`@3`), a range or a dist-tag (`@latest`). Each is an
  * `npx -y -p` line, an argv entry, or a doc a reader would run, and each must equal DESCIX_CLI exactly. DESCIX_CLI
- * itself must be an exact version at or above the floor: the platform answers 410 COMMAND_REMOVED to the retired buy
- * verbs of ≤3.x (DEVPLANE, @descix/cli 4.0.0, 2026-10-18). One mention is not a run pin and is excepted by FILE AND
+ * itself must be an exact version at or above the floor: the platform refuses the media verbs of ≤4.4.0 with 400
+ * VISIBILITY_REQUIRED (app-developer runbook §2.1) and answers 410 COMMAND_REMOVED to the retired buy verbs of ≤3.x.
+ * One mention is not a run pin and is excepted by FILE AND
  * PHRASE together: the schema provenance note "@descix/cli@<v> ManifestLoader…" in .descix/manifests/site.json. The
  * same phrase in any other file is a run pin. The pins gated are the ones that ship: a twin-only file is never published
  * and is not read (a pin there is a dated record or a seat's note, never a line a reader runs).
@@ -18,7 +19,7 @@
  * .publish/CLAUDE.md; in the public repo, the same file at CLAUDE.md.
  *
  * Gates (each shown red on a planted fault, ws-cli-400):
- *   1. DESCIX_CLI is an exact version ≥ the floor (the constant moved back to 2.0.4 is red);
+ *   1. DESCIX_CLI is an exact version ≥ the floor (the constant moved back to 4.4.0 is red);
  *   2. every run pin in the published tree equals DESCIX_CLI, named by file:line;
  *   3. the classifier's own plants: `@3`, `@latest`, `@3.0.1`, `@^4.0.0` in a script, and the ManifestLoader phrase in
  *      a script, are each a run pin that is not DESCIX_CLI; the note in site.json is not a pin;
@@ -47,7 +48,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const SELF = path.relative(ROOT, fileURLToPath(import.meta.url));
 const OWNER = 'minimaxi/ask-door.mjs';
 const SKIP = [/^site\/vendor\//];
-const FLOOR = [4, 0, 0];
+const FLOOR = [5, 0, 0];
 // Any spec after `@descix/cli@`, up to whitespace, a quote, a backtick, a closing paren or bracket; trailing
 // sentence punctuation is not part of the spec.
 const PIN_PREFIX = '@descix/cli@';
@@ -91,9 +92,9 @@ function scan() {
     return pins;
 }
 
-test('DESCIX_CLI is an exact version at or above the floor (≤3.x hits the 410 on the retired buy verbs)', () => {
+test('DESCIX_CLI is an exact version at or above the floor (≤4.4.0 is refused on the media verbs)', () => {
     assert.ok(atLeast(DESCIX_CLI_VERSION.split('.').map(Number), FLOOR),
-        OWNER + ' DESCIX_CLI is ' + DESCIX_CLI + ', below ' + PIN_PREFIX + FLOOR.join('.') + ' — the platform answers 410 COMMAND_REMOVED to ≤3.x.');
+        OWNER + ' DESCIX_CLI is ' + DESCIX_CLI + ', below ' + PIN_PREFIX + FLOOR.join('.') + ' — the platform refuses the media verbs of ≤4.4.0 (400 VISIBILITY_REQUIRED).');
 });
 
 test('the classifier: any spec is a run pin; the ManifestLoader note is excepted only in site.json', () => {

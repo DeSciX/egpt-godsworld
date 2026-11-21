@@ -5,18 +5,18 @@
  * means "sign in first". The intro's entry button (maxi-intro.js buttonLabelFor) and the lab's status line and
  * conversation (maxi-lab.js) read the state from here; neither asks the shell itself.
  *
- * The shell's bridge (site/DeSciXAppSDK.js, the published app-sdk copy) publishes `DeSciX.powch.isAuthenticated()` and
- * NO sign-in event: no auth-changed event, no `on`, and the shell's POWCH_STATE_UPDATE is a message from the Powch frame
- * to the SHELL's window, which never reaches this page. So the state is RE-READ: when the bridge settles, every
- * AUTH_EVERY_MS while the page is open, and on demand (refresh(): the lab calls it at each Send). A sign-in made through
- * the shell's SIGN IN after boot shows within one read, without a reload.
+ * The shell's bridge (site/DeSciXAppSDK.js, the published app-sdk copy) publishes `DeSciX.powch.isAuthenticated()`, and
+ * `DeSciX.powch.on('auth', cb)` only under a shell on app-sdk 0.8.0 or later (runbook §5.4; `on` is undefined under an
+ * older one). This reader does not subscribe: the state is RE-READ through isAuthenticated() when the bridge settles,
+ * every AUTH_EVERY_MS while the page is open, and on demand (refresh(): the lab calls it at each Send). A sign-in made
+ * through the shell's SIGN IN after boot shows within one read, without a reload.
  *
  * State: {mode, members, powch, authenticated} — `powch` whether the shell publishes the wallet bridge; `authenticated`
  * the boolean isAuthenticated() returned (awaited), or null where there is no powch (standalone, or a host without it).
  * A non-boolean answer from a published powch THROWS by name, never guessed.
  */
 
-/** How often the sign-in state is re-read while the page is open (the bridge has no event to wait on). */
+/** How often the sign-in state is re-read while the page is open. */
 export const AUTH_EVERY_MS = 1000;
 
 /** The marker of the lab's sign-in refusal (signInRefusal): the strip and the page recognise THIS, never the platform's words. */

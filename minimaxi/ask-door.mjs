@@ -35,7 +35,7 @@ export const BRAINS = Object.freeze(['none', 'platform']);
  * `npx -y -p` pin of @descix/cli in the published tree to it; the twin-only scripts/test/twin-deps.test.mjs holds every
  * npm dependency on it with its lock). Plain `npx descix` resolves the wrong package.
  */
-export const DESCIX_CLI = '@descix/cli@4.2.0';
+export const DESCIX_CLI = '@descix/cli@5.1.0';
 
 /** DESCIX_CLI's exact version, the ONE parse of the pin (a pin that is not an exact <major>.<minor>.<patch> version throws at load). */
 export const DESCIX_CLI_VERSION = (() => {
@@ -51,8 +51,8 @@ export const DESCIX_CLI_VERSION = (() => {
  */
 export const DESCIX_APP_SDK = Object.freeze({
     name: '@descix/app-sdk',
-    version: '0.6.0',
-    integrity: 'sha512-0oLf/yqRTtAw+QnF00K+CaLwPYDnFNlAwK3jigNrYlI+LlE6RyuQN/JWm/iGtw4BGfSadcVYBnRtXom6JFF/TA=='
+    version: '0.10.1',
+    integrity: 'sha512-QoboUCHZvHLzxXg8Ot3+MVkXUUZABF07Dq23ZKV/gKvGhKA1GgCxE48Jym2cKZWulvJRpjOs0m8XLKf9N6xICw=='
 });
 
 export const CLI_ARGV = Object.freeze(['-y', '-p', DESCIX_CLI, 'descix', 'mcp', 'execute', '--tool', ASK.command]);
